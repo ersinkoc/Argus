@@ -204,6 +204,16 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "argus_pool_idle_connections{target=%q} %d\n", name, ps.Idle)
 	}
 
+	// Query latency histogram
+	latency := metrics.QueryLatency.Snapshot()
+	fmt.Fprintf(w, "\n# HELP argus_query_duration_us Query execution duration in microseconds\n")
+	fmt.Fprintf(w, "# TYPE argus_query_duration_us summary\n")
+	fmt.Fprintf(w, "argus_query_duration_count %d\n", latency.Count)
+	fmt.Fprintf(w, "argus_query_duration_avg_us %.0f\n", latency.AvgUS)
+	fmt.Fprintf(w, "argus_query_duration_p50_us %.0f\n", latency.P50US)
+	fmt.Fprintf(w, "argus_query_duration_p95_us %.0f\n", latency.P95US)
+	fmt.Fprintf(w, "argus_query_duration_p99_us %.0f\n", latency.P99US)
+
 	// Go runtime
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)

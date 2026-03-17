@@ -483,6 +483,9 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 			duration := time.Since(queryStart)
 			fingerprint := inspection.FingerprintHash(cmd.Raw)
 
+			// Record query latency
+			metrics.QueryLatency.Observe(float64(duration.Microseconds()))
+
 			metrics.Global.ResultRowsTotal.Add(stats.RowCount)
 			if len(stats.MaskedCols) > 0 {
 				metrics.Global.CommandsMasked.Add(1)

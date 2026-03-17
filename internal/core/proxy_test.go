@@ -42,6 +42,7 @@ func TestProxyEndToEnd(t *testing.T) {
 		{Name: "test", Protocol: "postgresql", Host: backendHost, Port: port},
 	}
 	cfg.Routing.DefaultTarget = "test"
+	cfg.Pool.MinIdleConnections = 0 // don't warmup in tests (fake backend handles 1 conn)
 	cfg.Audit.Outputs = nil // suppress stdout in tests
 
 	// Set up policy

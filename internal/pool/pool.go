@@ -27,6 +27,7 @@ type Pool struct {
 	stopCh      chan struct{}
 	wg          sync.WaitGroup
 	connectFn   func(ctx context.Context) (net.Conn, error)
+	breaker     *CircuitBreaker
 }
 
 // NewPool creates a new connection pool for a target.
@@ -42,6 +43,7 @@ func NewPool(target string, maxConns, minIdle int, maxLifetime, connectTimeout, 
 		stopCh:         make(chan struct{}),
 	}
 	p.connectFn = p.defaultConnect
+	p.breaker = NewCircuitBreaker(5, 30*time.Second)
 	return p
 }
 
@@ -97,6 +99,12 @@ func (p *Pool) Acquire(ctx context.Context) (*Conn, error) {
 		return nil, fmt.Errorf("target %s is unhealthy", p.target)
 	}
 
+	// Circuit breaker check
+	if p.breaker != nil && !p.breaker.Allow() {
+		p.mu.Unlock()
+		return nil, fmt.Errorf("target %s circuit breaker open", p.target)
+	}
+
 	// Try to reuse an idle connection
 	for len(p.idle) > 0 {
 		conn := p.idle[len(p.idle)-1]
@@ -130,9 +138,15 @@ func (p *Pool) Acquire(ctx context.Context) (*Conn, error) {
 		p.total--
 		p.active--
 		p.mu.Unlock()
+		if p.breaker != nil {
+			p.breaker.RecordFailure()
+		}
 		return nil, err
 	}
 
+	if p.breaker != nil {
+		p.breaker.RecordSuccess()
+	}
 	return conn, nil
 }
 
