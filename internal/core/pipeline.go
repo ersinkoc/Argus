@@ -34,6 +34,7 @@ type Proxy struct {
 	anomalyDetector *inspection.AnomalyDetector
 	approvalManager *ApprovalManager
 	queryRecorder   *audit.QueryRecorder
+	slowQueryLogger *audit.SlowQueryLogger
 	onEvent         func(any) // broadcast callback (e.g. WebSocket)
 }
 
@@ -61,6 +62,11 @@ func (p *Proxy) SetQueryRecorder(r *audit.QueryRecorder) {
 // SetOnEvent sets a broadcast callback for live monitoring.
 func (p *Proxy) SetOnEvent(fn func(any)) {
 	p.onEvent = fn
+}
+
+// SetSlowQueryLogger enables slow query logging.
+func (p *Proxy) SetSlowQueryLogger(s *audit.SlowQueryLogger) {
+	p.slowQueryLogger = s
 }
 
 // ApprovalManager returns the approval manager.
@@ -536,6 +542,11 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 			}
 
 			p.auditLogger.Log(event)
+
+			// Slow query check
+			if p.slowQueryLogger != nil {
+				p.slowQueryLogger.Check(event, duration)
+			}
 
 			// Broadcast event for live monitoring
 			if p.onEvent != nil {

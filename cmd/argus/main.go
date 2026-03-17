@@ -184,6 +184,20 @@ func main() {
 			adminServer.SetRecordFile(cfg.Audit.RecordFile)
 		}
 
+		// Wire policy validator
+		adminServer.SetPolicyValidator(func() (any, error) {
+			ps := policyLoader.Current()
+			if ps == nil {
+				return nil, fmt.Errorf("no policies loaded")
+			}
+			issues := policy.ValidatePolicySet(ps)
+			return map[string]any{
+				"issues": issues,
+				"count":  len(issues),
+				"valid":  countErrors(issues) == 0,
+			}, nil
+		})
+
 		if err := adminServer.Start(); err != nil {
 			log.Printf("Warning: admin server failed to start: %v", err)
 		}
@@ -246,4 +260,14 @@ func main() {
 	case <-shutdownCtx.Done():
 		log.Println("Shutdown timed out, forcing exit.")
 	}
+}
+
+func countErrors(issues []policy.ValidationIssue) int {
+	n := 0
+	for _, i := range issues {
+		if i.Level == "error" {
+			n++
+		}
+	}
+	return n
 }

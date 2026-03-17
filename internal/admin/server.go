@@ -45,6 +45,7 @@ type Server struct {
 	dryRunFn       DryRunFunc
 	configData     func() ([]byte, error)
 	authToken      string
+	validateFn     func() (any, error) // policy validation function
 }
 
 // NewServer creates a new admin server.
@@ -85,6 +86,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/policies/dryrun", s.handleDryRun)
 	mux.HandleFunc("/api/config/export", s.handleConfigExport)
 	mux.HandleFunc("/api/audit/compact", s.handleCompact)
+	mux.HandleFunc("/api/policies/validate", s.handlePolicyValidate)
 	mux.HandleFunc("/api/dashboard", s.handleDashboard)
 	mux.HandleFunc("/ready", s.handleReady)
 	mux.HandleFunc("/livez", s.handleLive)
@@ -692,6 +694,25 @@ func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// SetPolicyValidator sets the policy validation function.
+func (s *Server) SetPolicyValidator(fn func() (any, error)) {
+	s.validateFn = fn
+}
+
+func (s *Server) handlePolicyValidate(w http.ResponseWriter, r *http.Request) {
+	if s.validateFn == nil {
+		http.Error(w, `{"error":"policy validation not configured"}`, http.StatusInternalServerError)
+		return
+	}
+	result, err := s.validateFn()
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }
