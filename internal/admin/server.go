@@ -88,6 +88,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/audit/compact", s.handleCompact)
 	mux.HandleFunc("/api/policies/validate", s.handlePolicyValidate)
 	mux.HandleFunc("/api/audit/export", s.handleAuditExport)
+	mux.HandleFunc("/api/pool/health", s.handlePoolHealth)
 	mux.HandleFunc("/api/dashboard", s.handleDashboard)
 	mux.HandleFunc("/ready", s.handleReady)
 	mux.HandleFunc("/livez", s.handleLive)
@@ -216,6 +217,14 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "argus_query_duration_p50_us %.0f\n", latency.P50US)
 	fmt.Fprintf(w, "argus_query_duration_p95_us %.0f\n", latency.P95US)
 	fmt.Fprintf(w, "argus_query_duration_p99_us %.0f\n", latency.P99US)
+
+	// Per-protocol stats
+	protoStats := metrics.ProtocolStats.Snapshot()
+	fmt.Fprintf(w, "\n# HELP argus_protocol_commands_total Commands per protocol\n")
+	fmt.Fprintf(w, "# TYPE argus_protocol_commands_total counter\n")
+	for proto, count := range protoStats {
+		fmt.Fprintf(w, "argus_protocol_commands_total{protocol=%q} %d\n", proto, count)
+	}
 
 	// Go runtime
 	var memStats runtime.MemStats
@@ -739,6 +748,22 @@ func (s *Server) handleAuditExport(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[argus] CSV export error: %v", err)
 	}
 	_ = count
+}
+
+func (s *Server) handlePoolHealth(w http.ResponseWriter, r *http.Request) {
+	poolStats := s.provider.PoolStats()
+	summary := pool.Summarize(poolStats)
+
+	resp := map[string]any{
+		"summary": summary,
+		"targets": poolStats,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if summary.UnhealthyTargets > 0 {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}
+	json.NewEncoder(w).Encode(resp)
 }
 
 var (

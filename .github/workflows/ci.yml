@@ -29,6 +29,9 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Benchmark
+        run: go test ./internal/inspection/ ./internal/masking/ ./internal/policy/ ./internal/ratelimit/ ./internal/metrics/ -bench=. -benchmem -count=1 -timeout 60s
+
   build:
     name: Build Binary
     runs-on: ubuntu-latest

@@ -35,6 +35,7 @@ type Proxy struct {
 	approvalManager *ApprovalManager
 	queryRecorder   *audit.QueryRecorder
 	slowQueryLogger *audit.SlowQueryLogger
+	rewriter        *inspection.Rewriter
 	onEvent         func(any) // broadcast callback (e.g. WebSocket)
 }
 
@@ -67,6 +68,11 @@ func (p *Proxy) SetOnEvent(fn func(any)) {
 // SetSlowQueryLogger enables slow query logging.
 func (p *Proxy) SetSlowQueryLogger(s *audit.SlowQueryLogger) {
 	p.slowQueryLogger = s
+}
+
+// SetRewriter enables query rewriting.
+func (p *Proxy) SetRewriter(r *inspection.Rewriter) {
+	p.rewriter = r
 }
 
 // ApprovalManager returns the approval manager.
@@ -293,6 +299,8 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 }
 
 func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler protocol.Handler, client, backend net.Conn) {
+	protocolName := handler.Name()
+
 	for {
 		// Read command from client
 		cmd, rawMsg, err := handler.ReadCommand(ctx, client)
@@ -311,6 +319,16 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 
 		sess.IncrementCommand()
 		metrics.Global.CommandsTotal.Add(1)
+
+		// Per-protocol metrics
+		switch protocolName {
+		case "postgresql":
+			metrics.ProtocolStats.PGCommands.Add(1)
+		case "mysql":
+			metrics.ProtocolStats.MySQLCommands.Add(1)
+		case "mssql":
+			metrics.ProtocolStats.MSSQLCommands.Add(1)
+		}
 
 		// Query cost estimation (before policy eval so policies can use it)
 		costEstimate := inspection.EstimateCost(cmd)
@@ -447,6 +465,23 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 							Reason:      reason,
 						})
 						continue
+					}
+				}
+			}
+
+			// Query rewrite (auto-LIMIT, WHERE injection)
+			if p.rewriter != nil && cmd.Type == inspection.CommandSELECT {
+				rewritten, rewrites := p.rewriter.Rewrite(cmd.Raw, cmd)
+				if len(rewrites) > 0 {
+					cmd.Raw = rewritten
+					// Rebuild raw message with rewritten SQL would require protocol-specific logic
+					// For now, log the rewrite — full implementation needs protocol-level message rebuild
+					if p.onEvent != nil {
+						p.onEvent(map[string]any{
+							"type":     "query_rewrite",
+							"username": sess.Username,
+							"rewrites": rewrites,
+						})
 					}
 				}
 			}
