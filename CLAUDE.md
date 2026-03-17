@@ -20,9 +20,10 @@ make cross-all                          # cross-compile linux/darwin/windows
 ## Architecture
 - **Zero external dependencies** — stdlib only, no CGO, single binary (~7.7MB)
 - Config and policy files use JSON format
-- 3 database protocols: PostgreSQL, MySQL, MSSQL
+- 4 database protocols: PostgreSQL, MySQL, MSSQL, MongoDB
+- 823 tests, 89.7% coverage (18/19 packages at 90%+)
 
-### Key Packages (17 packages)
+### Key Packages (21 packages)
 | Package | Purpose |
 |---------|---------|
 | `cmd/argus/` | Binary entry point, signal handling, component wiring |
@@ -38,6 +39,11 @@ make cross-all                          # cross-compile linux/darwin/windows
 | `internal/pool/` | Dedicated + shared pool, circuit breaker, histogram, health |
 | `internal/audit/` | Logger, rotation, webhook, recorder, search, replay, compaction, slow query |
 | `internal/admin/` | 23 REST endpoints + WebSocket, auth middleware |
+| `internal/protocol/mongodb/` | MongoDB (OP_MSG + BSON extraction) |
+| `internal/auth/` | LDAP (BER encoding) + SSO (JWT/HMAC-SHA256) |
+| `internal/cluster/` | Multi-instance shared session store |
+| `internal/plugin/` | Plugin registry (TransformerPlugin, AuditWriterPlugin) |
+| `internal/classify/` | Data classification engine (5 levels, 17 rules) |
 | `internal/config/` | Loading, validation, env overrides, cross-reference |
 | `internal/metrics/` | Counters, query latency histogram |
 
