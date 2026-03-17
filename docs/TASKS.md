@@ -216,13 +216,20 @@
 All Phase 2 items have been implemented.
 
 ## Phase 3 — Enterprise Features (Complete)
-All major Phase 3 items have been implemented.
+- [x] MSSQL TDS protocol support
+- [x] LDAP/SSO identity integration (LDAP bind + JWT/SSO validation)
+- [x] Approval workflows for high-risk commands
+- [x] Live session monitoring (WebSocket stream)
+- [x] Query replay and forensics
+- [x] Rate limiting per user/role
+- [x] Multi-instance clustering (shared session store + ClusterManager)
+- [x] Certificate rotation without downtime
 
-## Phase 4 — Extended Platform (Planned)
+## Phase 4 — Extended Platform (Complete)
+- [x] MongoDB wire protocol (OP_MSG, BSON command extraction, 4th protocol)
+- [x] Web dashboard UI (embedded HTML/CSS/JS, real-time, auto-refresh)
+- [x] Plugin system (TransformerPlugin, AuditWriterPlugin, Registry)
+- [x] Data classification engine (5 levels, 17 rules, custom rules)
 - [ ] Oracle TNS support
-- [ ] MongoDB wire protocol
-- [ ] Web dashboard UI
 - [ ] Terraform provider for policy-as-code
 - [ ] Kubernetes operator
-- [ ] Plugin system for custom transformers and policy providers
-- [ ] Data classification engine

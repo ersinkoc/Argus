@@ -45,9 +45,10 @@ Argus answers all three:
 ## Features
 
 ### Core
-- **Multi-database support** — PostgreSQL and MySQL wire protocols, with MSSQL planned
+- **4 database protocols** — PostgreSQL, MySQL, MSSQL TDS, and MongoDB wire protocols
 - **Protocol-native proxy** — speaks each database's wire protocol natively, not JDBC/ODBC wrapping
-- **Zero external dependencies** — standard library only, no CGO, single binary (~7MB)
+- **Zero external dependencies** — standard library only, no CGO, single binary (~7.8MB)
+- **Web dashboard** — embedded real-time UI at `/ui` with auto-refresh
 - **Streaming architecture** — O(1) memory per row, no full result set buffering
 - **TLS support** — client-facing and backend connections, two-segment TLS
 
@@ -415,13 +416,14 @@ argus/
 - [x] Slow query logging
 - [x] Query latency histogram (p50/p95/p99)
 
-### Phase 4 — Platform (Planned)
+### Phase 4 — Extended Platform (Complete)
+- [x] MongoDB wire protocol (OP_MSG, BSON command extraction)
+- [x] Web dashboard UI (embedded HTML/CSS/JS, real-time at `/ui`)
+- [x] Plugin system (custom transformers, audit writers, registry)
+- [x] Data classification engine (5 sensitivity levels, 17 rules)
 - [ ] Oracle TNS support
-- [ ] MongoDB wire protocol
-- [ ] Web dashboard UI
 - [ ] Kubernetes operator
 - [ ] Terraform provider
-- [ ] Plugin system
 
 ---
 
@@ -433,7 +435,12 @@ make test-verbose      # Verbose output
 make test-cover        # Coverage report (HTML)
 ```
 
-Current: **629 unit tests + 107 E2E = 736 total**, **82.2% coverage** (11 packages > 90%).
+Current: **760 unit tests + 107 E2E = 867 total**, **85% coverage** (8 packages > 95%).
+
+### Web Dashboard
+
+Access the real-time dashboard at `http://localhost:30200/ui` (or your admin port).
+Shows sessions, commands, targets, health status — auto-refreshes every 5s.
 
 ---
 
