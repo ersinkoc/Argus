@@ -157,6 +157,40 @@ psql -h localhost -p 15432 -U myuser mydb
 
 No application code changes required. Same protocol, same tools.
 
+### Docker Multi-Database Setup
+
+Run Argus with PostgreSQL, MySQL, and MSSQL in Docker:
+
+```bash
+# Start all services
+make docker-up
+
+# Services:
+#   PostgreSQL direct → localhost:35432
+#   MySQL direct      → localhost:33306
+#   MSSQL direct      → localhost:31433
+#   Argus PG proxy    → localhost:30100
+#   Argus MySQL proxy → localhost:30101
+#   Argus MSSQL proxy → localhost:30102
+#   Admin/Metrics     → localhost:30200
+
+# Connect via Argus proxy
+psql -h localhost -p 30100 -U argus_test -d testdb
+mysql -h 127.0.0.1 -P 30101 -u argus_test -pargus_pass testdb
+
+# Run E2E tests
+make e2e
+
+# View Argus logs
+make docker-logs
+
+# Dashboard
+curl http://localhost:30200/api/dashboard | jq
+
+# Stop
+make docker-down
+```
+
 ---
 
 ## Policy Examples

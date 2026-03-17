@@ -6,7 +6,7 @@ import (
 
 func TestExtractLogin7Username(t *testing.T) {
 	// Build minimal Login7 with username at offset 48
-	data := make([]byte, 100)
+	data := make([]byte, 120)
 	// Username offset at bytes 48-49 (little-endian), length at 50-51
 	usernameUTF16 := toUTF16LE("admin")
 	offset := 94 // after fixed header

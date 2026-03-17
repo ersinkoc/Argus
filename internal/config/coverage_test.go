@@ -7,26 +7,30 @@ import (
 )
 
 func TestResolvePolicyPaths(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "argus.json")
+
 	cfg := &Config{
 		Policy: PolicyConfig{Files: []string{"policies/default.json"}},
 	}
 
-	ResolvePolicyPaths(cfg, "/etc/argus/argus.json")
+	ResolvePolicyPaths(cfg, configPath)
 
-	if cfg.Policy.Files[0] != "/etc/argus/policies/default.json" {
-		t.Errorf("resolved = %q", cfg.Policy.Files[0])
+	want := filepath.Join(dir, "policies/default.json")
+	if cfg.Policy.Files[0] != want {
+		t.Errorf("resolved = %q, want %q", cfg.Policy.Files[0], want)
 	}
 }
 
 func TestResolvePolicyPathsAbsolute(t *testing.T) {
+	absPath := filepath.Join(os.TempDir(), "absolute_policy.json")
 	cfg := &Config{
-		Policy: PolicyConfig{Files: []string{"/absolute/path/policy.json"}},
+		Policy: PolicyConfig{Files: []string{absPath}},
 	}
 
-	ResolvePolicyPaths(cfg, "/etc/argus/argus.json")
+	ResolvePolicyPaths(cfg, filepath.Join(os.TempDir(), "argus.json"))
 
-	// Absolute paths should not be modified
-	if cfg.Policy.Files[0] != "/absolute/path/policy.json" {
+	if cfg.Policy.Files[0] != absPath {
 		t.Errorf("absolute path should not change: %q", cfg.Policy.Files[0])
 	}
 }
@@ -66,20 +70,22 @@ func TestLoadNonexistentFile(t *testing.T) {
 }
 
 func TestPolicyConfigUnmarshal(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create policy files so validation passes
+	aPath := filepath.Join(dir, "a.json")
+	bPath := filepath.Join(dir, "b.json")
+	os.WriteFile(aPath, []byte("{}"), 0644)
+	os.WriteFile(bPath, []byte("{}"), 0644)
+
 	content := `{
 		"server": {"listeners": [{"address": ":5432", "protocol": "postgresql"}]},
 		"targets": [{"name": "t", "host": "h", "port": 5432, "protocol": "postgresql"}],
 		"routing": {"default_target": "t"},
-		"policy": {"files": ["a.json", "b.json"], "reload_interval": "10s"},
+		"policy": {"files": ["` + filepath.ToSlash(aPath) + `", "` + filepath.ToSlash(bPath) + `"], "reload_interval": "10s"},
 		"pool": {"max_connections_per_target": 10, "connection_max_lifetime": "1h", "connection_timeout": "5s", "health_check_interval": "30s"},
 		"metrics": {"enabled": false}
 	}`
-
-	dir := t.TempDir()
-
-	// Create policy files so validation passes
-	os.WriteFile(filepath.Join(dir, "a.json"), []byte("{}"), 0644)
-	os.WriteFile(filepath.Join(dir, "b.json"), []byte("{}"), 0644)
 
 	path := filepath.Join(dir, "test.json")
 	os.WriteFile(path, []byte(content), 0644)

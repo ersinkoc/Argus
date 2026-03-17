@@ -49,9 +49,32 @@ docker:
 
 docker-up:
 	docker compose up -d
+	@echo "Waiting for databases to be healthy..."
+	@sleep 15
+	@echo "Services:"
+	@echo "  PostgreSQL direct: localhost:35432"
+	@echo "  MySQL direct:      localhost:33306"
+	@echo "  MSSQL direct:      localhost:31433"
+	@echo "  Argus PG proxy:    localhost:30100"
+	@echo "  Argus MySQL proxy: localhost:30101"
+	@echo "  Argus MSSQL proxy: localhost:30102"
+	@echo "  Argus Admin/API:   localhost:30200"
 
 docker-down:
-	docker compose down
+	docker compose down -v
+
+docker-logs:
+	docker compose logs -f argus
+
+docker-status:
+	docker compose ps
+
+e2e: docker-up
+	@echo "Running E2E tests..."
+	bash scripts/test-e2e.sh
+
+setup-mssql:
+	bash scripts/setup-mssql.sh
 
 cross-linux:
 	GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BINARY)-linux-amd64 ./cmd/argus/

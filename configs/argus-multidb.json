@@ -1,0 +1,93 @@
+{
+  "server": {
+    "listeners": [
+      {
+        "address": ":15432",
+        "protocol": "postgresql"
+      },
+      {
+        "address": ":13306",
+        "protocol": "mysql"
+      },
+      {
+        "address": ":11433",
+        "protocol": "mssql"
+      }
+    ]
+  },
+  "targets": [
+    {
+      "name": "postgres",
+      "protocol": "postgresql",
+      "host": "postgres",
+      "port": 5432
+    },
+    {
+      "name": "mysql",
+      "protocol": "mysql",
+      "host": "mysql",
+      "port": 3306
+    },
+    {
+      "name": "mssql",
+      "protocol": "mssql",
+      "host": "mssql",
+      "port": 1433
+    }
+  ],
+  "routing": {
+    "default_target": "postgres",
+    "rules": [
+      {"database": "mysql_*", "target": "mysql"},
+      {"database": "mssql_*", "target": "mssql"}
+    ]
+  },
+  "policy": {
+    "files": ["/etc/argus/policies/default.json"],
+    "reload_interval": "5s"
+  },
+  "pool": {
+    "max_connections_per_target": 50,
+    "min_idle_connections": 2,
+    "connection_max_lifetime": "1h",
+    "connection_timeout": "10s",
+    "health_check_interval": "15s"
+  },
+  "session": {
+    "idle_timeout": "30m",
+    "max_duration": "8h",
+    "max_per_user": 20
+  },
+  "rewrite": {
+    "max_limit": 10000
+  },
+  "slow_query": {
+    "threshold": "3s"
+  },
+  "audit": {
+    "level": "verbose",
+    "outputs": [
+      {"type": "stdout"},
+      {
+        "type": "file",
+        "path": "/var/log/argus/audit.jsonl",
+        "rotation": {
+          "max_size_mb": 50,
+          "max_files": 5
+        }
+      }
+    ],
+    "buffer_size": 10000,
+    "sql_max_length": 4096,
+    "pii_auto_detect": true,
+    "record_file": "/var/log/argus/queries.jsonl"
+  },
+  "admin": {
+    "enabled": true,
+    "address": ":9090"
+  },
+  "metrics": {
+    "enabled": true,
+    "address": ":9091"
+  }
+}
