@@ -28,6 +28,9 @@ type ApprovalProvider interface {
 	PendingRequests() []any
 }
 
+// DryRunFunc evaluates a policy dry-run request.
+type DryRunFunc func(username, database, sql, clientIP string) (any, error)
+
 // Server is the admin/metrics HTTP server.
 type Server struct {
 	provider       SessionProvider
@@ -36,8 +39,10 @@ type Server struct {
 	policyReloadFn func() error
 	EventStream    *EventStream
 	approvalFn     ApprovalProvider
-	auditLogPath   string // path to audit log file for search
-	recordFile     string // path to query recording file for replay
+	auditLogPath   string
+	recordFile     string
+	dryRunFn       DryRunFunc
+	configData     func() ([]byte, error) // returns current config JSON
 }
 
 // NewServer creates a new admin server.
@@ -69,7 +74,12 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/approvals/deny", s.handleApprovalDeny)
 	mux.HandleFunc("/api/audit/search", s.handleAuditSearch)
 	mux.HandleFunc("/api/audit/replay", s.handleReplay)
+	mux.HandleFunc("/api/audit/fingerprints", s.handleFingerprints)
+	mux.HandleFunc("/api/policies/dryrun", s.handleDryRun)
+	mux.HandleFunc("/api/config/export", s.handleConfigExport)
 	mux.HandleFunc("/api/dashboard", s.handleDashboard)
+	mux.HandleFunc("/ready", s.handleReady)
+	mux.HandleFunc("/livez", s.handleLive)
 
 	s.server = &http.Server{
 		Addr:         s.addr,
@@ -508,6 +518,117 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(dashboard)
+}
+
+// SetDryRunFunc sets the policy dry-run function.
+func (s *Server) SetDryRunFunc(fn DryRunFunc) {
+	s.dryRunFn = fn
+}
+
+// SetConfigExporter sets the config export function.
+func (s *Server) SetConfigExporter(fn func() ([]byte, error)) {
+	s.configData = fn
+}
+
+func (s *Server) handleFingerprints(w http.ResponseWriter, r *http.Request) {
+	path := s.recordFile
+	if path == "" {
+		http.Error(w, `{"error":"recording not configured"}`, http.StatusInternalServerError)
+		return
+	}
+	limit := 20
+	if v := r.URL.Query().Get("limit"); v != "" {
+		n := 0
+		for _, c := range v {
+			if c >= '0' && c <= '9' {
+				n = n*10 + int(c-'0')
+			}
+		}
+		if n > 0 {
+			limit = n
+		}
+	}
+
+	top, err := audit.TopFingerprints(path, limit)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(top)
+}
+
+func (s *Server) handleDryRun(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.dryRunFn == nil {
+		http.Error(w, `{"error":"dry-run not configured"}`, http.StatusInternalServerError)
+		return
+	}
+
+	q := r.URL.Query()
+	result, err := s.dryRunFn(
+		q.Get("username"),
+		q.Get("database"),
+		q.Get("sql"),
+		q.Get("client_ip"),
+	)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+func (s *Server) handleConfigExport(w http.ResponseWriter, r *http.Request) {
+	if s.configData == nil {
+		http.Error(w, `{"error":"config export not configured"}`, http.StatusInternalServerError)
+		return
+	}
+
+	data, err := s.configData()
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", "attachment; filename=argus-config.json")
+	w.Write(data)
+}
+
+// handleReady is the Kubernetes readiness probe.
+// Returns 200 if at least one backend target is healthy.
+func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
+	poolStats := s.provider.PoolStats()
+	ready := false
+	for _, ps := range poolStats {
+		if ps.Healthy {
+			ready = true
+			break
+		}
+	}
+
+	if !ready && len(poolStats) > 0 {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprint(w, "not ready: no healthy targets")
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, "ready")
+}
+
+// handleLive is the Kubernetes liveness probe.
+// Always returns 200 if the process is running.
+func (s *Server) handleLive(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, "alive")
 }
 
 var (

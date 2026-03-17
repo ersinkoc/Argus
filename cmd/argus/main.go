@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -149,6 +150,33 @@ func main() {
 		proxy.SetOnEvent(func(event any) {
 			adminServer.EventStream.Broadcast(event)
 		})
+
+		// Wire dry-run
+		adminServer.SetDryRunFunc(func(username, database, sql, clientIP string) (any, error) {
+			result := policyEngine.DryRun(policy.DryRunInput{
+				Username: username,
+				Database: database,
+				SQL:      sql,
+				ClientIP: clientIP,
+			})
+			return result, nil
+		})
+
+		// Wire config export
+		adminServer.SetConfigExporter(func() ([]byte, error) {
+			return json.MarshalIndent(cfg, "", "  ")
+		})
+
+		// Set audit/recording paths for search and replay
+		for _, out := range cfg.Audit.Outputs {
+			if out.Type == "file" && out.Path != "" {
+				adminServer.SetAuditLogPath(out.Path)
+				break
+			}
+		}
+		if cfg.Audit.RecordFile != "" {
+			adminServer.SetRecordFile(cfg.Audit.RecordFile)
+		}
 
 		if err := adminServer.Start(); err != nil {
 			log.Printf("Warning: admin server failed to start: %v", err)
