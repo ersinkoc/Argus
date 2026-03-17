@@ -133,8 +133,10 @@ func ForwardResult(ctx context.Context, backend, client net.Conn, pipeline *mask
 				return stats, fmt.Errorf("forwarding ErrorResponse: %w", err)
 			}
 
-		case MsgNoticeResponse, MsgEmptyQuery, MsgNoData:
-			// Forward as-is
+		case MsgNoticeResponse, MsgEmptyQuery, MsgNoData,
+			MsgParseComplete, MsgBindComplete, MsgCloseComplete,
+			MsgParameterDesc, MsgPortalSuspended:
+			// Forward as-is (includes Extended Query backend responses)
 			if err := WriteMessage(client, msg); err != nil {
 				return stats, fmt.Errorf("forwarding message %c: %w", msg.Type, err)
 			}

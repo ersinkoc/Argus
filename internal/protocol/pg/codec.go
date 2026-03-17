@@ -14,6 +14,15 @@ const (
 	MsgTerminate   byte = 'X'
 	MsgPassword    byte = 'p'
 
+	// Extended Query frontend messages
+	MsgParse       byte = 'P'
+	MsgBind        byte = 'B'
+	MsgDescribe    byte = 'D' // overloaded with DataRow — direction matters
+	MsgExecute     byte = 'E' // overloaded with ErrorResponse — direction matters
+	MsgSync        byte = 'S' // overloaded with ParameterStatus — direction matters
+	MsgClose       byte = 'C' // overloaded with CommandComplete — direction matters
+	MsgFlush       byte = 'H'
+
 	// Backend (server → client) message types
 	MsgAuth            byte = 'R'
 	MsgParameterStatus byte = 'S'
@@ -26,6 +35,11 @@ const (
 	MsgNoticeResponse  byte = 'N'
 	MsgEmptyQuery      byte = 'I'
 	MsgNoData          byte = 'n'
+	MsgParseComplete   byte = '1'
+	MsgBindComplete    byte = '2'
+	MsgCloseComplete   byte = '3'
+	MsgParameterDesc   byte = 't'
+	MsgPortalSuspended byte = 's'
 
 	// SSL
 	SSLRequestCode = 80877103

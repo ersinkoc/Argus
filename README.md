@@ -1,5 +1,10 @@
 # Argus
 
+[![CI](https://github.com/ersinkoc/argus/actions/workflows/ci.yml/badge.svg)](https://github.com/ersinkoc/argus/actions/workflows/ci.yml)
+[![Go](https://img.shields.io/badge/Go-1.23+-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-green.svg)](#)
+
 **The Hundred-Eyed Database Guardian**
 
 > *Know who connects. Control what they do. Protect what they see.*
@@ -40,7 +45,8 @@ Argus answers all three:
 ## Features
 
 ### Core
-- **Protocol-native proxy** — speaks PostgreSQL wire protocol natively, not JDBC/ODBC wrapping
+- **Multi-database support** — PostgreSQL and MySQL wire protocols, with MSSQL planned
+- **Protocol-native proxy** — speaks each database's wire protocol natively, not JDBC/ODBC wrapping
 - **Zero external dependencies** — standard library only, no CGO, single binary (~7MB)
 - **Streaming architecture** — O(1) memory per row, no full result set buffering
 - **TLS support** — client-facing and backend connections, two-segment TLS
@@ -327,15 +333,18 @@ argus/
 - [x] Prometheus metrics & health endpoint
 - [x] Configuration with env overrides
 
-### Phase 2 — Production Hardening
-- [ ] MySQL wire protocol
-- [ ] PostgreSQL Extended Query (prepared statements)
+### Phase 2 — Production Hardening (In Progress)
+- [x] MySQL wire protocol (handshake, COM_QUERY, result set, masking)
+- [x] PostgreSQL Extended Query (Parse/Bind/Describe/Execute/Sync)
+- [x] Admin REST API (session kill, policy reload, stats)
+- [x] SQL literal sanitization in audit logs
+- [x] Audit log file rotation
+- [x] Graceful shutdown with connection draining
+- [x] GitHub Actions CI/CD
 - [ ] PostgreSQL COPY protocol
-- [ ] Admin REST API (session management)
 - [ ] Proxy auth mode (decouple client/DB credentials)
 - [ ] SIEM export (syslog, webhook)
 - [ ] PII auto-detection
-- [ ] Graceful shutdown with connection draining
 
 ### Phase 3 — Enterprise
 - [ ] MSSQL TDS protocol
