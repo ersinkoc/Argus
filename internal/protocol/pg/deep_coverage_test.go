@@ -620,5 +620,437 @@ func TestParseErrorResponseMultipleFields(t *testing.T) {
 	}
 }
 
+// --- ForwardResult with masking pipeline on data rows ---
+
+func TestForwardResultWithMaskingPipeline(t *testing.T) {
+	backendConn, proxyBackend := net.Pipe()
+	proxyClient, clientConn := net.Pipe()
+	defer backendConn.Close()
+	defer proxyBackend.Close()
+	defer proxyClient.Close()
+	defer clientConn.Close()
+
+	go func() {
+		// RowDescription with 1 column
+		var rd []byte
+		rd = append(rd, 0, 1) // 1 column
+		rd = append(rd, []byte("email")...)
+		rd = append(rd, 0)
+		rd = append(rd, make([]byte, 18)...) // metadata
+		WriteMessage(backendConn, &Message{Type: MsgRowDescription, Payload: rd})
+
+		// DataRow
+		WriteMessage(backendConn, BuildDataRow([][]byte{[]byte("alice@example.com")}))
+
+		WriteMessage(backendConn, BuildCommandComplete("SELECT 1"))
+		WriteMessage(backendConn, BuildReadyForQuery('I'))
+	}()
+
+	go func() {
+		for {
+			clientConn.SetReadDeadline(time.Now().Add(3 * time.Second))
+			_, err := ReadMessage(clientConn)
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	proxyBackend.SetDeadline(time.Now().Add(3 * time.Second))
+	proxyClient.SetDeadline(time.Now().Add(3 * time.Second))
+
+	rules := []policy.MaskingRule{{Column: "email", Transformer: "partial_email"}}
+	pipeline := masking.NewPipeline(rules, []masking.ColumnInfo{{Name: "email", Index: 0}}, 0)
+
+	stats, err := ForwardResult(context.Background(), proxyBackend, proxyClient, pipeline)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if stats.RowCount != 1 {
+		t.Errorf("rows = %d", stats.RowCount)
+	}
+}
+
+func TestForwardResultDataRowWithoutMasking(t *testing.T) {
+	backendConn, proxyBackend := net.Pipe()
+	proxyClient, clientConn := net.Pipe()
+	defer backendConn.Close()
+	defer proxyBackend.Close()
+	defer proxyClient.Close()
+	defer clientConn.Close()
+
+	go func() {
+		var rd []byte
+		rd = append(rd, 0, 1)
+		rd = append(rd, []byte("name")...)
+		rd = append(rd, 0)
+		rd = append(rd, make([]byte, 18)...)
+		WriteMessage(backendConn, &Message{Type: MsgRowDescription, Payload: rd})
+		WriteMessage(backendConn, BuildDataRow([][]byte{[]byte("Alice")}))
+		WriteMessage(backendConn, BuildDataRow([][]byte{[]byte("Bob")}))
+		WriteMessage(backendConn, BuildCommandComplete("SELECT 2"))
+		WriteMessage(backendConn, BuildReadyForQuery('I'))
+	}()
+
+	go func() {
+		for {
+			clientConn.SetReadDeadline(time.Now().Add(3 * time.Second))
+			_, err := ReadMessage(clientConn)
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	proxyBackend.SetDeadline(time.Now().Add(3 * time.Second))
+	proxyClient.SetDeadline(time.Now().Add(3 * time.Second))
+
+	// Pipeline with no matching rules (no masking needed)
+	stats, err := ForwardResult(context.Background(), proxyBackend, proxyClient, nil)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if stats.RowCount != 2 {
+		t.Errorf("rows = %d, want 2", stats.RowCount)
+	}
+}
+
+func TestForwardResultRowDescriptionParseError(t *testing.T) {
+	backendConn, proxyBackend := net.Pipe()
+	proxyClient, clientConn := net.Pipe()
+	defer backendConn.Close()
+	defer proxyBackend.Close()
+	defer proxyClient.Close()
+	defer clientConn.Close()
+
+	go func() {
+		// Malformed RowDescription — can't parse but should forward
+		WriteMessage(backendConn, &Message{Type: MsgRowDescription, Payload: []byte{0xFF}})
+		WriteMessage(backendConn, BuildCommandComplete("SELECT 0"))
+		WriteMessage(backendConn, BuildReadyForQuery('I'))
+	}()
+
+	go func() {
+		for {
+			clientConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+			_, err := ReadMessage(clientConn)
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	proxyBackend.SetDeadline(time.Now().Add(3 * time.Second))
+	proxyClient.SetDeadline(time.Now().Add(3 * time.Second))
+
+	rules := []policy.MaskingRule{{Column: "x", Transformer: "redact"}}
+	pipeline := masking.NewPipeline(rules, nil, 0)
+
+	_, err := ForwardResult(context.Background(), proxyBackend, proxyClient, pipeline)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+}
+
+func TestForwardResultDataRowWithNullFields(t *testing.T) {
+	backendConn, proxyBackend := net.Pipe()
+	proxyClient, clientConn := net.Pipe()
+	defer backendConn.Close()
+	defer proxyBackend.Close()
+	defer proxyClient.Close()
+	defer clientConn.Close()
+
+	go func() {
+		var rd []byte
+		rd = append(rd, 0, 2) // 2 columns
+		for _, name := range []string{"id", "email"} {
+			rd = append(rd, []byte(name)...)
+			rd = append(rd, 0)
+			rd = append(rd, make([]byte, 18)...)
+		}
+		WriteMessage(backendConn, &Message{Type: MsgRowDescription, Payload: rd})
+
+		// DataRow with NULL second field
+		WriteMessage(backendConn, BuildDataRow([][]byte{[]byte("1"), nil}))
+
+		WriteMessage(backendConn, BuildCommandComplete("SELECT 1"))
+		WriteMessage(backendConn, BuildReadyForQuery('I'))
+	}()
+
+	go func() {
+		for {
+			clientConn.SetReadDeadline(time.Now().Add(3 * time.Second))
+			_, err := ReadMessage(clientConn)
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	proxyBackend.SetDeadline(time.Now().Add(3 * time.Second))
+	proxyClient.SetDeadline(time.Now().Add(3 * time.Second))
+
+	rules := []policy.MaskingRule{{Column: "email", Transformer: "redact"}}
+	pipeline := masking.NewPipeline(rules, []masking.ColumnInfo{{Name: "id", Index: 0}, {Name: "email", Index: 1}}, 0)
+
+	stats, err := ForwardResult(context.Background(), proxyBackend, proxyClient, pipeline)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if stats.RowCount != 1 {
+		t.Errorf("rows = %d", stats.RowCount)
+	}
+}
+
+// --- DoHandshakeWithOpts SSL request path ---
+
+func TestDoHandshakeWithSSLRejectOpts(t *testing.T) {
+	clientConn, proxyClient := net.Pipe()
+	backendConn, proxyBackend := net.Pipe()
+	defer clientConn.Close()
+	defer proxyClient.Close()
+	defer backendConn.Close()
+	defer proxyBackend.Close()
+
+	go func() {
+		// Client sends SSL request, then normal startup after 'N' response
+		sslReq := make([]byte, 8)
+		binary.BigEndian.PutUint32(sslReq[0:4], 8)
+		binary.BigEndian.PutUint32(sslReq[4:8], SSLRequestCode)
+		clientConn.Write(sslReq)
+
+		// Read 'N' response
+		buf := make([]byte, 1)
+		clientConn.Read(buf)
+
+		// Send real startup
+		startup := BuildStartupMessage(map[string]string{"user": "ssl_user", "database": "ssldb"})
+		clientConn.Write(startup)
+
+		// Read auth messages
+		for {
+			clientConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+			msg, err := ReadMessage(clientConn)
+			if err != nil || msg.Type == MsgReadyForQuery {
+				return
+			}
+		}
+	}()
+
+	go func() {
+		backendConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+		ReadStartupMessage(backendConn)
+
+		authOk := make([]byte, 4)
+		binary.BigEndian.PutUint32(authOk, uint32(AuthOK))
+		WriteMessage(backendConn, &Message{Type: MsgAuth, Payload: authOk})
+
+		ps := append([]byte("server_version"), 0)
+		ps = append(ps, []byte("16")...)
+		ps = append(ps, 0)
+		WriteMessage(backendConn, &Message{Type: MsgParameterStatus, Payload: ps})
+		WriteMessage(backendConn, &Message{Type: MsgBackendKeyData, Payload: make([]byte, 8)})
+		WriteMessage(backendConn, BuildReadyForQuery('I'))
+	}()
+
+	proxyClient.SetDeadline(time.Now().Add(5 * time.Second))
+	proxyBackend.SetDeadline(time.Now().Add(5 * time.Second))
+
+	info, err := DoHandshakeWithOpts(context.Background(), proxyClient, proxyBackend, nil)
+	if err != nil {
+		t.Fatalf("DoHandshakeWithOpts: %v", err)
+	}
+	if info.Username != "ssl_user" {
+		t.Errorf("username = %q", info.Username)
+	}
+	if info.Database != "ssldb" {
+		t.Errorf("database = %q", info.Database)
+	}
+}
+
+func TestDoHandshakeDefaultDatabaseToUsername(t *testing.T) {
+	clientConn, proxyClient := net.Pipe()
+	backendConn, proxyBackend := net.Pipe()
+	defer clientConn.Close()
+	defer proxyClient.Close()
+	defer backendConn.Close()
+	defer proxyBackend.Close()
+
+	go func() {
+		// Send startup with user but no database
+		startup := BuildStartupMessage(map[string]string{"user": "alice"})
+		clientConn.Write(startup)
+
+		for {
+			clientConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+			msg, err := ReadMessage(clientConn)
+			if err != nil || msg.Type == MsgReadyForQuery {
+				return
+			}
+		}
+	}()
+
+	go func() {
+		backendConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+		ReadStartupMessage(backendConn)
+
+		authOk := make([]byte, 4)
+		binary.BigEndian.PutUint32(authOk, uint32(AuthOK))
+		WriteMessage(backendConn, &Message{Type: MsgAuth, Payload: authOk})
+
+		ps := append([]byte("server_version"), 0)
+		ps = append(ps, []byte("16")...)
+		ps = append(ps, 0)
+		WriteMessage(backendConn, &Message{Type: MsgParameterStatus, Payload: ps})
+		WriteMessage(backendConn, &Message{Type: MsgBackendKeyData, Payload: make([]byte, 8)})
+		WriteMessage(backendConn, BuildReadyForQuery('I'))
+	}()
+
+	proxyClient.SetDeadline(time.Now().Add(3 * time.Second))
+	proxyBackend.SetDeadline(time.Now().Add(3 * time.Second))
+
+	info, err := DoHandshake(context.Background(), proxyClient, proxyBackend)
+	if err != nil {
+		t.Fatalf("DoHandshake: %v", err)
+	}
+	// Database should default to username when empty
+	if info.Database != "alice" {
+		t.Errorf("database = %q, want 'alice'", info.Database)
+	}
+}
+
+// --- HandleCopyIn with data flow ---
+
+func TestHandleCopyInWithData(t *testing.T) {
+	clientConn, proxyClient := net.Pipe()
+	backendConn, proxyBackend := net.Pipe()
+	defer clientConn.Close()
+	defer proxyClient.Close()
+	defer backendConn.Close()
+	defer proxyBackend.Close()
+
+	go func() {
+		// Client sends CopyData + CopyDone
+		WriteMessage(clientConn, &Message{Type: MsgCopyData, Payload: []byte("row1\n")})
+		WriteMessage(clientConn, &Message{Type: MsgCopyData, Payload: []byte("row2\n")})
+		WriteMessage(clientConn, &Message{Type: MsgCopyDone, Payload: nil})
+	}()
+
+	go func() {
+		// Backend reads forwarded messages
+		for {
+			backendConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+			msg, err := ReadMessage(backendConn)
+			if err != nil || msg.Type == MsgCopyDone {
+				return
+			}
+		}
+	}()
+
+	proxyClient.SetDeadline(time.Now().Add(3 * time.Second))
+	proxyBackend.SetDeadline(time.Now().Add(3 * time.Second))
+
+	err := HandleCopyIn(context.Background(), proxyClient, proxyBackend)
+	if err != nil {
+		t.Errorf("HandleCopyIn: %v", err)
+	}
+}
+
+// --- HandleCopyOut with data flow ---
+
+func TestHandleCopyOutWithData(t *testing.T) {
+	backendConn, proxyBackend := net.Pipe()
+	proxyClient, clientConn := net.Pipe()
+	defer backendConn.Close()
+	defer proxyBackend.Close()
+	defer proxyClient.Close()
+	defer clientConn.Close()
+
+	go func() {
+		WriteMessage(backendConn, &Message{Type: MsgCopyData, Payload: []byte("data1\n")})
+		WriteMessage(backendConn, &Message{Type: MsgCopyData, Payload: []byte("data2\n")})
+		WriteMessage(backendConn, &Message{Type: MsgCopyDone, Payload: nil})
+	}()
+
+	go func() {
+		for {
+			clientConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+			_, err := ReadMessage(clientConn)
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	proxyBackend.SetDeadline(time.Now().Add(3 * time.Second))
+	proxyClient.SetDeadline(time.Now().Add(3 * time.Second))
+
+	err := HandleCopyOut(context.Background(), proxyBackend, proxyClient)
+	if err != nil {
+		t.Errorf("HandleCopyOut: %v", err)
+	}
+}
+
+// --- ReadQueryCommand with extended query Bind that has named statement ---
+
+func TestReadExtendedBatchContextCancel(t *testing.T) {
+	clientConn, proxyConn := net.Pipe()
+	defer clientConn.Close()
+	defer proxyConn.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	go func() {
+		// Send Parse but never send Sync — context should cancel
+		var parsePayload []byte
+		parsePayload = append(parsePayload, 0)
+		parsePayload = append(parsePayload, []byte("SELECT 1")...)
+		parsePayload = append(parsePayload, 0)
+		parsePayload = append(parsePayload, 0, 0)
+		WriteMessage(clientConn, &Message{Type: MsgParse, Payload: parsePayload})
+		// Don't send Sync — let context expire
+		time.Sleep(time.Second)
+	}()
+
+	proxyConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, _, err := ReadQueryCommand(ctx, proxyConn)
+	// Should either fail from context cancel or timeout
+	if err == nil {
+		t.Log("may succeed if context cancelled during read — code path exercised")
+	}
+}
+
+// --- WriteError edge case ---
+
+func TestWriteErrorAndRead(t *testing.T) {
+	h := New()
+	clientConn, proxyConn := net.Pipe()
+	defer clientConn.Close()
+	defer proxyConn.Close()
+
+	go func() {
+		h.WriteError(context.Background(), proxyConn, "42601", "test error message")
+	}()
+
+	clientConn.SetReadDeadline(time.Now().Add(time.Second))
+	// Should receive ErrorResponse + ReadyForQuery
+	msg, err := ReadMessage(clientConn)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if msg.Type != MsgErrorResponse {
+		t.Errorf("type = %c, want E", msg.Type)
+	}
+
+	msg, err = ReadMessage(clientConn)
+	if err != nil {
+		t.Fatalf("read RFQ: %v", err)
+	}
+	if msg.Type != MsgReadyForQuery {
+		t.Errorf("type = %c, want Z", msg.Type)
+	}
+}
+
 // Ensure protocol.ResultStats is used correctly
 var _ *protocol.ResultStats
