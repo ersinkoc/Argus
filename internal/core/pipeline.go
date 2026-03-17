@@ -218,10 +218,19 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 		return
 	}
 
-	// Resolve target (default for now, will be refined after auth)
-	target := p.cfg.ResolveTarget("")
+	// Resolve target — first try protocol-matched target, then default
+	var target *config.Target
+	for i := range p.cfg.Targets {
+		if p.cfg.Targets[i].Protocol == protocolName {
+			target = &p.cfg.Targets[i]
+			break
+		}
+	}
 	if target == nil {
-		log.Printf("[argus] no target configured")
+		target = p.cfg.ResolveTarget("")
+	}
+	if target == nil {
+		log.Printf("[argus] no target configured for protocol %s", protocolName)
 		handler.WriteError(context.Background(), clientConn, "08001", "No target database configured")
 		return
 	}
