@@ -79,6 +79,13 @@ func (l *Loader) Load() error {
 	return nil
 }
 
+// SetCurrent directly sets the policy set (for testing).
+func (l *Loader) SetCurrent(ps *PolicySet) {
+	l.mu.Lock()
+	l.current = ps
+	l.mu.Unlock()
+}
+
 // Current returns the current policy set.
 func (l *Loader) Current() *PolicySet {
 	l.mu.RLock()

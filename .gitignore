@@ -1,7 +1,12 @@
-# Binary
-argus
-argus.exe
-*.exe
+# Binary (root level only)
+/argus
+/argus.exe
+/argus-*
+*.dll
+*.so
+*.dylib
+
+# Executables in root
 *.dll
 *.so
 *.dylib

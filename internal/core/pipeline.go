@@ -11,6 +11,7 @@ import (
 	"github.com/ersinkoc/argus/internal/audit"
 	"github.com/ersinkoc/argus/internal/config"
 	"github.com/ersinkoc/argus/internal/masking"
+	"github.com/ersinkoc/argus/internal/metrics"
 	"github.com/ersinkoc/argus/internal/policy"
 	"github.com/ersinkoc/argus/internal/pool"
 	"github.com/ersinkoc/argus/internal/protocol"
@@ -198,10 +199,12 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 	sess.BackendConn = backendConn.NetConn()
 	sess.Roles = policy.ResolveUserRoles(sessionInfo.Username, p.policyEngine.Loader().Current().Roles)
 
+	metrics.Global.ConnectionsTotal.Add(1)
 	p.auditLogger.Log(audit.Event{
 		EventType: audit.AuthSuccess.String(),
 		SessionID: sess.ID,
 		Username:  sess.Username,
+		Roles:     sess.Roles,
 		ClientIP:  remoteAddr.IP.String(),
 		Database:  sess.Database,
 		Action:    "allow",
@@ -245,6 +248,7 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 		}
 
 		sess.IncrementCommand()
+		metrics.Global.CommandsTotal.Add(1)
 
 		// Build policy context
 		policyCtx := &policy.Context{
@@ -268,8 +272,12 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 
 		queryStart := time.Now()
 
+		// Sanitize SQL for audit logging
+		sanitizedSQL := audit.SanitizeSQL(cmd.Raw)
+
 		switch decision.Action {
 		case policy.ActionBlock:
+			metrics.Global.CommandsBlocked.Add(1)
 			// Block the command
 			handler.WriteError(ctx, client, "42501",
 				fmt.Sprintf("Access denied: %s [policy: %s]", decision.Reason, decision.PolicyName))
@@ -280,7 +288,7 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 				Username:    sess.Username,
 				ClientIP:    sess.ClientIP.String(),
 				Database:    sess.Database,
-				Command:     cmd.Raw,
+				Command:     sanitizedSQL,
 				CommandType: cmd.Type.String(),
 				Tables:      cmd.Tables,
 				RiskLevel:   cmd.RiskLevel.String(),
@@ -311,6 +319,11 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 
 			duration := time.Since(queryStart)
 
+			metrics.Global.ResultRowsTotal.Add(stats.RowCount)
+			if len(stats.MaskedCols) > 0 {
+				metrics.Global.CommandsMasked.Add(1)
+			}
+
 			// Audit log
 			event := audit.Event{
 				EventType:   audit.CommandExecuted.String(),
@@ -318,7 +331,7 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 				Username:    sess.Username,
 				ClientIP:    sess.ClientIP.String(),
 				Database:    sess.Database,
-				Command:     cmd.Raw,
+				Command:     sanitizedSQL,
 				CommandType: cmd.Type.String(),
 				Tables:      cmd.Tables,
 				RiskLevel:   cmd.RiskLevel.String(),
