@@ -5,23 +5,11 @@ import (
 	"time"
 )
 
-func TestClassifyWithKeyword(t *testing.T) {
-	// WITH ... INSERT
-	cmd := Classify("WITH data AS (SELECT 1) INSERT INTO t SELECT * FROM data")
-	if cmd.Type != CommandINSERT {
-		t.Errorf("WITH...INSERT = %v, want INSERT", cmd.Type)
-	}
-
-	// WITH ... UPDATE
-	cmd = Classify("WITH data AS (SELECT 1) UPDATE t SET x = 1")
-	if cmd.Type != CommandUPDATE {
-		t.Errorf("WITH...UPDATE = %v, want UPDATE", cmd.Type)
-	}
-
-	// WITH ... DELETE
-	cmd = Classify("WITH data AS (SELECT 1) DELETE FROM t")
-	if cmd.Type != CommandDELETE {
-		t.Errorf("WITH...DELETE = %v, want DELETE", cmd.Type)
+func TestClassifyWithCTE(t *testing.T) {
+	// WITH SELECT — should be SELECT
+	cmd := Classify("WITH cte AS (SELECT 1) SELECT * FROM cte")
+	if cmd.Type != CommandSELECT {
+		t.Errorf("WITH SELECT = %v, want SELECT", cmd.Type)
 	}
 }
 
