@@ -116,6 +116,14 @@ func (p *Pool) Acquire(ctx context.Context) (*Conn, error) {
 			continue
 		}
 
+		// Verify connection is still alive (TCP probe)
+		if !isConnAlive(conn.conn) {
+			conn.Close()
+			p.total--
+			log.Printf("[argus] pool: discarded stale idle connection to %s", p.target)
+			continue
+		}
+
 		p.active++
 		p.mu.Unlock()
 		return conn, nil

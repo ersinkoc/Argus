@@ -35,3 +35,29 @@ func (c *Conn) isExpired(maxLifetime time.Duration) bool {
 	}
 	return time.Since(c.createdAt) > maxLifetime
 }
+
+// isConnAlive checks if a TCP connection is still open by attempting
+// a non-blocking read. If the remote end has closed the connection,
+// Read will return immediately with EOF or an error.
+func isConnAlive(conn net.Conn) bool {
+	if conn == nil {
+		return false
+	}
+	conn.SetReadDeadline(time.Now().Add(1 * time.Millisecond))
+	buf := make([]byte, 1)
+	_, err := conn.Read(buf)
+	conn.SetReadDeadline(time.Time{}) // reset deadline
+
+	if err == nil {
+		// Got data unexpectedly — connection is alive but has stale data
+		return false
+	}
+
+	// Timeout error means connection is alive (nothing to read, but socket is open)
+	if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		return true
+	}
+
+	// Any other error (EOF, connection reset) means dead
+	return false
+}
