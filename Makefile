@@ -77,10 +77,15 @@ e2e-advanced: docker-up
 	@echo "Running advanced E2E tests..."
 	bash scripts/test-e2e-advanced.sh
 
+e2e-stress: docker-up
+	@echo "Running stress & security tests..."
+	bash scripts/test-e2e-stress.sh
+
 e2e-all: docker-up
 	@echo "Running all E2E tests..."
 	bash scripts/test-e2e-full.sh
 	bash scripts/test-e2e-advanced.sh
+	bash scripts/test-e2e-stress.sh
 
 setup-mssql:
 	bash scripts/setup-mssql.sh
