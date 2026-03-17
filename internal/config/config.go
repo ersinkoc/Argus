@@ -394,6 +394,45 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("pool: max_connections_per_target must be positive")
 	}
 
+	// Cross-reference validation
+	// Check routing default target exists
+	if cfg.Routing.DefaultTarget != "" && len(cfg.Targets) > 0 {
+		if cfg.FindTarget(cfg.Routing.DefaultTarget) == nil {
+			return fmt.Errorf("routing: default_target %q does not match any target", cfg.Routing.DefaultTarget)
+		}
+	}
+
+	// Check routing rules reference valid targets
+	for i, rule := range cfg.Routing.Rules {
+		if rule.Target != "" && len(cfg.Targets) > 0 {
+			if cfg.FindTarget(rule.Target) == nil {
+				return fmt.Errorf("routing.rules[%d]: target %q does not match any target", i, rule.Target)
+			}
+		}
+	}
+
+	// Check listener protocols match available targets
+	targetProtocols := make(map[string]bool)
+	for _, t := range cfg.Targets {
+		targetProtocols[t.Protocol] = true
+	}
+	for i, l := range cfg.Server.Listeners {
+		if l.Protocol != "" && l.Protocol != "auto" && len(cfg.Targets) > 0 {
+			if !targetProtocols[l.Protocol] {
+				return fmt.Errorf("listener[%d]: protocol %q has no matching target", i, l.Protocol)
+			}
+		}
+	}
+
+	// Check policy files exist
+	for i, f := range cfg.Policy.Files {
+		if f != "" {
+			if _, err := os.Stat(f); os.IsNotExist(err) {
+				return fmt.Errorf("policy.files[%d]: file %q does not exist", i, f)
+			}
+		}
+	}
+
 	return nil
 }
 

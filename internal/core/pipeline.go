@@ -21,7 +21,6 @@ import (
 )
 
 // Proxy is the main Argus proxy engine.
-// Proxy is the main Argus proxy engine.
 type Proxy struct {
 	cfg             *config.Config
 	router          *Router
@@ -32,6 +31,7 @@ type Proxy struct {
 	rateLimiters    map[string]*ratelimit.Limiter
 	listeners       []*Listener
 	piiDetector     *masking.PIIDetector
+	anomalyDetector *inspection.AnomalyDetector
 	approvalManager *ApprovalManager
 	queryRecorder   *audit.QueryRecorder
 	onEvent         func(any) // broadcast callback (e.g. WebSocket)
@@ -48,6 +48,7 @@ func NewProxy(cfg *config.Config, policyEngine *policy.Engine, auditLogger *audi
 		pools:           make(map[string]*pool.Pool),
 		rateLimiters:    make(map[string]*ratelimit.Limiter),
 		piiDetector:     masking.NewPIIDetector(),
+		anomalyDetector: inspection.NewAnomalyDetector(24 * time.Hour),
 		approvalManager: NewApprovalManager(cfg.Session.IdleTimeout),
 	}
 }
@@ -336,6 +337,21 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 			if !limiter.Allow(sess.Username) {
 				decision.Action = policy.ActionBlock
 				decision.Reason = "rate limit exceeded"
+			}
+		}
+
+		// Anomaly detection: record and check
+		if p.anomalyDetector != nil {
+			now := time.Now()
+			p.anomalyDetector.Record(sess.Username, cmd.Type, cmd.Tables, now)
+			alerts := p.anomalyDetector.Check(sess.Username, cmd.Type, cmd.Tables, now)
+			if len(alerts) > 0 && p.onEvent != nil {
+				for _, alert := range alerts {
+					p.onEvent(map[string]any{
+						"type":  "anomaly",
+						"alert": alert,
+					})
+				}
 			}
 		}
 

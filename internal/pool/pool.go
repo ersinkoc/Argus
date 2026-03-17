@@ -58,6 +58,11 @@ func (p *Pool) Start() {
 
 // Acquire gets a connection from the pool or creates a new one.
 func (p *Pool) Acquire(ctx context.Context) (*Conn, error) {
+	acquireStart := time.Now()
+	defer func() {
+		WaitHistogram.Observe(float64(time.Since(acquireStart).Microseconds()))
+	}()
+
 	p.mu.Lock()
 
 	if p.closed {

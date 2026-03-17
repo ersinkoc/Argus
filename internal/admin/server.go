@@ -190,6 +190,16 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "\n# HELP argus_go_sys_bytes Total memory obtained from the OS\n")
 	fmt.Fprintf(w, "# TYPE argus_go_sys_bytes gauge\n")
 	fmt.Fprintf(w, "argus_go_sys_bytes %d\n", memStats.Sys)
+
+	// Pool wait time histogram
+	hist := pool.WaitHistogram.Snapshot()
+	fmt.Fprintf(w, "\n# HELP argus_pool_wait_seconds Pool connection acquire wait time\n")
+	fmt.Fprintf(w, "# TYPE argus_pool_wait_seconds histogram\n")
+	fmt.Fprintf(w, "argus_pool_wait_count %d\n", hist.Count)
+	fmt.Fprintf(w, "argus_pool_wait_sum_us %d\n", hist.Sum)
+	fmt.Fprintf(w, "argus_pool_wait_p50_us %.0f\n", hist.P50)
+	fmt.Fprintf(w, "argus_pool_wait_p95_us %.0f\n", hist.P95)
+	fmt.Fprintf(w, "argus_pool_wait_p99_us %.0f\n", hist.P99)
 }
 
 func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
