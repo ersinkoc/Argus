@@ -420,10 +420,26 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 				return
 			}
 
-			// Set up masking pipeline if needed
+			// Set up masking pipeline
 			var pipeline *masking.Pipeline
-			if decision.Action == policy.ActionMask && len(decision.MaskingRules) > 0 {
-				pipeline = masking.NewPipeline(decision.MaskingRules, nil, decision.MaxRows)
+			maskRules := decision.MaskingRules
+
+			// PII auto-detection: add masking rules from column name patterns
+			if p.cfg.Audit.PIIAutoDetect && cmd.Type == inspection.CommandSELECT {
+				// Column names aren't known yet (they come from RowDescription),
+				// but we can pass the detector via a pipeline that will auto-detect.
+				// For now, create an auto-detect pipeline that will be enhanced during result forwarding.
+				if pipeline == nil && len(maskRules) == 0 {
+					pipeline = masking.NewPipeline(nil, nil, decision.MaxRows)
+					pipeline.SetPIIDetector(p.piiDetector)
+				}
+			}
+
+			if len(maskRules) > 0 {
+				pipeline = masking.NewPipeline(maskRules, nil, decision.MaxRows)
+				if p.cfg.Audit.PIIAutoDetect {
+					pipeline.SetPIIDetector(p.piiDetector)
+				}
 			}
 
 			// Read and forward result

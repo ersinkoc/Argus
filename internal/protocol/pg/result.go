@@ -47,6 +47,9 @@ func ForwardResult(ctx context.Context, backend, client net.Conn, pipeline *mask
 					colInfos[i] = masking.ColumnInfo{Name: c.Name, Index: i}
 				}
 				*pipeline = *masking.NewPipeline(pipeline.MaskingRules(), colInfos, pipeline.MaxRowsLimit())
+
+				// PII auto-detection on column names
+				pipeline.ApplyPIIDetection(colInfos)
 			}
 
 			// Forward RowDescription to client

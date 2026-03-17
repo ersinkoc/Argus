@@ -26,6 +26,8 @@ type Pipeline struct {
 	rowCount     int64
 	truncated    bool
 	maskedCols   []string
+	piiDetector  *PIIDetector
+	piiScanned   bool // whether PII column scan has been done
 }
 
 // NewPipeline creates a masking pipeline from policy rules and column metadata.
@@ -50,9 +52,34 @@ func NewPipeline(rules []policy.MaskingRule, columns []ColumnInfo, maxRows int64
 	return p
 }
 
+// SetPIIDetector attaches a PII detector for auto-discovery of sensitive columns.
+func (p *Pipeline) SetPIIDetector(d *PIIDetector) {
+	p.piiDetector = d
+}
+
 // HasMasking returns true if any columns need masking.
 func (p *Pipeline) HasMasking() bool {
-	return len(p.columnMap) > 0
+	return len(p.columnMap) > 0 || p.piiDetector != nil
+}
+
+// ApplyPIIDetection scans column names for PII patterns and adds masking rules.
+// Called once when RowDescription is received (columns become known).
+func (p *Pipeline) ApplyPIIDetection(columns []ColumnInfo) {
+	if p.piiDetector == nil || p.piiScanned {
+		return
+	}
+	p.piiScanned = true
+
+	matches := p.piiDetector.DetectByColumnName(columns)
+	for _, m := range matches {
+		// Don't add if already masked by explicit rules
+		if _, exists := p.columnMap[m.ColumnIndex]; exists {
+			continue
+		}
+		t := GetTransformer(m.Transformer)
+		p.columnMap[m.ColumnIndex] = t
+		p.maskedCols = append(p.maskedCols, m.ColumnName)
+	}
 }
 
 // MaskedColumns returns the list of masked column names.
