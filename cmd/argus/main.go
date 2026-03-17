@@ -123,14 +123,33 @@ func main() {
 		}
 	}
 
+	reloadFn := func() {
+		log.Println("Reloading policies...")
+		if err := policyLoader.Load(); err != nil {
+			log.Printf("Policy reload failed: %v", err)
+			return
+		}
+		policyEngine.InvalidateCache()
+		log.Println("Policies reloaded successfully")
+	}
+
 	log.Println("Argus is ready.")
 	log.Println("\"Know who connects. Control what they do. Protect what they see.\"")
 
-	// Wait for shutdown signal
+	// Wait for signals
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	sig := <-sigCh
-	log.Printf("Received signal %v, initiating graceful shutdown...", sig)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+
+	for {
+		sig := <-sigCh
+		if sig == syscall.SIGHUP {
+			// SIGHUP = reload config and policies
+			reloadFn()
+			continue
+		}
+		log.Printf("Received signal %v, initiating graceful shutdown...", sig)
+		break
+	}
 
 	// Graceful shutdown with timeout
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)

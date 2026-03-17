@@ -133,6 +133,26 @@ func ForwardResult(ctx context.Context, backend, client net.Conn, pipeline *mask
 				return stats, fmt.Errorf("forwarding ErrorResponse: %w", err)
 			}
 
+		case MsgCopyInResponse:
+			// COPY FROM STDIN — forward response, then relay client data to backend
+			if err := WriteMessage(client, msg); err != nil {
+				return stats, fmt.Errorf("forwarding CopyInResponse: %w", err)
+			}
+			if err := HandleCopyIn(ctx, client, backend); err != nil {
+				return stats, fmt.Errorf("handling COPY IN: %w", err)
+			}
+			// Continue reading for CommandComplete + ReadyForQuery
+
+		case MsgCopyOutResponse:
+			// COPY TO STDOUT — forward response, then relay backend data to client
+			if err := WriteMessage(client, msg); err != nil {
+				return stats, fmt.Errorf("forwarding CopyOutResponse: %w", err)
+			}
+			if err := HandleCopyOut(ctx, backend, client); err != nil {
+				return stats, fmt.Errorf("handling COPY OUT: %w", err)
+			}
+			// Continue reading for CommandComplete + ReadyForQuery
+
 		case MsgNoticeResponse, MsgEmptyQuery, MsgNoData,
 			MsgParseComplete, MsgBindComplete, MsgCloseComplete,
 			MsgParameterDesc, MsgPortalSuspended:
