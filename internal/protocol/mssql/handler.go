@@ -156,6 +156,19 @@ func (h *Handler) ReadCommand(ctx context.Context, client net.Conn) (*inspection
 	}
 }
 
+// RebuildQuery rebuilds a TDS SQL Batch with a new SQL string.
+func (h *Handler) RebuildQuery(rawMsg []byte, newSQL string) []byte {
+	utf16 := toUTF16LE(newSQL)
+	// ALL_HEADERS (4-byte total length = 4, meaning no headers)
+	allHeaders := []byte{4, 0, 0, 0}
+	data := append(allHeaders, utf16...)
+	return encodePacketBytes(&Packet{
+		Type:   PacketSQLBatch,
+		Status: StatusEOM,
+		Data:   data,
+	})
+}
+
 func (h *Handler) ForwardCommand(ctx context.Context, rawMsg []byte, backend net.Conn) error {
 	_, err := backend.Write(rawMsg)
 	return err

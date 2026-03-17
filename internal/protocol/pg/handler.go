@@ -54,6 +54,14 @@ func (h *Handler) ReadAndForwardResult(ctx context.Context, backend, client net.
 	return ForwardResult(ctx, backend, client, pipeline)
 }
 
+// RebuildQuery rebuilds a Simple Query message with a new SQL string.
+func (h *Handler) RebuildQuery(rawMsg []byte, newSQL string) []byte {
+	// Simple Query: type('Q') + len(4) + sql\0
+	payload := append([]byte(newSQL), 0)
+	msg := &Message{Type: MsgQuery, Payload: payload}
+	return EncodeMessage(msg)
+}
+
 func (h *Handler) WriteError(ctx context.Context, client net.Conn, code, message string) error {
 	msg := BuildErrorResponse("ERROR", code, message)
 	if err := WriteMessage(client, msg); err != nil {

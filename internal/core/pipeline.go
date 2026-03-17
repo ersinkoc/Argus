@@ -473,9 +473,12 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 			if p.rewriter != nil && cmd.Type == inspection.CommandSELECT {
 				rewritten, rewrites := p.rewriter.Rewrite(cmd.Raw, cmd)
 				if len(rewrites) > 0 {
-					cmd.Raw = rewritten
-					// Rebuild raw message with rewritten SQL would require protocol-specific logic
-					// For now, log the rewrite — full implementation needs protocol-level message rebuild
+					// Rebuild protocol message with rewritten SQL
+					rebuilt := handler.RebuildQuery(rawMsg, rewritten)
+					if rebuilt != nil {
+						rawMsg = rebuilt
+						cmd.Raw = rewritten
+					}
 					if p.onEvent != nil {
 						p.onEvent(map[string]any{
 							"type":     "query_rewrite",
@@ -523,6 +526,10 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 
 			duration := time.Since(queryStart)
 			fingerprint := inspection.FingerprintHash(cmd.Raw)
+
+			// Per-database metrics
+			metrics.DatabaseStats.RecordQuery(sess.Database)
+			metrics.DatabaseStats.RecordRows(sess.Database, stats.RowCount)
 
 			// Record query latency
 			metrics.QueryLatency.Observe(float64(duration.Microseconds()))

@@ -198,6 +198,13 @@ func (h *Handler) ReadCommand(ctx context.Context, client net.Conn) (*inspection
 	}
 }
 
+// RebuildQuery rebuilds a COM_QUERY packet with a new SQL string.
+func (h *Handler) RebuildQuery(rawMsg []byte, newSQL string) []byte {
+	payload := append([]byte{ComQuery}, []byte(newSQL)...)
+	pkt := &Packet{SequenceID: 0, Payload: payload}
+	return EncodePacket(pkt)
+}
+
 // ForwardCommand sends raw command bytes to the backend.
 func (h *Handler) ForwardCommand(ctx context.Context, rawMsg []byte, backend net.Conn) error {
 	_, err := backend.Write(rawMsg)

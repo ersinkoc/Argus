@@ -33,6 +33,10 @@ type Handler interface {
 	// WriteError sends a protocol-native error message to the client
 	WriteError(ctx context.Context, client net.Conn, code string, message string) error
 
+	// RebuildQuery rebuilds a raw protocol message with a new SQL string.
+	// Returns nil if the protocol doesn't support query rewriting.
+	RebuildQuery(rawMsg []byte, newSQL string) []byte
+
 	// Close performs any cleanup
 	Close() error
 }
