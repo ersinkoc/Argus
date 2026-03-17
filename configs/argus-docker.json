@@ -1,0 +1,43 @@
+{
+  "server": {
+    "listeners": [
+      {"address": ":15432", "protocol": "postgresql"}
+    ]
+  },
+  "targets": [
+    {
+      "name": "postgres",
+      "protocol": "postgresql",
+      "host": "postgres",
+      "port": 5432
+    }
+  ],
+  "routing": {
+    "default_target": "postgres"
+  },
+  "policy": {
+    "files": ["/etc/argus/policies/default.json"],
+    "reload_interval": "5s"
+  },
+  "pool": {
+    "max_connections_per_target": 50,
+    "min_idle_connections": 2,
+    "connection_max_lifetime": "1h",
+    "connection_timeout": "10s",
+    "health_check_interval": "30s"
+  },
+  "session": {
+    "idle_timeout": "30m",
+    "max_duration": "8h"
+  },
+  "audit": {
+    "level": "standard",
+    "outputs": [{"type": "stdout"}],
+    "buffer_size": 10000,
+    "sql_max_length": 4096
+  },
+  "metrics": {
+    "enabled": true,
+    "address": ":9091"
+  }
+}

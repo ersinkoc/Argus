@@ -1,0 +1,113 @@
+{
+  "version": "1",
+  "defaults": {
+    "action": "audit",
+    "log_level": "standard",
+    "max_rows": 100000,
+    "session_timeout": "30m"
+  },
+  "roles": {
+    "dba": {
+      "users": ["admin", "postgres", "postgres_admin"]
+    },
+    "developer": {
+      "users": ["dev_*"]
+    },
+    "support": {
+      "users": ["support_*"]
+    },
+    "finance": {
+      "users": ["finance_*"]
+    }
+  },
+  "policies": [
+    {
+      "name": "block-destructive-ddl",
+      "description": "Only DBA can run destructive DDL",
+      "match": {
+        "roles": ["!dba"],
+        "commands": ["DDL"]
+      },
+      "condition": {
+        "sql_contains": ["DROP", "TRUNCATE"]
+      },
+      "action": "block",
+      "reason": "Destructive DDL requires DBA role"
+    },
+    {
+      "name": "block-bulk-writes",
+      "description": "No bulk writes without WHERE clause",
+      "match": {
+        "commands": ["DELETE", "UPDATE"]
+      },
+      "condition": {
+        "risk_level_gte": "medium"
+      },
+      "action": "block",
+      "reason": "Bulk write operations require WHERE clause"
+    },
+    {
+      "name": "mask-pii-for-support",
+      "description": "Support sees masked PII",
+      "match": {
+        "roles": ["support"],
+        "commands": ["SELECT"]
+      },
+      "masking": [
+        {"column": "email", "transformer": "partial_email"},
+        {"column": "phone", "transformer": "partial_phone"},
+        {"column": "tc_kimlik", "transformer": "redact"},
+        {"column": "card_number", "transformer": "partial_card"},
+        {"column": "salary", "transformer": "redact"},
+        {"column": "iban", "transformer": "partial_iban"}
+      ]
+    },
+    {
+      "name": "mask-salary-non-finance",
+      "description": "Only finance sees salary data",
+      "match": {
+        "roles": ["!finance", "!dba"],
+        "tables": ["salaries", "payroll", "compensation"]
+      },
+      "masking": [
+        {"column": "*", "transformer": "redact"}
+      ],
+      "action": "mask",
+      "reason": "Financial data restricted to finance team"
+    },
+    {
+      "name": "row-limit-non-dba",
+      "description": "Limit result sets for non-DBA users",
+      "match": {
+        "roles": ["!dba"],
+        "commands": ["SELECT"]
+      },
+      "max_rows": 50000
+    },
+    {
+      "name": "default-allow-read",
+      "description": "Allow reads with standard logging",
+      "match": {
+        "commands": ["SELECT"]
+      },
+      "action": "allow",
+      "log_level": "standard"
+    },
+    {
+      "name": "default-allow-write",
+      "description": "Allow writes with verbose logging",
+      "match": {
+        "commands": ["INSERT", "UPDATE", "DELETE"]
+      },
+      "action": "allow",
+      "log_level": "verbose"
+    },
+    {
+      "name": "default-allow-other",
+      "description": "Allow other commands",
+      "match": {},
+      "action": "audit",
+      "log_level": "standard"
+    }
+  ]
+}

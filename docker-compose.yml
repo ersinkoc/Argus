@@ -1,0 +1,28 @@
+services:
+  # Target PostgreSQL database
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpass
+      POSTGRES_DB: testdb
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testuser -d testdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Argus proxy
+  argus:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "15432:15432"
+      - "9091:9091"
+    volumes:
+      - ./configs:/etc/argus
+    command: ["-config", "/etc/argus/argus-docker.json"]
