@@ -1,52 +1,60 @@
 # Argus — Database Access Proxy
 
-## Project Overview
-Protocol-aware database access proxy written in Go. Sits between applications and databases to enforce access policies, mask sensitive data, and log everything for audit.
-
 ## Build & Test
 ```bash
 go build ./...                          # build all packages
+go build -o argus ./cmd/argus/          # build binary
 go test ./... -count=1                  # run all tests
-go test ./internal/inspection/ -v       # run specific package tests
+go test ./... -v                        # verbose test output
+go test ./... -coverprofile=c.out       # coverage report
+go test ./internal/inspection/ -bench=. # run benchmarks
+go vet ./...                            # static analysis
 make build                              # optimized binary with version
-make test                               # run all tests
-make test-cover                         # test with coverage report
+make test-cover                         # HTML coverage report
 make cross-all                          # cross-compile linux/darwin/windows
 ./argus -config configs/argus.json      # run with config
-./argus --version                       # check version
+./argus --version                       # show version
+./argus --validate                      # validate config only
 ```
 
 ## Architecture
-- **Zero external dependencies** — stdlib only, no CGO, single binary (~7MB)
-- Config and policy files use JSON format (no external YAML dependency)
-- TLS support for both client-facing listeners and backend connections
+- **Zero external dependencies** — stdlib only, no CGO, single binary (~7.7MB)
+- Config and policy files use JSON format
+- 3 database protocols: PostgreSQL, MySQL, MSSQL
 
-### Key Packages
+### Key Packages (17 packages)
 | Package | Purpose |
 |---------|---------|
-| `cmd/argus/` | Main binary entry point |
-| `internal/core/` | TCP listener (with TLS), router, pipeline orchestrator |
-| `internal/protocol/pg/` | PostgreSQL wire protocol (Simple Query) |
-| `internal/inspection/` | SQL tokenizer, classifier, table/column extractor |
-| `internal/policy/` | Policy engine, JSON loader, rule matching, decision cache |
-| `internal/masking/` | Streaming result masking, 8 built-in transformers |
-| `internal/session/` | Session lifecycle, identity, timeout |
-| `internal/pool/` | Backend connection pooling, health checks |
-| `internal/audit/` | Async structured audit logging |
-| `internal/config/` | Configuration loading, validation, env overrides |
-| `internal/admin/` | Prometheus metrics, health endpoint, session API |
+| `cmd/argus/` | Binary entry point, signal handling, component wiring |
+| `internal/core/` | Listener, TLS, router, pipeline, approval workflow, cert rotation, banner |
+| `internal/protocol/pg/` | PostgreSQL (Simple + Extended + COPY + SSL) |
+| `internal/protocol/mysql/` | MySQL (COM_QUERY + prepared statements) |
+| `internal/protocol/mssql/` | MSSQL TDS (Pre-Login, Login7, SQL Batch, result masking) |
+| `internal/inspection/` | Tokenizer, classifier, extractor, fingerprint, anomaly, splitter, cost |
+| `internal/policy/` | Engine, matcher, cache, dry-run, inheritance, validator |
+| `internal/masking/` | Streaming pipeline, 8 transformers, PII auto-detection |
+| `internal/ratelimit/` | Token bucket rate limiter |
+| `internal/session/` | Lifecycle, identity, timeout, tagging |
+| `internal/pool/` | Dedicated + shared pool, circuit breaker, histogram, health |
+| `internal/audit/` | Logger, rotation, webhook, recorder, search, replay, compaction, slow query |
+| `internal/admin/` | 23 REST endpoints + WebSocket, auth middleware |
+| `internal/config/` | Loading, validation, env overrides, cross-reference |
+| `internal/metrics/` | Counters, query latency histogram |
 
-### Data Flow
+### Pipeline Flow
 ```
-Client → Listener → Protocol Handler (auth) → Session → Command Loop:
-  ReadCommand → Inspect SQL → Policy Evaluate → Allow/Block/Mask → Forward → Result → Audit
+Command → Inspect → Cost → Policy (8 conditions + cost) → Rate Limit
+  → Anomaly → Approval (critical) → Forward → PII Auto-Mask
+  → Result → Latency → Slow Query → Record → Audit → Broadcast
 ```
 
 ## Conventions
-- All protocol handlers implement `protocol.Handler` interface
-- Masking is streaming — O(1) memory per row, no buffering
-- Audit logging is async via buffered channel (drops on overflow, never blocks)
-- Policy evaluation is cached (LRU, 60s TTL, invalidated on reload)
+- Protocol handlers implement `protocol.Handler` interface
+- Masking is streaming — O(1) memory per row
+- Audit logging is async via buffered channel (drops on overflow)
+- Policy evaluation is cached (LRU, 60s TTL)
 - Config supports `$ENV{VAR}` for secrets and `ARGUS_*` env overrides
-- Policy files are watched for changes and hot-reloaded every 5s
-- Tests use `net.Pipe()` for protocol-level integration testing
+- Policy files watched and hot-reloaded
+- Tests use `net.Pipe()` for protocol-level testing
+- Admin API uses `SessionProvider` interface to avoid import cycles
+- Circuit breaker protects backend connections

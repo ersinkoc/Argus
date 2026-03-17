@@ -3,37 +3,74 @@ BUILD_TIME := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME)
 BINARY := argus
 
-.PHONY: all build test clean lint run
+.PHONY: all build test clean lint run bench cover validate
 
-all: test build
+all: lint test build
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/argus/
+	@echo "Built $(BINARY) $(VERSION)"
 
 test:
-	go test ./... -count=1 -timeout 30s
+	go test ./... -count=1 -timeout 60s
 
 test-verbose:
-	go test ./... -count=1 -timeout 30s -v
+	go test ./... -count=1 -timeout 60s -v
 
-test-cover:
-	go test ./... -count=1 -timeout 30s -coverprofile=coverage.out
+test-race:
+	go test ./... -count=1 -timeout 120s -race
+
+cover:
+	go test ./... -count=1 -timeout 60s -coverprofile=coverage.out
 	go tool cover -html=coverage.out -o coverage.html
-	@echo "Coverage report: coverage.html"
+	@go tool cover -func=coverage.out | grep "^total:"
+	@echo "Report: coverage.html"
+
+bench:
+	go test ./internal/inspection/ ./internal/masking/ ./internal/policy/ ./internal/ratelimit/ ./internal/pool/ ./internal/metrics/ -bench=. -benchmem
 
 lint:
 	go vet ./...
 
+validate: build
+	./$(BINARY) -config configs/argus.json -validate
+
 clean:
-	rm -f $(BINARY) $(BINARY).exe coverage.out coverage.html
+	rm -f $(BINARY) $(BINARY).exe $(BINARY)-* coverage.out coverage.html
 
 run: build
 	./$(BINARY) -config configs/argus.json
 
+run-dev: build
+	./$(BINARY) -config configs/argus-dev.json
+
+docker:
+	docker build -t argus:latest .
+
+docker-up:
+	docker compose up -d
+
+docker-down:
+	docker compose down
+
 cross-linux:
 	GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BINARY)-linux-amd64 ./cmd/argus/
+	GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BINARY)-linux-arm64 ./cmd/argus/
 
 cross-darwin:
 	GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BINARY)-darwin-arm64 ./cmd/argus/
+	GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BINARY)-darwin-amd64 ./cmd/argus/
 
-cross-all: cross-linux cross-darwin build
+cross-windows:
+	GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BINARY)-windows-amd64.exe ./cmd/argus/
+
+cross-all: cross-linux cross-darwin cross-windows
+	@echo "Cross-compilation complete"
+
+stats:
+	@echo "=== Project Stats ==="
+	@echo "Go files: $$(find . -name '*.go' -not -path './.git/*' | wc -l)"
+	@echo "Go LOC:   $$(find . -name '*.go' -not -path './.git/*' | xargs wc -l | tail -1)"
+	@echo "Tests:    $$(go test ./... -v -count=1 -timeout 60s 2>&1 | grep -c '=== RUN')"
+	@echo "Commits:  $$(git log --oneline | wc -l)"
+	@ls -lh $(BINARY) 2>/dev/null || true

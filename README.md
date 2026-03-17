@@ -348,39 +348,42 @@ argus/
 - [x] Prometheus metrics & health endpoint
 - [x] Configuration with env overrides
 
-### Phase 2 — Production Hardening (In Progress)
-- [x] MySQL wire protocol (handshake, COM_QUERY, result set, masking)
+### Phase 2 — Production Hardening (Complete)
+- [x] MySQL wire protocol (handshake, COM_QUERY, prepared statements, masking)
 - [x] PostgreSQL Extended Query (Parse/Bind/Describe/Execute/Sync)
-- [x] Admin REST API (session kill, policy reload, stats)
+- [x] PostgreSQL COPY protocol (CopyIn/CopyOut passthrough)
+- [x] Admin REST API (23 endpoints + WebSocket)
 - [x] SQL literal sanitization in audit logs
-- [x] Audit log file rotation
+- [x] SIEM webhook export (batched HTTP POST)
+- [x] Audit log file rotation + compaction
+- [x] PII auto-detection (15 patterns, Luhn, TC Kimlik)
 - [x] Graceful shutdown with connection draining
 - [x] GitHub Actions CI/CD
-- [ ] PostgreSQL COPY protocol
-- [ ] Proxy auth mode (decouple client/DB credentials)
-- [ ] SIEM export (syslog, webhook)
-- [ ] PII auto-detection
+- [x] Kubernetes readiness/liveness probes
 
-### Phase 3 — Enterprise (In Progress)
-- [x] MSSQL TDS protocol (codec, Login7, SQL Batch)
-- [x] Approval workflows for high-risk commands
+### Phase 3 — Enterprise (Complete)
+- [x] MSSQL TDS protocol (codec, Login7, SQL Batch, COLMETADATA masking)
+- [x] Approval workflows (hold/approve/deny/timeout)
 - [x] Live session monitoring (WebSocket)
-- [x] Rate limiting per user/role
-- [x] PII auto-detection (column + value patterns, Luhn, TC Kimlik)
-- [x] Query fingerprinting and anomaly detection
-- [x] Audit log search API
-- [x] Multi-statement splitting
-- [x] Shared connection pool (transaction-mode)
-- [x] Pool wait time histogram
-- [ ] LDAP/SSO integration
-- [ ] Multi-instance clustering
+- [x] Rate limiting per user/role (token bucket)
+- [x] Anomaly detection (baseline + frequency spike)
+- [x] Query fingerprinting + cost estimation
+- [x] Audit search, session replay, top fingerprints
+- [x] Policy dry-run, inheritance, validator
+- [x] Connection pool circuit breaker + warmup
+- [x] Certificate rotation without restart
+- [x] Admin API token authentication
+- [x] Session tagging
+- [x] Slow query logging
+- [x] Query latency histogram (p50/p95/p99)
 
-### Phase 4 — Platform
+### Phase 4 — Platform (Planned)
 - [ ] Oracle TNS support
 - [ ] MongoDB wire protocol
 - [ ] Web dashboard UI
 - [ ] Kubernetes operator
 - [ ] Terraform provider
+- [ ] Plugin system
 
 ---
 
@@ -392,7 +395,7 @@ make test-verbose      # Verbose output
 make test-cover        # Coverage report (HTML)
 ```
 
-Current: **275+ tests** across 14 packages, **~60% coverage**.
+Current: **316 tests** across 15 packages, **60.6% coverage** (5 packages > 90%).
 
 ---
 

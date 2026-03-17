@@ -1,0 +1,182 @@
+{
+  "version": "1",
+  "defaults": {
+    "action": "audit",
+    "log_level": "standard",
+    "max_rows": 100000
+  },
+  "roles": {
+    "dba": {
+      "users": ["admin", "postgres", "root"]
+    },
+    "developer": {
+      "users": ["dev_*", "eng_*"]
+    },
+    "support": {
+      "users": ["support_*", "cs_*"]
+    },
+    "finance": {
+      "users": ["finance_*", "accounting_*"]
+    },
+    "readonly": {
+      "users": ["reader_*", "report_*", "bi_*"]
+    },
+    "contractor": {
+      "users": ["contractor_*", "vendor_*"]
+    }
+  },
+  "policies": [
+    {
+      "name": "block-destructive-ddl",
+      "description": "Only DBA can run destructive DDL",
+      "match": {
+        "roles": ["!dba"],
+        "commands": ["DDL"]
+      },
+      "condition": {
+        "sql_contains": ["DROP", "TRUNCATE"]
+      },
+      "action": "block",
+      "reason": "Destructive DDL requires DBA role"
+    },
+    {
+      "name": "block-bulk-writes",
+      "description": "No bulk writes without WHERE clause",
+      "match": {
+        "commands": ["DELETE", "UPDATE"]
+      },
+      "condition": {
+        "risk_level_gte": "medium"
+      },
+      "action": "block",
+      "reason": "Bulk write operations require WHERE clause"
+    },
+    {
+      "name": "block-expensive-queries",
+      "description": "Block queries with cost > 80 for non-DBA",
+      "match": {
+        "roles": ["!dba"],
+        "commands": ["SELECT"]
+      },
+      "condition": {
+        "max_cost_gte": 80
+      },
+      "action": "block",
+      "reason": "Query too expensive — optimize or contact DBA"
+    },
+    {
+      "name": "block-production-external",
+      "description": "Production access only from internal network",
+      "match": {
+        "databases": ["production", "prod_*"]
+      },
+      "condition": {
+        "source_ip_not_in": ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+      },
+      "action": "block",
+      "reason": "Production access restricted to internal network"
+    },
+    {
+      "name": "contractor-office-hours",
+      "description": "Contractors only during business hours",
+      "match": {
+        "roles": ["contractor"]
+      },
+      "condition": {
+        "work_hours": "08:00-19:00",
+        "work_days": ["monday", "tuesday", "wednesday", "thursday", "friday"]
+      },
+      "action": "block",
+      "reason": "Contractor access outside business hours"
+    },
+    {
+      "name": "mask-pii-support",
+      "description": "Support sees masked PII",
+      "match": {
+        "roles": ["support"],
+        "commands": ["SELECT"]
+      },
+      "masking": [
+        {"column": "email", "transformer": "partial_email"},
+        {"column": "phone", "transformer": "partial_phone"},
+        {"column": "mobile", "transformer": "partial_phone"},
+        {"column": "tc_kimlik", "transformer": "redact"},
+        {"column": "identity_no", "transformer": "redact"},
+        {"column": "card_number", "transformer": "partial_card"},
+        {"column": "credit_card", "transformer": "partial_card"},
+        {"column": "iban", "transformer": "partial_iban"},
+        {"column": "salary", "transformer": "redact"},
+        {"column": "password", "transformer": "redact"},
+        {"column": "ssn", "transformer": "redact"}
+      ]
+    },
+    {
+      "name": "mask-finance-restricted",
+      "description": "Only finance sees compensation data",
+      "match": {
+        "roles": ["!finance", "!dba"],
+        "tables": ["salaries", "payroll", "compensation", "bonuses"]
+      },
+      "masking": [
+        {"column": "*", "transformer": "redact"}
+      ],
+      "action": "mask",
+      "reason": "Financial data restricted to finance team"
+    },
+    {
+      "name": "readonly-no-writes",
+      "description": "Read-only users cannot write",
+      "match": {
+        "roles": ["readonly"],
+        "commands": ["INSERT", "UPDATE", "DELETE", "DDL", "DCL"]
+      },
+      "action": "block",
+      "reason": "Read-only access — write operations not permitted"
+    },
+    {
+      "name": "rate-limit-contractors",
+      "description": "Limit contractor query rate",
+      "match": {
+        "roles": ["contractor"]
+      },
+      "rate_limit": {
+        "rate": 10,
+        "burst": 20
+      }
+    },
+    {
+      "name": "row-limit-non-dba",
+      "description": "Limit result sets for non-DBA",
+      "match": {
+        "roles": ["!dba"],
+        "commands": ["SELECT"]
+      },
+      "max_rows": 50000
+    },
+    {
+      "name": "allow-reads",
+      "description": "Allow all reads with standard logging",
+      "match": {
+        "commands": ["SELECT"]
+      },
+      "action": "allow",
+      "log_level": "standard"
+    },
+    {
+      "name": "allow-writes",
+      "description": "Allow writes with verbose logging",
+      "match": {
+        "commands": ["INSERT", "UPDATE", "DELETE"]
+      },
+      "action": "allow",
+      "log_level": "verbose"
+    },
+    {
+      "name": "default-audit",
+      "description": "Default: allow with audit",
+      "match": {},
+      "action": "audit",
+      "log_level": "standard"
+    }
+  ]
+}
