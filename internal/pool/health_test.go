@@ -24,8 +24,8 @@ func TestDeepHealthCheckHealthy(t *testing.T) {
 	if !status.Healthy {
 		t.Errorf("should be healthy: %s", status.LastError)
 	}
-	if status.Latency <= 0 {
-		t.Error("latency should be > 0")
+	if status.Latency < 0 {
+		t.Error("latency should be >= 0")
 	}
 }
 

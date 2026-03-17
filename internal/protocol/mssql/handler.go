@@ -178,6 +178,7 @@ func (h *Handler) ForwardCommand(ctx context.Context, rawMsg []byte, backend net
 // Masking is not yet implemented for TDS (complex token stream parsing required).
 func (h *Handler) ReadAndForwardResult(ctx context.Context, backend, client net.Conn, pipeline *masking.Pipeline) (*protocol.ResultStats, error) {
 	stats := &protocol.ResultStats{}
+	var columns []TDSColumnMeta
 
 	// Read all reply packets and forward
 	for {
@@ -186,17 +187,42 @@ func (h *Handler) ReadAndForwardResult(ctx context.Context, backend, client net.
 			return stats, fmt.Errorf("reading TDS result: %w", err)
 		}
 
-		// Count rows (approximate: look for Row tokens)
+		// Count rows
 		stats.RowCount += int64(countTokens(pkt.Data, TokenRow))
 		stats.RowCount += int64(countTokens(pkt.Data, TokenNBCRow))
 		stats.ByteCount += int64(len(pkt.Data))
+
+		// Parse COLMETADATA for masking setup
+		if containsToken(pkt.Data, TokenColMetadata) {
+			cols, _ := ParseColMetadata(pkt.Data)
+			if len(cols) > 0 {
+				columns = cols
+				// Set up PII detection on columns if pipeline has detector
+				if pipeline != nil {
+					colInfos := make([]masking.ColumnInfo, len(cols))
+					for i, c := range cols {
+						colInfos[i] = masking.ColumnInfo{Name: c.Name, Index: i}
+					}
+					pipeline.ApplyPIIDetection(colInfos)
+				}
+			}
+		}
+
+		// Apply masking to ROW tokens if pipeline is active
+		if pipeline != nil && pipeline.HasMasking() && len(columns) > 0 {
+			if containsToken(pkt.Data, TokenRow) || containsToken(pkt.Data, TokenNBCRow) {
+				pkt.Data = MaskTDSRow(pkt.Data, columns, pipeline)
+			}
+		}
 
 		if err := WritePacket(client, pkt); err != nil {
 			return stats, fmt.Errorf("forwarding TDS result: %w", err)
 		}
 
-		// EOM = end of result
 		if pkt.Status&StatusEOM != 0 {
+			if pipeline != nil {
+				stats.MaskedCols = pipeline.MaskedColumns()
+			}
 			return stats, nil
 		}
 	}

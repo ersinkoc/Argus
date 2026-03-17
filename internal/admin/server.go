@@ -89,6 +89,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/policies/validate", s.handlePolicyValidate)
 	mux.HandleFunc("/api/audit/export", s.handleAuditExport)
 	mux.HandleFunc("/api/pool/health", s.handlePoolHealth)
+	mux.HandleFunc("/api/health/deep", s.handleDeepHealth)
 	mux.HandleFunc("/api/dashboard", s.handleDashboard)
 	mux.HandleFunc("/ready", s.handleReady)
 	mux.HandleFunc("/livez", s.handleLive)
@@ -757,7 +758,7 @@ func (s *Server) handleAuditExport(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("[argus] CSV export error: %v", err)
 	}
-	_ = count
+	log.Printf("[argus] CSV export: %d events exported", count)
 }
 
 func (s *Server) handlePoolHealth(w http.ResponseWriter, r *http.Request) {
@@ -774,6 +775,20 @@ func (s *Server) handlePoolHealth(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}
 	json.NewEncoder(w).Encode(resp)
+}
+
+func (s *Server) handleDeepHealth(w http.ResponseWriter, r *http.Request) {
+	poolStats := s.provider.PoolStats()
+
+	var targets []string
+	for _, ps := range poolStats {
+		targets = append(targets, ps.Target)
+	}
+
+	results := pool.CheckAllTargets(targets, 5*time.Second)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
 }
 
 var (

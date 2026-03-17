@@ -131,6 +131,15 @@ func readExtendedBatch(ctx context.Context, client net.Conn, first *Message) (*E
 			}
 		}
 
+		// Extract statement name from Bind for tracking
+		if msg.Type == 'B' {
+			bind, err := DecodeBind(msg.Payload)
+			if err == nil && bind.StatementName != "" && batch.SQL == "" {
+				// Bind references a named statement — SQL was in a previous Parse
+				batch.SQL = "[prepared:" + bind.StatementName + "]"
+			}
+		}
+
 		// Sync marks end of extended query batch
 		// Note: 'S' is overloaded (Sync frontend / ParameterStatus backend)
 		// In this context (reading from client), 'S' is always Sync

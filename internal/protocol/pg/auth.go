@@ -121,7 +121,9 @@ func relayAuth(ctx context.Context, client, backend net.Conn, info *session.Info
 				if err := WriteMessage(client, msg); err != nil {
 					return fmt.Errorf("forwarding AuthOK: %w", err)
 				}
-				info.AuthMethod = "ok"
+				if info.AuthMethod == "" {
+					info.AuthMethod = "ok"
+				}
 				// Continue reading parameter status, backend key, ready for query
 				return relayPostAuth(ctx, client, backend)
 

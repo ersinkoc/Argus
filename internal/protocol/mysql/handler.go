@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"net"
 
@@ -13,7 +14,8 @@ import (
 
 // Handler implements protocol.Handler for MySQL.
 type Handler struct {
-	stmtStore *StmtStore // tracks prepared statements per connection
+	stmtStore   *StmtStore // tracks prepared statements per connection
+	lastCmdByte byte       // last command byte for PREPARE response handling
 }
 
 // New creates a new MySQL protocol handler.
@@ -166,6 +168,7 @@ func (h *Handler) ReadCommand(ctx context.Context, client net.Conn) (*inspection
 
 	case ComStmtPrepare:
 		// Extract SQL from COM_STMT_PREPARE for inspection
+		h.lastCmdByte = ComStmtPrepare
 		sql := string(pkt.Payload[1:])
 		cmd := inspection.Classify(sql)
 		cmd.Confidence = 0.8 // prepared statement, no param values yet
@@ -230,6 +233,12 @@ func (h *Handler) ForwardCommand(ctx context.Context, rawMsg []byte, backend net
 // ReadAndForwardResult reads MySQL result set from backend and writes to client.
 func (h *Handler) ReadAndForwardResult(ctx context.Context, backend, client net.Conn, pipeline *masking.Pipeline) (*protocol.ResultStats, error) {
 	stats := &protocol.ResultStats{}
+
+	// Handle COM_STMT_PREPARE response separately
+	if h.lastCmdByte == ComStmtPrepare {
+		h.lastCmdByte = 0
+		return h.handlePrepareResponse(backend, client, stats)
+	}
 
 	// Read first packet (column count or OK/ERR)
 	pkt, err := ReadPacket(backend)
@@ -331,6 +340,65 @@ func (h *Handler) ReadAndForwardResult(ctx context.Context, backend, client net.
 	if pipeline != nil {
 		stats.MaskedCols = pipeline.MaskedColumns()
 		stats.Truncated = pipeline.IsTruncated()
+	}
+
+	return stats, nil
+}
+
+// handlePrepareResponse processes COM_STMT_PREPARE response from backend,
+// tracks the statement ID in stmtStore, and forwards to client.
+func (h *Handler) handlePrepareResponse(backend, client net.Conn, stats *protocol.ResultStats) (*protocol.ResultStats, error) {
+	resp, err := ReadPacket(backend)
+	if err != nil {
+		return stats, fmt.Errorf("reading prepare response: %w", err)
+	}
+
+	if err := WritePacket(client, resp); err != nil {
+		return stats, fmt.Errorf("forwarding prepare response: %w", err)
+	}
+
+	// ERR packet
+	if len(resp.Payload) > 0 && resp.Payload[0] == 0xFF {
+		return stats, nil
+	}
+
+	// OK: 0x00 + stmt_id(4) + num_cols(2) + num_params(2) + filler(1) + warnings(2)
+	if len(resp.Payload) >= 12 && resp.Payload[0] == 0x00 {
+		stmtID := binary.LittleEndian.Uint32(resp.Payload[1:5])
+		numCols := int(binary.LittleEndian.Uint16(resp.Payload[5:7]))
+		numParams := int(binary.LittleEndian.Uint16(resp.Payload[7:9]))
+
+		h.stmtStore.Add(&PreparedStatement{
+			ID:        stmtID,
+			NumParams: numParams,
+			NumCols:   numCols,
+		})
+
+		// Forward parameter definitions
+		for i := 0; i < numParams; i++ {
+			p, err := ReadPacket(backend)
+			if err != nil {
+				return stats, err
+			}
+			WritePacket(client, p)
+		}
+		if numParams > 0 {
+			eof, _ := ReadPacket(backend)
+			WritePacket(client, eof)
+		}
+
+		// Forward column definitions
+		for i := 0; i < numCols; i++ {
+			p, err := ReadPacket(backend)
+			if err != nil {
+				return stats, err
+			}
+			WritePacket(client, p)
+		}
+		if numCols > 0 {
+			eof, _ := ReadPacket(backend)
+			WritePacket(client, eof)
+		}
 	}
 
 	return stats, nil
