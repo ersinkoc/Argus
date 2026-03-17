@@ -26,13 +26,15 @@ type Server struct {
 	addr           string
 	server         *http.Server
 	policyReloadFn func() error
+	EventStream    *EventStream
 }
 
 // NewServer creates a new admin server.
 func NewServer(provider SessionProvider, addr string) *Server {
 	return &Server{
-		provider: provider,
-		addr:     addr,
+		provider:    provider,
+		addr:        addr,
+		EventStream: NewEventStream(),
 	}
 }
 
@@ -50,6 +52,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/sessions/kill", s.handleSessionKill)
 	mux.HandleFunc("/api/policies/reload", s.handlePolicyReload)
 	mux.HandleFunc("/api/stats", s.handleStats)
+	mux.HandleFunc("/api/events/ws", s.EventStream.HandleWebSocket)
 
 	s.server = &http.Server{
 		Addr:         s.addr,
