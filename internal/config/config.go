@@ -156,11 +156,13 @@ func (s *SessionConfig) UnmarshalJSON(data []byte) error {
 	type Alias struct {
 		IdleTimeout string `json:"idle_timeout"`
 		MaxDuration string `json:"max_duration"`
+		MaxPerUser  int    `json:"max_per_user"`
 	}
 	var a Alias
 	if err := json.Unmarshal(data, &a); err != nil {
 		return err
 	}
+	s.MaxPerUser = a.MaxPerUser
 	var err error
 	if a.IdleTimeout != "" {
 		s.IdleTimeout, err = time.ParseDuration(a.IdleTimeout)
