@@ -91,6 +91,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/pool/health", s.handlePoolHealth)
 	mux.HandleFunc("/api/health/deep", s.handleDeepHealth)
 	mux.HandleFunc("/api/dashboard", s.handleDashboard)
+	mux.HandleFunc("/ui", HandleDashboardUI)
 	mux.HandleFunc("/ready", s.handleReady)
 	mux.HandleFunc("/livez", s.handleLive)
 

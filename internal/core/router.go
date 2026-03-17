@@ -2,6 +2,7 @@ package core
 
 import (
 	"github.com/ersinkoc/argus/internal/protocol"
+	"github.com/ersinkoc/argus/internal/protocol/mongodb"
 	"github.com/ersinkoc/argus/internal/protocol/mssql"
 	"github.com/ersinkoc/argus/internal/protocol/mysql"
 	"github.com/ersinkoc/argus/internal/protocol/pg"
@@ -21,6 +22,7 @@ func NewRouter() *Router {
 	r.Register(pg.New())
 	r.Register(mysql.New())
 	r.Register(mssql.New())
+	r.Register(mongodb.New())
 	return r
 }
 
