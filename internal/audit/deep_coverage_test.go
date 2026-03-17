@@ -3,6 +3,8 @@ package audit
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -165,7 +167,6 @@ func TestCompactLogsDryRunOldFile(t *testing.T) {
 
 	name := filepath.Join(tmpDir, "old.jsonl")
 	os.WriteFile(name, []byte(`{"event_type":"test"}`+"\n"), 0644)
-	// Make file appear old by setting mod time
 	os.Chtimes(name, time.Now().Add(-48*time.Hour), time.Now().Add(-48*time.Hour))
 
 	result, err := CompactLogs(tmpDir, CompactionConfig{MaxAge: time.Hour, DryRun: true})
@@ -173,4 +174,140 @@ func TestCompactLogsDryRunOldFile(t *testing.T) {
 		t.Fatalf("CompactLogs: %v", err)
 	}
 	_ = result
+}
+
+// --- WebhookWriter ---
+
+func TestWebhookWriterFlush(t *testing.T) {
+	received := make(chan []byte, 1)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var buf bytes.Buffer
+		buf.ReadFrom(r.Body)
+		received <- buf.Bytes()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	w := NewWebhookWriter(WebhookConfig{
+		URL:        ts.URL,
+		BatchSize:  10,
+		FlushEvery: 50 * time.Millisecond,
+		Timeout:    time.Second,
+		Headers:    map[string]string{"X-Test": "1"},
+	})
+	w.Start()
+
+	eventJSON, _ := json.Marshal(Event{EventType: "test", Username: "u"})
+	w.Write(eventJSON)
+
+	select {
+	case data := <-received:
+		if len(data) == 0 {
+			t.Error("should receive event data")
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("flush timeout")
+	}
+
+	w.Stop()
+}
+
+func TestWebhookWriterBatchFull(t *testing.T) {
+	received := make(chan []byte, 1)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var buf bytes.Buffer
+		buf.ReadFrom(r.Body)
+		received <- buf.Bytes()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	w := NewWebhookWriter(WebhookConfig{
+		URL:        ts.URL,
+		BatchSize:  2,
+		FlushEvery: time.Hour,
+		Timeout:    time.Second,
+	})
+	w.Start()
+
+	e1, _ := json.Marshal(Event{EventType: "e1"})
+	e2, _ := json.Marshal(Event{EventType: "e2"})
+	w.Write(e1)
+	w.Write(e2)
+
+	select {
+	case data := <-received:
+		if len(data) == 0 {
+			t.Error("should receive batched events")
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("batch flush timeout")
+	}
+
+	w.Stop()
+}
+
+func TestWebhookWriterBadURL(t *testing.T) {
+	w := NewWebhookWriter(WebhookConfig{
+		URL:        "http://127.0.0.1:1/nonexistent",
+		BatchSize:  1,
+		FlushEvery: 50 * time.Millisecond,
+		Timeout:    100 * time.Millisecond,
+	})
+	w.Start()
+	eventJSON, _ := json.Marshal(Event{EventType: "test"})
+	w.Write(eventJSON)
+	time.Sleep(200 * time.Millisecond)
+	w.Stop()
+}
+
+// --- RotatingWriter ---
+
+func TestRotatingWriterWrite(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "audit.jsonl")
+
+	w, err := NewRotatingWriter(logPath, 1, 5)
+	if err != nil {
+		t.Fatalf("NewRotatingWriter: %v", err)
+	}
+	defer w.Close()
+
+	data := []byte(`{"event":"test"}` + "\n")
+	n, err := w.Write(data)
+	if err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if n != len(data) {
+		t.Errorf("wrote %d bytes", n)
+	}
+}
+
+func TestRotatingWriterLargeWrite(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "audit.jsonl")
+
+	w, err := NewRotatingWriter(logPath, 1, 5) // 1MB max, 5 files
+	if err != nil {
+		t.Fatalf("NewRotatingWriter: %v", err)
+	}
+	defer w.Close()
+
+	bigData := make([]byte, 512*1024) // 512KB
+	w.Write(bigData)
+	w.Write(bigData) // should trigger rotation
+}
+
+// --- Logger writeLoop overflow ---
+
+func TestLoggerWriteLoopOverflow(t *testing.T) {
+	logger := NewLogger(2, LevelVerbose, 4096)
+	logger.Start()
+
+	for range 100 {
+		logger.Log(Event{EventType: "flood", Username: "u"})
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	logger.Close()
 }
