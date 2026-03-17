@@ -227,24 +227,45 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 	}
 
 	// Acquire backend connection
+	// For server-speaks-first protocols (MySQL, MSSQL), we need a fresh
+	// TCP connection because the greeting is sent immediately on connect
+	// and pool connections have already consumed the greeting.
+	var backendNetConn net.Conn
+	var poolConn *pool.Conn
 	pl := p.pools[target.Name]
-	if pl == nil {
-		log.Printf("[argus] no pool for target %q", target.Name)
-		handler.WriteError(context.Background(), clientConn, "08001", "No connection pool for target")
-		return
-	}
 
-	backendConn, err := pl.Acquire(context.Background())
-	if err != nil {
-		log.Printf("[argus] failed to acquire backend connection: %v", err)
-		handler.WriteError(context.Background(), clientConn, "08001", fmt.Sprintf("Cannot connect to database: %v", err))
-		return
+	if protocolName == "mysql" || protocolName == "mssql" {
+		// Fresh connection for server-speaks-first protocols
+		var d net.Dialer
+		conn, err := d.DialContext(context.Background(), "tcp", target.Address())
+		if err != nil {
+			log.Printf("[argus] failed to connect to backend: %v", err)
+			handler.WriteError(context.Background(), clientConn, "08001", fmt.Sprintf("Cannot connect to database: %v", err))
+			return
+		}
+		backendNetConn = conn
+		defer conn.Close()
+	} else {
+		// Pool connection for client-speaks-first protocols (PostgreSQL)
+		if pl == nil {
+			log.Printf("[argus] no pool for target %q", target.Name)
+			handler.WriteError(context.Background(), clientConn, "08001", "No connection pool for target")
+			return
+		}
+		var err error
+		poolConn, err = pl.Acquire(context.Background())
+		if err != nil {
+			log.Printf("[argus] failed to acquire backend connection: %v", err)
+			handler.WriteError(context.Background(), clientConn, "08001", fmt.Sprintf("Cannot connect to database: %v", err))
+			return
+		}
+		defer pl.Remove(poolConn)
+		backendNetConn = poolConn.NetConn()
 	}
-	defer pl.Remove(backendConn)
 
 	// Perform handshake
 	ctx := context.Background()
-	sessionInfo, err := handler.Handshake(ctx, clientConn, backendConn.NetConn())
+	sessionInfo, err := handler.Handshake(ctx, clientConn, backendNetConn)
 	if err != nil {
 		p.auditLogger.Log(audit.Event{
 			EventType: audit.AuthFailure.String(),
@@ -287,7 +308,7 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 
 	// Create session
 	sess := p.sessionManager.Create(sessionInfo, clientConn)
-	sess.BackendConn = backendConn.NetConn()
+	sess.BackendConn = backendNetConn
 	sess.Roles = policy.ResolveUserRoles(sessionInfo.Username, p.policyEngine.Loader().Current().Roles)
 
 	metrics.Global.ConnectionsTotal.Add(1)
@@ -305,7 +326,7 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 		sess.ID[:8], sess.Username, sess.Database, remoteAddr.IP)
 
 	// Command loop
-	p.commandLoop(ctx, sess, handler, clientConn, backendConn.NetConn())
+	p.commandLoop(ctx, sess, handler, clientConn, backendNetConn)
 
 	// Session end
 	p.sessionManager.Remove(sess.ID)

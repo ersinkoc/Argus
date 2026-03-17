@@ -82,8 +82,24 @@ func (h *Handler) Handshake(ctx context.Context, client, backend net.Conn) (*ses
 	}
 
 	// Handle auth switch or additional auth packets
-	// For now, simple OK/ERR flow
+	// MySQL 8 caching_sha2_password sends:
+	//   0x01 0x04 = fast auth success (AuthMoreData with status 0x04)
+	//   0x01 0x03 = full auth needed
+	//   0xFE      = auth switch request
 	for len(authResult.Payload) > 0 && authResult.Payload[0] != 0x00 && authResult.Payload[0] != 0xFF {
+		// Check for AuthMoreData with fast auth success (0x01 + 0x04)
+		if authResult.Payload[0] == 0x01 && len(authResult.Payload) >= 2 && authResult.Payload[1] == 0x04 {
+			// Fast auth success — next packet from backend is the final OK
+			authResult, err = ReadPacket(backend)
+			if err != nil {
+				return nil, fmt.Errorf("reading final auth OK: %w", err)
+			}
+			if err := WritePacket(client, authResult); err != nil {
+				return nil, fmt.Errorf("forwarding final auth OK: %w", err)
+			}
+			break
+		}
+
 		// Auth continuation — forward bidirectionally
 		clientResp, err := ReadPacket(client)
 		if err != nil {

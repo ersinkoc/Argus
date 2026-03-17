@@ -20,12 +20,12 @@ services:
       - pg_data:/var/lib/postgresql/data
 
   mysql:
-    image: mysql:8.0
+    image: mariadb:11
     environment:
-      MYSQL_ROOT_PASSWORD: rootpass
-      MYSQL_USER: argus_test
-      MYSQL_PASSWORD: argus_pass
-      MYSQL_DATABASE: testdb
+      MARIADB_ROOT_PASSWORD: rootpass
+      MARIADB_USER: argus_test
+      MARIADB_PASSWORD: argus_pass
+      MARIADB_DATABASE: testdb
     ports:
       - "33306:3306"
     healthcheck:
