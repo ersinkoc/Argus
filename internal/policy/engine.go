@@ -78,6 +78,7 @@ func (e *Engine) evaluate(ctx *Context, ps *PolicySet) *Decision {
 			Reason:     rule.Reason,
 			LogLevel:   rule.LogLevel,
 			MaxRows:    rule.MaxRows,
+			RateLimit:  rule.RateLimit,
 		}
 
 		if rule.Action != "" {

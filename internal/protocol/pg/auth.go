@@ -2,11 +2,19 @@ package pg
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 
 	"github.com/ersinkoc/argus/internal/session"
 )
+
+// HandshakeOpts configures the handshake behavior.
+type HandshakeOpts struct {
+	// ServerTLS is the TLS config for client-facing SSL upgrade.
+	// If nil, SSLRequest gets 'N' response.
+	ServerTLS *tls.Config
+}
 
 // DoHandshake performs the PostgreSQL authentication handshake.
 // It acts as a man-in-the-middle:
@@ -14,7 +22,13 @@ import (
 //  2. Forwards it to the backend
 //  3. Relays auth messages between client and backend
 //  4. Returns session info on success
+// DoHandshake performs the PostgreSQL authentication handshake.
 func DoHandshake(ctx context.Context, client, backend net.Conn) (*session.Info, error) {
+	return DoHandshakeWithOpts(ctx, client, backend, nil)
+}
+
+// DoHandshakeWithOpts performs handshake with options (e.g. TLS upgrade).
+func DoHandshakeWithOpts(ctx context.Context, client, backend net.Conn, opts *HandshakeOpts) (*session.Info, error) {
 	// Step 1: Read startup message from client
 	startupData, err := ReadStartupMessage(client)
 	if err != nil {
@@ -28,12 +42,24 @@ func DoHandshake(ctx context.Context, client, backend net.Conn) (*session.Info, 
 
 	// Handle SSL request
 	if startup.IsSSLRequest {
-		// Tell client we don't support SSL (for MVP)
-		// 'N' = SSL not supported
-		if _, err := client.Write([]byte{'N'}); err != nil {
-			return nil, fmt.Errorf("writing SSL response: %w", err)
+		if opts != nil && opts.ServerTLS != nil {
+			// Upgrade to TLS: respond 'S' and perform TLS handshake
+			if _, err := client.Write([]byte{'S'}); err != nil {
+				return nil, fmt.Errorf("writing SSL accept: %w", err)
+			}
+			tlsConn := tls.Server(client, opts.ServerTLS)
+			if err := tlsConn.HandshakeContext(ctx); err != nil {
+				return nil, fmt.Errorf("TLS handshake: %w", err)
+			}
+			// Replace client conn with TLS conn for subsequent reads
+			client = tlsConn
+		} else {
+			// No TLS configured: respond 'N'
+			if _, err := client.Write([]byte{'N'}); err != nil {
+				return nil, fmt.Errorf("writing SSL reject: %w", err)
+			}
 		}
-		// Client should send another startup message
+		// Client sends another startup message (over TLS or plain)
 		startupData, err = ReadStartupMessage(client)
 		if err != nil {
 			return nil, fmt.Errorf("reading post-SSL startup: %w", err)

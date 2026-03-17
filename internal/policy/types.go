@@ -77,6 +77,7 @@ type Decision struct {
 	RiskScore    int
 	LogLevel     string
 	MaxRows      int64
+	RateLimit    *RateLimitConfig
 }
 
 // MaskingRule defines how a column should be masked.
@@ -107,17 +108,24 @@ type Role struct {
 	Groups []string `json:"groups"`
 }
 
+// RateLimitConfig defines rate limiting for a policy rule.
+type RateLimitConfig struct {
+	Rate  float64 `json:"rate"`  // queries per second
+	Burst int     `json:"burst"` // max burst size
+}
+
 // PolicyRule is a single policy rule.
 type PolicyRule struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	Match       MatchConfig     `json:"match"`
+	Name        string           `json:"name"`
+	Description string           `json:"description"`
+	Match       MatchConfig      `json:"match"`
 	Condition   *ConditionConfig `json:"condition,omitempty"`
-	Action      string          `json:"action,omitempty"`
-	Masking     []MaskingRule   `json:"masking,omitempty"`
-	Reason      string          `json:"reason,omitempty"`
-	LogLevel    string          `json:"log_level,omitempty"`
-	MaxRows     int64           `json:"max_rows,omitempty"`
+	Action      string           `json:"action,omitempty"`
+	Masking     []MaskingRule    `json:"masking,omitempty"`
+	Reason      string           `json:"reason,omitempty"`
+	LogLevel    string           `json:"log_level,omitempty"`
+	MaxRows     int64            `json:"max_rows,omitempty"`
+	RateLimit   *RateLimitConfig `json:"rate_limit,omitempty"`
 }
 
 // MatchConfig defines what a policy rule matches.

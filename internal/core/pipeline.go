@@ -15,6 +15,7 @@ import (
 	"github.com/ersinkoc/argus/internal/policy"
 	"github.com/ersinkoc/argus/internal/pool"
 	"github.com/ersinkoc/argus/internal/protocol"
+	"github.com/ersinkoc/argus/internal/ratelimit"
 	"github.com/ersinkoc/argus/internal/session"
 )
 
@@ -25,7 +26,8 @@ type Proxy struct {
 	sessionManager *session.Manager
 	policyEngine   *policy.Engine
 	auditLogger    *audit.Logger
-	pools          map[string]*pool.Pool // target name → pool
+	pools          map[string]*pool.Pool          // target name → pool
+	rateLimiters   map[string]*ratelimit.Limiter   // policy name → limiter
 	listeners      []*Listener
 }
 
@@ -38,6 +40,7 @@ func NewProxy(cfg *config.Config, policyEngine *policy.Engine, auditLogger *audi
 		policyEngine:   policyEngine,
 		auditLogger:    auditLogger,
 		pools:          make(map[string]*pool.Pool),
+		rateLimiters:   make(map[string]*ratelimit.Limiter),
 	}
 }
 
@@ -100,13 +103,42 @@ func (p *Proxy) Start() error {
 	return nil
 }
 
-// Stop gracefully stops the proxy.
+// Stop gracefully stops the proxy with connection draining.
 func (p *Proxy) Stop() {
 	log.Println("[argus] shutting down...")
 
-	// Stop listeners
+	// Stop accepting new connections
 	for _, l := range p.listeners {
 		l.Stop()
+	}
+
+	// Drain active sessions — wait for in-flight queries
+	activeSessions := p.sessionManager.ActiveSessions()
+	if len(activeSessions) > 0 {
+		log.Printf("[argus] draining %d active session(s)...", len(activeSessions))
+		deadline := time.After(10 * time.Second)
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+
+	drain:
+		for {
+			select {
+			case <-deadline:
+				remaining := p.sessionManager.Count()
+				if remaining > 0 {
+					log.Printf("[argus] drain timeout: force-closing %d session(s)", remaining)
+					for _, s := range p.sessionManager.ActiveSessions() {
+						p.sessionManager.Kill(s.ID)
+					}
+				}
+				break drain
+			case <-ticker.C:
+				if p.sessionManager.Count() == 0 {
+					log.Println("[argus] all sessions drained")
+					break drain
+				}
+			}
+		}
 	}
 
 	// Stop session manager
@@ -269,6 +301,20 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 
 		// Evaluate policy
 		decision := p.policyEngine.Evaluate(policyCtx)
+
+		// Rate limit check
+		if decision.RateLimit != nil && decision.Action != policy.ActionBlock {
+			limiterKey := decision.PolicyName
+			limiter, ok := p.rateLimiters[limiterKey]
+			if !ok {
+				limiter = ratelimit.NewLimiter(decision.RateLimit.Rate, decision.RateLimit.Burst)
+				p.rateLimiters[limiterKey] = limiter
+			}
+			if !limiter.Allow(sess.Username) {
+				decision.Action = policy.ActionBlock
+				decision.Reason = "rate limit exceeded"
+			}
+		}
 
 		queryStart := time.Now()
 
