@@ -13,15 +13,17 @@ import (
 
 // Config is the main Argus configuration.
 type Config struct {
-	Server  ServerConfig  `json:"server"`
-	Targets []Target      `json:"targets"`
-	Routing RoutingConfig `json:"routing"`
-	Policy  PolicyConfig  `json:"policy"`
-	Pool    PoolConfig    `json:"pool"`
-	Session SessionConfig `json:"session"`
-	Audit   AuditConfig   `json:"audit"`
-	Admin   AdminConfig   `json:"admin"`
-	Metrics MetricsConfig `json:"metrics"`
+	Server    ServerConfig    `json:"server"`
+	Targets   []Target        `json:"targets"`
+	Routing   RoutingConfig   `json:"routing"`
+	Policy    PolicyConfig    `json:"policy"`
+	Pool      PoolConfig      `json:"pool"`
+	Session   SessionConfig   `json:"session"`
+	Audit     AuditConfig     `json:"audit"`
+	Admin     AdminConfig     `json:"admin"`
+	Metrics   MetricsConfig   `json:"metrics"`
+	Rewrite   RewriteConfig   `json:"rewrite,omitempty"`
+	SlowQuery SlowQueryConfig `json:"slow_query,omitempty"`
 }
 
 type ServerConfig struct {
@@ -136,8 +138,18 @@ func (p *PoolConfig) UnmarshalJSON(data []byte) error {
 }
 
 type SessionConfig struct {
-	IdleTimeout time.Duration `json:"idle_timeout"`
-	MaxDuration time.Duration `json:"max_duration"`
+	IdleTimeout       time.Duration `json:"idle_timeout"`
+	MaxDuration       time.Duration `json:"max_duration"`
+	MaxPerUser        int           `json:"max_per_user,omitempty"` // 0 = unlimited
+}
+
+type RewriteConfig struct {
+	MaxLimit   int    `json:"max_limit,omitempty"`   // auto-add LIMIT N to SELECT
+	ForceWhere string `json:"force_where,omitempty"` // inject WHERE condition
+}
+
+type SlowQueryConfig struct {
+	Threshold string `json:"threshold,omitempty"` // duration string e.g. "1s"
 }
 
 func (s *SessionConfig) UnmarshalJSON(data []byte) error {

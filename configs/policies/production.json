@@ -65,6 +65,19 @@
       "reason": "Query too expensive — optimize or contact DBA"
     },
     {
+      "name": "block-information-schema-scan",
+      "description": "Block metadata enumeration by non-DBA",
+      "match": {
+        "roles": ["!dba"],
+        "commands": ["SELECT"]
+      },
+      "condition": {
+        "sql_regex": ["(?i)information_schema\\.", "(?i)pg_catalog\\.", "(?i)sys\\."]
+      },
+      "action": "block",
+      "reason": "Schema metadata access restricted to DBA"
+    },
+    {
       "name": "block-production-external",
       "description": "Production access only from internal network",
       "match": {

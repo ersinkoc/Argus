@@ -57,7 +57,14 @@
   },
   "session": {
     "idle_timeout": "30m",
-    "max_duration": "8h"
+    "max_duration": "8h",
+    "max_per_user": 10
+  },
+  "rewrite": {
+    "max_limit": 10000
+  },
+  "slow_query": {
+    "threshold": "5s"
   },
   "audit": {
     "level": "standard",

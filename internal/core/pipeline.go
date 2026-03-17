@@ -76,6 +76,11 @@ func (p *Proxy) SetRewriter(r *inspection.Rewriter) {
 	p.rewriter = r
 }
 
+// SetSessionLimiter sets the per-user concurrent session limiter.
+func (p *Proxy) SetSessionLimiter(l *session.ConcurrencyLimiter) {
+	p.sessionLimiter = l
+}
+
 // ApprovalManager returns the approval manager.
 func (p *Proxy) ApprovalManager() *ApprovalManager {
 	return p.approvalManager
@@ -420,6 +425,7 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 		switch decision.Action {
 		case policy.ActionBlock:
 			metrics.Global.CommandsBlocked.Add(1)
+			metrics.DatabaseStats.RecordBlocked(sess.Database)
 			// Block the command
 			handler.WriteError(ctx, client, "42501",
 				fmt.Sprintf("Access denied: %s [policy: %s]", decision.Reason, decision.PolicyName))

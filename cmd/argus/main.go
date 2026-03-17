@@ -15,7 +15,9 @@ import (
 	"github.com/ersinkoc/argus/internal/audit"
 	"github.com/ersinkoc/argus/internal/config"
 	"github.com/ersinkoc/argus/internal/core"
+	"github.com/ersinkoc/argus/internal/inspection"
 	"github.com/ersinkoc/argus/internal/policy"
+	"github.com/ersinkoc/argus/internal/session"
 )
 
 var (
@@ -126,6 +128,37 @@ func main() {
 		auditLogger.AddWriter(wh)
 		wh.Start()
 		log.Printf("SIEM webhook enabled: %s", cfg.Audit.WebhookURL)
+	}
+
+	// Session concurrency limiter
+	if cfg.Session.MaxPerUser > 0 {
+		proxy.SetSessionLimiter(session.NewConcurrencyLimiter(cfg.Session.MaxPerUser))
+		log.Printf("Session limit: %d per user", cfg.Session.MaxPerUser)
+	}
+
+	// Query rewriter
+	if cfg.Rewrite.MaxLimit > 0 || cfg.Rewrite.ForceWhere != "" {
+		rw := inspection.NewRewriter()
+		if cfg.Rewrite.MaxLimit > 0 {
+			rw.SetMaxLimit(cfg.Rewrite.MaxLimit)
+			log.Printf("Query rewrite: auto-LIMIT %d", cfg.Rewrite.MaxLimit)
+		}
+		if cfg.Rewrite.ForceWhere != "" {
+			rw.SetForceWhere(cfg.Rewrite.ForceWhere)
+			log.Printf("Query rewrite: force WHERE %s", cfg.Rewrite.ForceWhere)
+		}
+		proxy.SetRewriter(rw)
+	}
+
+	// Slow query logger
+	if cfg.SlowQuery.Threshold != "" {
+		threshold, err := time.ParseDuration(cfg.SlowQuery.Threshold)
+		if err != nil {
+			log.Printf("Warning: invalid slow_query threshold: %v", err)
+		} else {
+			proxy.SetSlowQueryLogger(audit.NewSlowQueryLogger(threshold, auditLogger))
+			log.Printf("Slow query threshold: %s", threshold)
+		}
 	}
 
 	if err := proxy.Start(); err != nil {
