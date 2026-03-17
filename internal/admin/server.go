@@ -37,6 +37,7 @@ type Server struct {
 	EventStream    *EventStream
 	approvalFn     ApprovalProvider
 	auditLogPath   string // path to audit log file for search
+	recordFile     string // path to query recording file for replay
 }
 
 // NewServer creates a new admin server.
@@ -67,6 +68,8 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/approvals/approve", s.handleApprovalAction)
 	mux.HandleFunc("/api/approvals/deny", s.handleApprovalDeny)
 	mux.HandleFunc("/api/audit/search", s.handleAuditSearch)
+	mux.HandleFunc("/api/audit/replay", s.handleReplay)
+	mux.HandleFunc("/api/dashboard", s.handleDashboard)
 
 	s.server = &http.Server{
 		Addr:         s.addr,
@@ -416,6 +419,95 @@ func (s *Server) handleAuditSearch(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+// Server.recordFile is the path to query recordings for replay.
+func (s *Server) SetRecordFile(path string) {
+	s.recordFile = path
+}
+
+func (s *Server) handleReplay(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.URL.Query().Get("session_id")
+	if sessionID == "" {
+		http.Error(w, `{"error":"missing session_id parameter"}`, http.StatusBadRequest)
+		return
+	}
+	path := s.recordFile
+	if path == "" {
+		path = s.auditLogPath
+	}
+	if path == "" {
+		http.Error(w, `{"error":"recording not configured"}`, http.StatusInternalServerError)
+		return
+	}
+
+	replay, err := audit.ReplayFromFile(path, sessionID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(replay)
+}
+
+func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
+	m := metrics.Global
+	sm := s.provider.SessionManager()
+	poolStats := s.provider.PoolStats()
+	histSnap := pool.WaitHistogram.Snapshot()
+
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+
+	// Aggregate pool stats
+	totalActive, totalIdle := 0, 0
+	healthyTargets, unhealthyTargets := 0, 0
+	for _, ps := range poolStats {
+		totalActive += ps.Active
+		totalIdle += ps.Idle
+		if ps.Healthy {
+			healthyTargets++
+		} else {
+			unhealthyTargets++
+		}
+	}
+
+	dashboard := map[string]any{
+		"overview": map[string]any{
+			"uptime":           time.Since(startTime).String(),
+			"version":          Version,
+			"active_sessions":  sm.Count(),
+			"goroutines":       runtime.NumGoroutine(),
+			"memory_mb":        memStats.Alloc / 1024 / 1024,
+			"healthy_targets":  healthyTargets,
+			"unhealthy_targets": unhealthyTargets,
+		},
+		"traffic": map[string]any{
+			"total_connections": m.ConnectionsTotal.Load(),
+			"failed_connections": m.ConnectionsFailed.Load(),
+			"total_commands":    m.CommandsTotal.Load(),
+			"blocked_commands":  m.CommandsBlocked.Load(),
+			"masked_results":   m.CommandsMasked.Load(),
+			"total_rows":       m.ResultRowsTotal.Load(),
+		},
+		"pool": map[string]any{
+			"active_connections": totalActive,
+			"idle_connections":   totalIdle,
+			"wait_p50_us":       histSnap.P50,
+			"wait_p95_us":       histSnap.P95,
+			"wait_p99_us":       histSnap.P99,
+			"targets":           poolStats,
+		},
+		"policy": map[string]any{
+			"evaluations":  m.PolicyEvals.Load(),
+			"cache_hits":   m.PolicyCacheHits.Load(),
+			"cache_misses": m.PolicyCacheMisses.Load(),
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(dashboard)
 }
 
 var (
