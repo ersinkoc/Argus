@@ -25,7 +25,7 @@ func TestIsConnAliveClosed(t *testing.T) {
 	go func() { c, _ := ln.Accept(); if c != nil { c.Close() } }()
 
 	conn, _ := net.Dial("tcp", ln.Addr().String())
-	time.Sleep(50 * time.Millisecond) // let server close
+	time.Sleep(200 * time.Millisecond) // let server close (needs more time on Windows)
 
 	if isConnAlive(conn) {
 		t.Error("closed connection should not be alive")
