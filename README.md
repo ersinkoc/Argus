@@ -311,6 +311,10 @@ Use `$ENV{VAR}` syntax in config for secrets:
 | `/api/audit/compact` | POST | Clean up old audit log files |
 | `/api/policies/dryrun?username=&sql=` | POST | Test policy without enforcing |
 | `/api/config/export` | GET | Export current configuration |
+| `/api/audit/export?username=` | GET | CSV export of audit events |
+| `/api/pool/health` | GET | Per-target pool health summary |
+| `/api/health/deep` | GET | Deep TCP health check with latency |
+| `/api/policies/validate` | GET | Validate policy rules for conflicts |
 | `/api/dashboard` | GET | Aggregated dashboard data |
 | `/ready` | GET | Kubernetes readiness probe |
 | `/livez` | GET | Kubernetes liveness probe |
@@ -429,7 +433,7 @@ make test-verbose      # Verbose output
 make test-cover        # Coverage report (HTML)
 ```
 
-Current: **316 tests** across 15 packages, **60.6% coverage** (5 packages > 90%).
+Current: **629 unit tests + 107 E2E = 736 total**, **82.2% coverage** (11 packages > 90%).
 
 ---
 
