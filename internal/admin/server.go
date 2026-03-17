@@ -45,7 +45,9 @@ type Server struct {
 	dryRunFn       DryRunFunc
 	configData     func() ([]byte, error)
 	authToken      string
-	validateFn     func() (any, error) // policy validation function
+	validateFn     func() (any, error)
+	classifyFn     func([]string) any
+	pluginListFn   func() any
 }
 
 // NewServer creates a new admin server.
@@ -91,6 +93,8 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/pool/health", s.handlePoolHealth)
 	mux.HandleFunc("/api/health/deep", s.handleDeepHealth)
 	mux.HandleFunc("/api/dashboard", s.handleDashboard)
+	mux.HandleFunc("/api/classify", s.handleClassify)
+	mux.HandleFunc("/api/plugins", s.handlePlugins)
 	mux.HandleFunc("/ui", HandleDashboardUI)
 	mux.HandleFunc("/ready", s.handleReady)
 	mux.HandleFunc("/livez", s.handleLive)
@@ -790,6 +794,68 @@ func (s *Server) handleDeepHealth(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(results)
+}
+
+// SetClassifyFunc sets the data classification function.
+func (s *Server) SetClassifyFunc(fn func([]string) any) {
+	s.classifyFn = fn
+}
+
+// SetPluginListFunc sets the plugin list function.
+func (s *Server) SetPluginListFunc(fn func() any) {
+	s.pluginListFn = fn
+}
+
+func (s *Server) handleClassify(w http.ResponseWriter, r *http.Request) {
+	if s.classifyFn == nil {
+		http.Error(w, `{"error":"classification not configured"}`, http.StatusInternalServerError)
+		return
+	}
+	columns := r.URL.Query()["column"]
+	if len(columns) == 0 {
+		cols := r.URL.Query().Get("columns")
+		if cols != "" {
+			for _, c := range splitComma(cols) {
+				columns = append(columns, c)
+			}
+		}
+	}
+	if len(columns) == 0 {
+		http.Error(w, `{"error":"provide column names via ?column=x&column=y or ?columns=x,y"}`, http.StatusBadRequest)
+		return
+	}
+	result := s.classifyFn(columns)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+func (s *Server) handlePlugins(w http.ResponseWriter, r *http.Request) {
+	if s.pluginListFn == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"plugins": []any{}, "count": 0})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(s.pluginListFn())
+}
+
+func splitComma(s string) []string {
+	var result []string
+	current := ""
+	for _, c := range s {
+		if c == ',' {
+			if current != "" {
+				result = append(result, current)
+			}
+			current = ""
+		} else {
+			current += string(c)
+		}
+	}
+	if current != "" {
+		result = append(result, current)
+	}
+	return result
 }
 
 var (

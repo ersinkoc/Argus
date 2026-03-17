@@ -13,9 +13,11 @@ import (
 
 	"github.com/ersinkoc/argus/internal/admin"
 	"github.com/ersinkoc/argus/internal/audit"
+	"github.com/ersinkoc/argus/internal/classify"
 	"github.com/ersinkoc/argus/internal/config"
 	"github.com/ersinkoc/argus/internal/core"
 	"github.com/ersinkoc/argus/internal/inspection"
+	"github.com/ersinkoc/argus/internal/plugin"
 	"github.com/ersinkoc/argus/internal/policy"
 	"github.com/ersinkoc/argus/internal/session"
 )
@@ -229,6 +231,21 @@ func main() {
 				"count":  len(issues),
 				"valid":  countErrors(issues) == 0,
 			}, nil
+		})
+
+		// Wire data classification
+		classifyEngine := classify.NewEngine()
+		adminServer.SetClassifyFunc(func(columns []string) any {
+			return classifyEngine.ClassifyColumns(columns)
+		})
+
+		// Wire plugin registry
+		pluginRegistry := plugin.NewRegistry()
+		adminServer.SetPluginListFunc(func() any {
+			return map[string]any{
+				"plugins": pluginRegistry.List(),
+				"count":   pluginRegistry.Count(),
+			}
 		})
 
 		if err := adminServer.Start(); err != nil {
