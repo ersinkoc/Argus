@@ -87,6 +87,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/config/export", s.handleConfigExport)
 	mux.HandleFunc("/api/audit/compact", s.handleCompact)
 	mux.HandleFunc("/api/policies/validate", s.handlePolicyValidate)
+	mux.HandleFunc("/api/audit/export", s.handleAuditExport)
 	mux.HandleFunc("/api/dashboard", s.handleDashboard)
 	mux.HandleFunc("/ready", s.handleReady)
 	mux.HandleFunc("/livez", s.handleLive)
@@ -715,6 +716,29 @@ func (s *Server) handlePolicyValidate(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+func (s *Server) handleAuditExport(w http.ResponseWriter, r *http.Request) {
+	if s.auditLogPath == "" {
+		http.Error(w, `{"error":"audit log path not configured"}`, http.StatusInternalServerError)
+		return
+	}
+
+	q := r.URL.Query()
+	filter := audit.SearchFilter{
+		Username: q.Get("username"),
+		Action:   q.Get("action"),
+		Limit:    1000,
+	}
+
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment; filename=argus-audit.csv")
+
+	count, err := audit.ExportCSV(s.auditLogPath, w, filter)
+	if err != nil {
+		log.Printf("[argus] CSV export error: %v", err)
+	}
+	_ = count
 }
 
 var (
