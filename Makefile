@@ -70,8 +70,17 @@ docker-status:
 	docker compose ps
 
 e2e: docker-up
-	@echo "Running E2E tests..."
-	bash scripts/test-e2e.sh
+	@echo "Running E2E basic tests..."
+	bash scripts/test-e2e-full.sh
+
+e2e-advanced: docker-up
+	@echo "Running advanced E2E tests..."
+	bash scripts/test-e2e-advanced.sh
+
+e2e-all: docker-up
+	@echo "Running all E2E tests..."
+	bash scripts/test-e2e-full.sh
+	bash scripts/test-e2e-advanced.sh
 
 setup-mssql:
 	bash scripts/setup-mssql.sh
