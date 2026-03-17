@@ -258,13 +258,21 @@ Use `$ENV{VAR}` syntax in config for secrets:
 
 ---
 
-## Endpoints
+## API Endpoints
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET :9091/healthz` | Health status, per-target backend health, session count |
-| `GET :9091/metrics` | Prometheus-format metrics |
-| `GET :9091/api/sessions` | List active sessions |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/healthz` | GET | Health status, per-target backend health, session count |
+| `/metrics` | GET | Prometheus-format metrics |
+| `/api/sessions` | GET | List active sessions with details |
+| `/api/sessions/kill?id=` | POST | Kill a session by ID |
+| `/api/policies/reload` | POST | Hot-reload policy files |
+| `/api/stats` | GET | Runtime statistics (memory, goroutines, counters) |
+| `/api/approvals` | GET | List pending approval requests |
+| `/api/approvals/approve?id=` | POST | Approve a pending command |
+| `/api/approvals/deny?id=` | POST | Deny a pending command |
+| `/api/audit/search?username=&action=` | GET | Search audit logs |
+| `/api/events/ws` | WebSocket | Live event stream |
 
 ---
 
@@ -274,19 +282,18 @@ Use `$ENV{VAR}` syntax in config for secrets:
 argus/
 ├── cmd/argus/              # Binary entry point
 ├── internal/
-│   ├── core/               # TCP listener, TLS, router, pipeline orchestrator
+│   ├── core/               # Listener, TLS, router, pipeline, approval workflow
 │   ├── protocol/
 │   │   ├── handler.go      # ProtocolHandler interface
-│   │   └── pg/             # PostgreSQL wire protocol
-│   │       ├── codec.go    # Message encode/decode
-│   │       ├── auth.go     # Authentication handshake (passthrough)
-│   │       ├── query.go    # Query message handling
-│   │       └── result.go   # Streaming result forwarding + masking
-│   ├── inspection/         # SQL tokenizer, classifier, table extractor
+│   │   ├── pg/             # PostgreSQL (Simple + Extended + COPY + SSL)
+│   │   ├── mysql/          # MySQL (COM_QUERY, handshake, result sets)
+│   │   └── mssql/          # MSSQL TDS (Pre-Login, Login7, SQL Batch)
+│   ├── inspection/         # Tokenizer, classifier, fingerprint, anomaly, splitter
 │   ├── policy/             # Policy engine, rule matching, decision cache
-│   ├── masking/            # Streaming transformers pipeline
+│   ├── masking/            # Streaming pipeline, PII auto-detection
+│   ├── ratelimit/          # Token bucket rate limiter
 │   ├── session/            # Session lifecycle, identity, timeout
-│   ├── pool/               # Backend connection pool, health check
+│   ├── pool/               # Connection pool (dedicated + shared), histogram
 │   ├── audit/              # Async structured audit logging
 │   ├── config/             # Configuration loading, validation
 │   └── admin/              # Metrics, health, session API
@@ -346,12 +353,18 @@ argus/
 - [ ] SIEM export (syslog, webhook)
 - [ ] PII auto-detection
 
-### Phase 3 — Enterprise
-- [ ] MSSQL TDS protocol
+### Phase 3 — Enterprise (In Progress)
+- [x] MSSQL TDS protocol (codec, Login7, SQL Batch)
+- [x] Approval workflows for high-risk commands
+- [x] Live session monitoring (WebSocket)
+- [x] Rate limiting per user/role
+- [x] PII auto-detection (column + value patterns, Luhn, TC Kimlik)
+- [x] Query fingerprinting and anomaly detection
+- [x] Audit log search API
+- [x] Multi-statement splitting
+- [x] Shared connection pool (transaction-mode)
+- [x] Pool wait time histogram
 - [ ] LDAP/SSO integration
-- [ ] Approval workflows for high-risk commands
-- [ ] Live session monitoring (WebSocket)
-- [ ] Rate limiting per user/role
 - [ ] Multi-instance clustering
 
 ### Phase 4 — Platform
@@ -371,7 +384,7 @@ make test-verbose      # Verbose output
 make test-cover        # Coverage report (HTML)
 ```
 
-Current: **45 tests** across 8 packages, **50.6% coverage**.
+Current: **230+ tests** across 14 packages, **59% coverage**.
 
 ---
 

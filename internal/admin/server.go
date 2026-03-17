@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/ersinkoc/argus/internal/audit"
 	"github.com/ersinkoc/argus/internal/metrics"
 	"github.com/ersinkoc/argus/internal/pool"
 	"github.com/ersinkoc/argus/internal/session"
@@ -35,6 +36,7 @@ type Server struct {
 	policyReloadFn func() error
 	EventStream    *EventStream
 	approvalFn     ApprovalProvider
+	auditLogPath   string // path to audit log file for search
 }
 
 // NewServer creates a new admin server.
@@ -64,6 +66,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/approvals", s.handleApprovals)
 	mux.HandleFunc("/api/approvals/approve", s.handleApprovalAction)
 	mux.HandleFunc("/api/approvals/deny", s.handleApprovalDeny)
+	mux.HandleFunc("/api/audit/search", s.handleAuditSearch)
 
 	s.server = &http.Server{
 		Addr:         s.addr,
@@ -355,6 +358,54 @@ func (s *Server) handleApprovalDeny(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "denied", "id": id})
+}
+
+// SetAuditLogPath sets the audit log file path for search.
+func (s *Server) SetAuditLogPath(path string) {
+	s.auditLogPath = path
+}
+
+func (s *Server) handleAuditSearch(w http.ResponseWriter, r *http.Request) {
+	if s.auditLogPath == "" {
+		http.Error(w, `{"error":"audit log path not configured"}`, http.StatusInternalServerError)
+		return
+	}
+
+	q := r.URL.Query()
+	filter := audit.SearchFilter{
+		SessionID:   q.Get("session_id"),
+		Username:    q.Get("username"),
+		Database:    q.Get("database"),
+		EventType:   q.Get("event_type"),
+		Action:      q.Get("action"),
+		CommandType: q.Get("command_type"),
+	}
+	if v := q.Get("limit"); v != "" {
+		n := 0
+		for _, c := range v {
+			n = n*10 + int(c-'0')
+		}
+		filter.Limit = n
+	}
+	if v := q.Get("start"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			filter.StartTime = t
+		}
+	}
+	if v := q.Get("end"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			filter.EndTime = t
+		}
+	}
+
+	result, err := audit.SearchFile(s.auditLogPath, filter)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
 
 var (
