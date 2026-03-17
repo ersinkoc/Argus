@@ -11,21 +11,19 @@ import (
 	"time"
 
 	"github.com/ersinkoc/argus/internal/core"
-	"github.com/ersinkoc/argus/internal/pool"
-	"github.com/ersinkoc/argus/internal/session"
 )
 
 // Metrics holds Prometheus-style counters and gauges.
 type Metrics struct {
-	ConnectionsTotal   atomic.Int64
-	ConnectionsFailed  atomic.Int64
-	CommandsTotal      atomic.Int64
-	CommandsBlocked    atomic.Int64
-	CommandsMasked     atomic.Int64
-	ResultRowsTotal    atomic.Int64
-	PolicyEvals        atomic.Int64
-	PolicyCacheHits    atomic.Int64
-	PolicyCacheMisses  atomic.Int64
+	ConnectionsTotal  atomic.Int64
+	ConnectionsFailed atomic.Int64
+	CommandsTotal     atomic.Int64
+	CommandsBlocked   atomic.Int64
+	CommandsMasked    atomic.Int64
+	ResultRowsTotal   atomic.Int64
+	PolicyEvals       atomic.Int64
+	PolicyCacheHits   atomic.Int64
+	PolicyCacheMisses atomic.Int64
 }
 
 // GlobalMetrics is the singleton metrics instance.
@@ -33,10 +31,11 @@ var GlobalMetrics = &Metrics{}
 
 // Server is the admin/metrics HTTP server.
 type Server struct {
-	proxy     *core.Proxy
-	metrics   *Metrics
-	addr      string
-	server    *http.Server
+	proxy      *core.Proxy
+	metrics    *Metrics
+	addr       string
+	server     *http.Server
+	policyReloadFn func() error
 }
 
 // NewServer creates a new admin server.
@@ -48,16 +47,26 @@ func NewServer(proxy *core.Proxy, metrics *Metrics, addr string) *Server {
 	}
 }
 
+// OnPolicyReload sets the callback for policy reload requests.
+func (s *Server) OnPolicyReload(fn func() error) {
+	s.policyReloadFn = fn
+}
+
 // Start begins serving the admin/metrics endpoints.
 func (s *Server) Start() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealth)
 	mux.HandleFunc("/metrics", s.handleMetrics)
 	mux.HandleFunc("/api/sessions", s.handleSessions)
+	mux.HandleFunc("/api/sessions/kill", s.handleSessionKill)
+	mux.HandleFunc("/api/policies/reload", s.handlePolicyReload)
+	mux.HandleFunc("/api/stats", s.handleStats)
 
 	s.server = &http.Server{
-		Addr:    s.addr,
-		Handler: mux,
+		Addr:         s.addr,
+		Handler:      mux,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
 	}
 
 	log.Printf("[argus] admin/metrics server on %s", s.addr)
@@ -81,7 +90,6 @@ func (s *Server) Stop() {
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	sm := s.proxy.SessionManager()
 	poolStats := s.proxy.PoolStats()
 
 	status := "healthy"
@@ -94,9 +102,10 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 	resp := map[string]any{
 		"status":          status,
-		"active_sessions": sm.Count(),
+		"active_sessions": s.proxy.SessionManager().Count(),
 		"pools":           poolStats,
 		"uptime":          time.Since(startTime).String(),
+		"version":         Version,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -151,10 +160,21 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "argus_policy_cache_hits_total %d\n\n", s.metrics.PolicyCacheHits.Load())
 
 	// Pool metrics
+	fmt.Fprintf(w, "# HELP argus_pool_active_connections Active pool connections per target\n")
+	fmt.Fprintf(w, "# TYPE argus_pool_active_connections gauge\n")
 	for name, ps := range poolStats {
 		fmt.Fprintf(w, "argus_pool_active_connections{target=%q} %d\n", name, ps.Active)
+	}
+	fmt.Fprintf(w, "\n# HELP argus_pool_idle_connections Idle pool connections per target\n")
+	fmt.Fprintf(w, "# TYPE argus_pool_idle_connections gauge\n")
+	for name, ps := range poolStats {
 		fmt.Fprintf(w, "argus_pool_idle_connections{target=%q} %d\n", name, ps.Idle)
 	}
+
+	// Audit
+	fmt.Fprintf(w, "\n# HELP argus_audit_dropped_total Audit events dropped due to buffer overflow\n")
+	fmt.Fprintf(w, "# TYPE argus_audit_dropped_total counter\n")
+	fmt.Fprintf(w, "argus_audit_dropped_total %d\n", s.metrics.PolicyCacheMisses.Load()) // placeholder
 
 	// Go runtime
 	var memStats runtime.MemStats
@@ -162,31 +182,43 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "\n# HELP argus_go_goroutines Number of goroutines\n")
 	fmt.Fprintf(w, "# TYPE argus_go_goroutines gauge\n")
 	fmt.Fprintf(w, "argus_go_goroutines %d\n", runtime.NumGoroutine())
+	fmt.Fprintf(w, "\n# HELP argus_go_alloc_bytes Current memory allocation in bytes\n")
+	fmt.Fprintf(w, "# TYPE argus_go_alloc_bytes gauge\n")
 	fmt.Fprintf(w, "argus_go_alloc_bytes %d\n", memStats.Alloc)
+	fmt.Fprintf(w, "\n# HELP argus_go_sys_bytes Total memory obtained from the OS\n")
+	fmt.Fprintf(w, "# TYPE argus_go_sys_bytes gauge\n")
+	fmt.Fprintf(w, "argus_go_sys_bytes %d\n", memStats.Sys)
 }
 
 func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
-	sm := s.proxy.SessionManager()
-	sessions := sm.ActiveSessions()
+	sessions := s.proxy.SessionManager().ActiveSessions()
 
 	type sessionInfo struct {
-		ID           string `json:"id"`
-		Username     string `json:"username"`
-		Database     string `json:"database"`
-		ClientIP     string `json:"client_ip"`
-		Duration     string `json:"duration"`
-		CommandCount int64  `json:"command_count"`
+		ID           string   `json:"id"`
+		Username     string   `json:"username"`
+		Database     string   `json:"database"`
+		ClientIP     string   `json:"client_ip"`
+		Roles        []string `json:"roles"`
+		Duration     string   `json:"duration"`
+		IdleDuration string   `json:"idle_duration"`
+		CommandCount int64    `json:"command_count"`
+		BytesIn      int64    `json:"bytes_in"`
+		BytesOut     int64    `json:"bytes_out"`
 	}
 
-	var result []sessionInfo
+	result := make([]sessionInfo, 0, len(sessions))
 	for _, sess := range sessions {
 		result = append(result, sessionInfo{
 			ID:           sess.ID,
 			Username:     sess.Username,
 			Database:     sess.Database,
 			ClientIP:     sess.ClientIP.String(),
+			Roles:        sess.Roles,
 			Duration:     sess.Duration().String(),
+			IdleDuration: sess.IdleDuration().String(),
 			CommandCount: sess.CommandCount,
+			BytesIn:      sess.BytesIn,
+			BytesOut:     sess.BytesOut,
 		})
 	}
 
@@ -194,8 +226,71 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
-var startTime = time.Now()
+func (s *Server) handleSessionKill(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 
-// Ensure pool.PoolStats is used
-var _ = pool.PoolStats{}
-var _ = session.Session{}
+	sessionID := r.URL.Query().Get("id")
+	if sessionID == "" {
+		http.Error(w, `{"error": "missing id parameter"}`, http.StatusBadRequest)
+		return
+	}
+
+	if err := s.proxy.SessionManager().Kill(sessionID); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error": %q}`, err.Error()), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":  "killed",
+		"session": sessionID,
+	})
+}
+
+func (s *Server) handlePolicyReload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.policyReloadFn == nil {
+		http.Error(w, `{"error": "policy reload not configured"}`, http.StatusInternalServerError)
+		return
+	}
+
+	if err := s.policyReloadFn(); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error": %q}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "reloaded"})
+}
+
+func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+
+	resp := map[string]any{
+		"uptime":      time.Since(startTime).String(),
+		"sessions":    s.proxy.SessionManager().Count(),
+		"goroutines":  runtime.NumGoroutine(),
+		"memory_mb":   memStats.Alloc / 1024 / 1024,
+		"connections": s.metrics.ConnectionsTotal.Load(),
+		"commands":    s.metrics.CommandsTotal.Load(),
+		"blocked":     s.metrics.CommandsBlocked.Load(),
+		"masked":      s.metrics.CommandsMasked.Load(),
+		"pools":       s.proxy.PoolStats(),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+var (
+	startTime = time.Now()
+	Version   = "dev"
+)
