@@ -145,5 +145,6 @@ type ConditionConfig struct {
 	WorkDays       []string `json:"work_days,omitempty"`
 	SourceIPIn     []string `json:"source_ip_in,omitempty"`
 	SourceIPNotIn  []string `json:"source_ip_not_in,omitempty"`
-	MaxCostGTE     int      `json:"max_cost_gte,omitempty"`     // block queries with cost >= threshold
+	MaxCostGTE     int      `json:"max_cost_gte,omitempty"`
+	SQLRegex       []string `json:"sql_regex,omitempty"` // regex patterns to match against SQL
 }

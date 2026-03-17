@@ -226,6 +226,16 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "argus_protocol_commands_total{protocol=%q} %d\n", proto, count)
 	}
 
+	// Per-database stats
+	dbStats := metrics.DatabaseStats.Snapshot()
+	fmt.Fprintf(w, "\n# HELP argus_database_queries_total Queries per database\n")
+	fmt.Fprintf(w, "# TYPE argus_database_queries_total counter\n")
+	for db, stats := range dbStats {
+		fmt.Fprintf(w, "argus_database_queries_total{database=%q} %d\n", db, stats["queries"])
+		fmt.Fprintf(w, "argus_database_writes_total{database=%q} %d\n", db, stats["writes"])
+		fmt.Fprintf(w, "argus_database_rows_total{database=%q} %d\n", db, stats["rows"])
+	}
+
 	// Go runtime
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)

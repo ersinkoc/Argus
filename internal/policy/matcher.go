@@ -172,6 +172,13 @@ func matchCondition(ctx *Context, cond *ConditionConfig) bool {
 		}
 	}
 
+	// SQL regex patterns
+	if len(cond.SQLRegex) > 0 {
+		if !MatchSQLRegex(ctx.RawSQL, cond.SQLRegex) {
+			return false
+		}
+	}
+
 	return true
 }
 

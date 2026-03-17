@@ -36,6 +36,7 @@ type Proxy struct {
 	queryRecorder   *audit.QueryRecorder
 	slowQueryLogger *audit.SlowQueryLogger
 	rewriter        *inspection.Rewriter
+	sessionLimiter  *session.ConcurrencyLimiter
 	onEvent         func(any) // broadcast callback (e.g. WebSocket)
 }
 
@@ -260,6 +261,23 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 			// Full implementation would reconnect here
 			target = newTarget
 		}
+	}
+
+	// Check concurrent session limit
+	if p.sessionLimiter != nil {
+		if !p.sessionLimiter.Acquire(sessionInfo.Username) {
+			handler.WriteError(context.Background(), clientConn, "53300",
+				"Too many connections for user "+sessionInfo.Username)
+			p.auditLogger.Log(audit.Event{
+				EventType: audit.ConnectionClose.String(),
+				Username:  sessionInfo.Username,
+				ClientIP:  remoteAddr.IP.String(),
+				Action:    "rejected",
+				Reason:    "concurrent session limit exceeded",
+			})
+			return
+		}
+		defer p.sessionLimiter.Release(sessionInfo.Username)
 	}
 
 	// Create session
