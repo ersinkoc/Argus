@@ -66,6 +66,7 @@ type Context struct {
 	RawSQL      string
 	Confidence  float64
 	HasWhere    bool
+	CostScore   int // query cost estimate 0-100
 }
 
 // Decision is the result of policy evaluation.
@@ -144,4 +145,5 @@ type ConditionConfig struct {
 	WorkDays       []string `json:"work_days,omitempty"`
 	SourceIPIn     []string `json:"source_ip_in,omitempty"`
 	SourceIPNotIn  []string `json:"source_ip_not_in,omitempty"`
+	MaxCostGTE     int      `json:"max_cost_gte,omitempty"`     // block queries with cost >= threshold
 }

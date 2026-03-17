@@ -1,0 +1,44 @@
+{
+  "server": {
+    "listeners": [
+      {"address": ":15432", "protocol": "postgresql"}
+    ]
+  },
+  "targets": [
+    {
+      "name": "local-pg",
+      "protocol": "postgresql",
+      "host": "127.0.0.1",
+      "port": 5432
+    }
+  ],
+  "routing": {
+    "default_target": "local-pg"
+  },
+  "policy": {
+    "files": [],
+    "reload_interval": "5s"
+  },
+  "pool": {
+    "max_connections_per_target": 20,
+    "min_idle_connections": 2,
+    "connection_max_lifetime": "30m",
+    "connection_timeout": "5s",
+    "health_check_interval": "30s"
+  },
+  "session": {
+    "idle_timeout": "1h",
+    "max_duration": "24h"
+  },
+  "audit": {
+    "level": "verbose",
+    "outputs": [{"type": "stdout"}],
+    "buffer_size": 1000,
+    "sql_max_length": 8192,
+    "pii_auto_detect": false
+  },
+  "metrics": {
+    "enabled": true,
+    "address": ":9091"
+  }
+}

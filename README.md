@@ -272,6 +272,14 @@ Use `$ENV{VAR}` syntax in config for secrets:
 | `/api/approvals/approve?id=` | POST | Approve a pending command |
 | `/api/approvals/deny?id=` | POST | Deny a pending command |
 | `/api/audit/search?username=&action=` | GET | Search audit logs |
+| `/api/audit/replay?session_id=` | GET | Replay a session's queries |
+| `/api/audit/fingerprints?limit=` | GET | Top query patterns |
+| `/api/audit/compact` | POST | Clean up old audit log files |
+| `/api/policies/dryrun?username=&sql=` | POST | Test policy without enforcing |
+| `/api/config/export` | GET | Export current configuration |
+| `/api/dashboard` | GET | Aggregated dashboard data |
+| `/ready` | GET | Kubernetes readiness probe |
+| `/livez` | GET | Kubernetes liveness probe |
 | `/api/events/ws` | WebSocket | Live event stream |
 
 ---
@@ -384,7 +392,7 @@ make test-verbose      # Verbose output
 make test-cover        # Coverage report (HTML)
 ```
 
-Current: **230+ tests** across 14 packages, **59% coverage**.
+Current: **275+ tests** across 14 packages, **~60% coverage**.
 
 ---
 

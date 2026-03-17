@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -83,6 +84,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/audit/fingerprints", s.handleFingerprints)
 	mux.HandleFunc("/api/policies/dryrun", s.handleDryRun)
 	mux.HandleFunc("/api/config/export", s.handleConfigExport)
+	mux.HandleFunc("/api/audit/compact", s.handleCompact)
 	mux.HandleFunc("/api/dashboard", s.handleDashboard)
 	mux.HandleFunc("/ready", s.handleReady)
 	mux.HandleFunc("/livez", s.handleLive)
@@ -640,6 +642,48 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleLive(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "alive")
+}
+
+func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	logDir := ""
+	if s.auditLogPath != "" {
+		logDir = filepath.Dir(s.auditLogPath)
+	}
+	if logDir == "" || logDir == "." {
+		http.Error(w, `{"error":"audit log path not configured"}`, http.StatusInternalServerError)
+		return
+	}
+
+	dryRun := r.URL.Query().Get("dry_run") == "true"
+	maxAge := 7 * 24 * time.Hour // default 7 days
+	if v := r.URL.Query().Get("max_age_hours"); v != "" {
+		hours := 0
+		for _, c := range v {
+			if c >= '0' && c <= '9' {
+				hours = hours*10 + int(c-'0')
+			}
+		}
+		if hours > 0 {
+			maxAge = time.Duration(hours) * time.Hour
+		}
+	}
+
+	result, err := audit.CompactLogs(logDir, audit.CompactionConfig{
+		MaxAge: maxAge,
+		DryRun: dryRun,
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
 
 var (

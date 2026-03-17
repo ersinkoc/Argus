@@ -306,6 +306,9 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 		sess.IncrementCommand()
 		metrics.Global.CommandsTotal.Add(1)
 
+		// Query cost estimation (before policy eval so policies can use it)
+		costEstimate := inspection.EstimateCost(cmd)
+
 		// Build policy context
 		policyCtx := &policy.Context{
 			Username:    sess.Username,
@@ -321,6 +324,7 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 			RawSQL:      cmd.Raw,
 			Confidence:  cmd.Confidence,
 			HasWhere:    cmd.HasWhere,
+			CostScore:   costEstimate.Score,
 		}
 
 		// Evaluate policy
@@ -353,6 +357,17 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 					})
 				}
 			}
+		}
+
+		// Broadcast high-cost query alert
+		if costEstimate.Score >= 80 && p.onEvent != nil {
+			p.onEvent(map[string]any{
+				"type":     "high_cost_query",
+				"username": sess.Username,
+				"database": sess.Database,
+				"cost":     costEstimate.Score,
+				"factors":  costEstimate.Factors,
+			})
 		}
 
 		queryStart := time.Now()

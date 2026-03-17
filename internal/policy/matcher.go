@@ -165,6 +165,13 @@ func matchCondition(ctx *Context, cond *ConditionConfig) bool {
 		}
 	}
 
+	// Query cost threshold
+	if cond.MaxCostGTE > 0 {
+		if ctx.CostScore < cond.MaxCostGTE {
+			return false
+		}
+	}
+
 	return true
 }
 

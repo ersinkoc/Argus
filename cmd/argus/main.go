@@ -51,7 +51,8 @@ func main() {
 
 	log.Printf("Argus — The Hundred-Eyed Database Guardian")
 	log.Printf("Version: %s (built %s)", version, buildTime)
-	log.Printf("Configuration loaded: %s", cfg)
+	// Startup banner
+	fmt.Print(core.StartupBanner(cfg, version))
 
 	// Initialize audit logger
 	auditLevel := audit.ParseLogLevel(cfg.Audit.Level)
