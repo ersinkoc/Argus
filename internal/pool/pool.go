@@ -50,10 +50,32 @@ func (p *Pool) SetConnectFunc(fn func(ctx context.Context) (net.Conn, error)) {
 	p.connectFn = fn
 }
 
-// Start begins background health checking and idle connection maintenance.
+// Start begins background health checking and warms up idle connections.
 func (p *Pool) Start() {
 	p.wg.Add(1)
 	go p.healthCheckLoop()
+
+	// Warmup: pre-create minimum idle connections
+	if p.minIdle > 0 {
+		go p.warmup()
+	}
+}
+
+func (p *Pool) warmup() {
+	for i := 0; i < p.minIdle; i++ {
+		conn, err := p.createConn(context.Background())
+		if err != nil {
+			log.Printf("[argus] pool warmup failed for %s: %v", p.target, err)
+			return
+		}
+		p.mu.Lock()
+		p.idle = append(p.idle, conn)
+		p.total++
+		p.mu.Unlock()
+	}
+	if p.minIdle > 0 {
+		log.Printf("[argus] pool warmup: %d idle connections for %s", p.minIdle, p.target)
+	}
 }
 
 // Acquire gets a connection from the pool or creates a new one.

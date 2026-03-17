@@ -12,11 +12,15 @@ import (
 )
 
 // Handler implements protocol.Handler for MySQL.
-type Handler struct{}
+type Handler struct {
+	stmtStore *StmtStore // tracks prepared statements per connection
+}
 
 // New creates a new MySQL protocol handler.
 func New() *Handler {
-	return &Handler{}
+	return &Handler{
+		stmtStore: NewStmtStore(),
+	}
 }
 
 func (h *Handler) Name() string {
@@ -140,6 +144,46 @@ func (h *Handler) ReadCommand(ctx context.Context, client net.Conn) (*inspection
 		cmd := &inspection.Command{
 			Type:      inspection.CommandADMIN,
 			Raw:       fmt.Sprintf("USE %s", dbName),
+			RiskLevel: inspection.RiskNone,
+		}
+		return cmd, EncodePacket(pkt), nil
+
+	case ComStmtPrepare:
+		// Extract SQL from COM_STMT_PREPARE for inspection
+		sql := string(pkt.Payload[1:])
+		cmd := inspection.Classify(sql)
+		cmd.Confidence = 0.8 // prepared statement, no param values yet
+		return cmd, EncodePacket(pkt), nil
+
+	case ComStmtExecute:
+		// Look up SQL from stored prepared statement
+		stmtID, sql := HandleExecute(pkt, h.stmtStore)
+		cmd := &inspection.Command{
+			Type:       inspection.CommandUNKNOWN,
+			Raw:        sql,
+			RiskLevel:  inspection.RiskNone,
+			Confidence: 0.5,
+		}
+		if sql != "" {
+			cmd = inspection.Classify(sql)
+			cmd.Confidence = 0.5
+		}
+		_ = stmtID
+		return cmd, EncodePacket(pkt), nil
+
+	case ComStmtClose:
+		HandleClose(pkt, h.stmtStore)
+		cmd := &inspection.Command{
+			Type:      inspection.CommandADMIN,
+			Raw:       "[STMT_CLOSE]",
+			RiskLevel: inspection.RiskNone,
+		}
+		return cmd, EncodePacket(pkt), nil
+
+	case ComStmtReset:
+		cmd := &inspection.Command{
+			Type:      inspection.CommandADMIN,
+			Raw:       "[STMT_RESET]",
 			RiskLevel: inspection.RiskNone,
 		}
 		return cmd, EncodePacket(pkt), nil

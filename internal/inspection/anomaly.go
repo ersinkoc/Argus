@@ -1,6 +1,7 @@
 package inspection
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
@@ -21,6 +22,10 @@ type userProfile struct {
 	totalQueries  int64
 	firstSeen     time.Time
 	lastSeen      time.Time
+	// Frequency spike tracking: count queries in sliding windows
+	recentMinute int64     // queries in current minute
+	minuteStart  time.Time // start of current minute window
+	peakMinute   int64     // historical peak queries per minute
 }
 
 // AnomalyAlert represents a detected anomaly.
@@ -65,6 +70,18 @@ func (d *AnomalyDetector) Record(username string, cmdType CommandType, tables []
 	p.hourCounts[ts.Hour()]++
 	p.totalQueries++
 	p.lastSeen = ts
+
+	// Update frequency tracking
+	if ts.Sub(p.minuteStart) > time.Minute {
+		// New minute window
+		if p.recentMinute > p.peakMinute {
+			p.peakMinute = p.recentMinute
+		}
+		p.recentMinute = 1
+		p.minuteStart = ts
+	} else {
+		p.recentMinute++
+	}
 }
 
 // Check analyzes a query against the user's baseline and returns any anomalies.
@@ -118,6 +135,17 @@ func (d *AnomalyDetector) Check(username string, cmdType CommandType, tables []s
 			Type:        "unusual_hour",
 			Description: "query at an unusual time of day",
 			Score:       0.7,
+			Timestamp:   ts,
+		})
+	}
+
+	// Check frequency spike: current minute rate > 3x historical peak
+	if p.peakMinute > 0 && p.recentMinute > p.peakMinute*3 {
+		alerts = append(alerts, AnomalyAlert{
+			Username:    username,
+			Type:        "frequency_spike",
+			Description: fmt.Sprintf("query rate spike: %d/min vs peak %d/min", p.recentMinute, p.peakMinute),
+			Score:       0.9,
 			Timestamp:   ts,
 		})
 	}

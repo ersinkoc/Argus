@@ -42,7 +42,8 @@ type Server struct {
 	auditLogPath   string
 	recordFile     string
 	dryRunFn       DryRunFunc
-	configData     func() ([]byte, error) // returns current config JSON
+	configData     func() ([]byte, error)
+	authToken      string
 }
 
 // NewServer creates a new admin server.
@@ -52,6 +53,11 @@ func NewServer(provider SessionProvider, addr string) *Server {
 		addr:        addr,
 		EventStream: NewEventStream(),
 	}
+}
+
+// SetAuthToken sets the bearer token for admin API authentication.
+func (s *Server) SetAuthToken(token string) {
+	s.authToken = token
 }
 
 // OnPolicyReload sets the callback for policy reload requests.
@@ -81,9 +87,14 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/ready", s.handleReady)
 	mux.HandleFunc("/livez", s.handleLive)
 
+	var handler http.Handler = mux
+	if s.authToken != "" {
+		handler = NewAuthMiddleware(s.authToken).Wrap(mux)
+	}
+
 	s.server = &http.Server{
 		Addr:         s.addr,
-		Handler:      mux,
+		Handler:      handler,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}

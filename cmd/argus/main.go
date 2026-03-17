@@ -143,6 +143,11 @@ func main() {
 			return nil
 		})
 
+		// Admin API authentication
+		if cfg.Admin.AuthToken != "" {
+			adminServer.SetAuthToken(cfg.Admin.AuthToken)
+		}
+
 		// Wire approval workflow to admin API
 		adminServer.SetApprovalProvider(proxy.ApprovalManager())
 
