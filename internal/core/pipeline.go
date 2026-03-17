@@ -10,6 +10,7 @@ import (
 
 	"github.com/ersinkoc/argus/internal/audit"
 	"github.com/ersinkoc/argus/internal/config"
+	"github.com/ersinkoc/argus/internal/inspection"
 	"github.com/ersinkoc/argus/internal/masking"
 	"github.com/ersinkoc/argus/internal/metrics"
 	"github.com/ersinkoc/argus/internal/policy"
@@ -20,28 +21,50 @@ import (
 )
 
 // Proxy is the main Argus proxy engine.
+// Proxy is the main Argus proxy engine.
 type Proxy struct {
-	cfg            *config.Config
-	router         *Router
-	sessionManager *session.Manager
-	policyEngine   *policy.Engine
-	auditLogger    *audit.Logger
-	pools          map[string]*pool.Pool          // target name → pool
-	rateLimiters   map[string]*ratelimit.Limiter   // policy name → limiter
-	listeners      []*Listener
+	cfg             *config.Config
+	router          *Router
+	sessionManager  *session.Manager
+	policyEngine    *policy.Engine
+	auditLogger     *audit.Logger
+	pools           map[string]*pool.Pool
+	rateLimiters    map[string]*ratelimit.Limiter
+	listeners       []*Listener
+	piiDetector     *masking.PIIDetector
+	approvalManager *ApprovalManager
+	queryRecorder   *audit.QueryRecorder
+	onEvent         func(any) // broadcast callback (e.g. WebSocket)
 }
 
 // NewProxy creates a new proxy engine.
 func NewProxy(cfg *config.Config, policyEngine *policy.Engine, auditLogger *audit.Logger) *Proxy {
 	return &Proxy{
-		cfg:            cfg,
-		router:         NewRouter(),
-		sessionManager: session.NewManager(cfg.Session.IdleTimeout, cfg.Session.MaxDuration),
-		policyEngine:   policyEngine,
-		auditLogger:    auditLogger,
-		pools:          make(map[string]*pool.Pool),
-		rateLimiters:   make(map[string]*ratelimit.Limiter),
+		cfg:             cfg,
+		router:          NewRouter(),
+		sessionManager:  session.NewManager(cfg.Session.IdleTimeout, cfg.Session.MaxDuration),
+		policyEngine:    policyEngine,
+		auditLogger:     auditLogger,
+		pools:           make(map[string]*pool.Pool),
+		rateLimiters:    make(map[string]*ratelimit.Limiter),
+		piiDetector:     masking.NewPIIDetector(),
+		approvalManager: NewApprovalManager(cfg.Session.IdleTimeout),
 	}
+}
+
+// SetQueryRecorder enables forensic query recording.
+func (p *Proxy) SetQueryRecorder(r *audit.QueryRecorder) {
+	p.queryRecorder = r
+}
+
+// SetOnEvent sets a broadcast callback for live monitoring.
+func (p *Proxy) SetOnEvent(fn func(any)) {
+	p.onEvent = fn
+}
+
+// ApprovalManager returns the approval manager.
+func (p *Proxy) ApprovalManager() *ApprovalManager {
+	return p.approvalManager
 }
 
 // Start initializes pools, listeners and starts the proxy.
@@ -344,6 +367,53 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 			})
 
 		case policy.ActionMask, policy.ActionAllow, policy.ActionAudit:
+			// Approval workflow for high-risk commands
+			if cmd.RiskLevel >= inspection.RiskHigh && p.approvalManager != nil && p.approvalManager.Count() >= 0 {
+				// Check if policy requires approval (risk >= high and action is not already block)
+				if cmd.RiskLevel >= inspection.RiskCritical {
+					approvalReq := &ApprovalRequest{
+						ID:         fmt.Sprintf("ar-%d", time.Now().UnixNano()),
+						SessionID:  sess.ID,
+						Username:   sess.Username,
+						Database:   sess.Database,
+						SQL:        sanitizedSQL,
+						RiskLevel:  cmd.RiskLevel.String(),
+						PolicyName: decision.PolicyName,
+					}
+
+					// Notify via WebSocket
+					if p.onEvent != nil {
+						p.onEvent(map[string]any{
+							"type":    "approval_required",
+							"request": approvalReq,
+						})
+					}
+
+					status, err := p.approvalManager.RequestApproval(ctx, approvalReq)
+					if err != nil || status != ApprovalApproved {
+						reason := "approval denied or timed out"
+						if err != nil {
+							reason = err.Error()
+						}
+						handler.WriteError(ctx, client, "42501",
+							fmt.Sprintf("Command requires approval: %s", reason))
+						p.auditLogger.Log(audit.Event{
+							EventType:   audit.CommandBlocked.String(),
+							SessionID:   sess.ID,
+							Username:    sess.Username,
+							ClientIP:    sess.ClientIP.String(),
+							Database:    sess.Database,
+							Command:     sanitizedSQL,
+							CommandType: cmd.Type.String(),
+							RiskLevel:   cmd.RiskLevel.String(),
+							Action:      "approval_denied",
+							Reason:      reason,
+						})
+						continue
+					}
+				}
+			}
+
 			// Forward command to backend
 			if err := handler.ForwardCommand(ctx, rawMsg, backend); err != nil {
 				log.Printf("[argus] forward error: %v", err)
@@ -364,10 +434,29 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 			}
 
 			duration := time.Since(queryStart)
+			fingerprint := inspection.FingerprintHash(cmd.Raw)
 
 			metrics.Global.ResultRowsTotal.Add(stats.RowCount)
 			if len(stats.MaskedCols) > 0 {
 				metrics.Global.CommandsMasked.Add(1)
+			}
+
+			// Query recording for forensics
+			if p.queryRecorder != nil && p.queryRecorder.Enabled() {
+				p.queryRecorder.Record(audit.QueryRecord{
+					Timestamp:   queryStart,
+					SessionID:   sess.ID,
+					Username:    sess.Username,
+					Database:    sess.Database,
+					SQL:         cmd.Raw,
+					CommandType: cmd.Type.String(),
+					Tables:      cmd.Tables,
+					Duration:    duration.Microseconds(),
+					RowCount:    stats.RowCount,
+					Action:      decision.Action.String(),
+					PolicyName:  decision.PolicyName,
+					Fingerprint: fingerprint,
+				})
 			}
 
 			// Audit log
@@ -397,6 +486,22 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 			}
 
 			p.auditLogger.Log(event)
+
+			// Broadcast event for live monitoring
+			if p.onEvent != nil {
+				p.onEvent(map[string]any{
+					"type":        "command",
+					"session_id":  sess.ID,
+					"username":    sess.Username,
+					"database":    sess.Database,
+					"command":     cmd.Type.String(),
+					"tables":      cmd.Tables,
+					"action":      decision.Action.String(),
+					"rows":        stats.RowCount,
+					"duration_us": duration.Microseconds(),
+					"fingerprint": fingerprint,
+				})
+			}
 		}
 	}
 }

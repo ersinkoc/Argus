@@ -20,6 +20,13 @@ type SessionProvider interface {
 	PoolStats() map[string]pool.PoolStats
 }
 
+// ApprovalProvider gives access to approval workflow.
+type ApprovalProvider interface {
+	Approve(id, approver string) error
+	Deny(id, approver, reason string) error
+	PendingRequests() []any
+}
+
 // Server is the admin/metrics HTTP server.
 type Server struct {
 	provider       SessionProvider
@@ -27,6 +34,7 @@ type Server struct {
 	server         *http.Server
 	policyReloadFn func() error
 	EventStream    *EventStream
+	approvalFn     ApprovalProvider
 }
 
 // NewServer creates a new admin server.
@@ -53,6 +61,9 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/policies/reload", s.handlePolicyReload)
 	mux.HandleFunc("/api/stats", s.handleStats)
 	mux.HandleFunc("/api/events/ws", s.EventStream.HandleWebSocket)
+	mux.HandleFunc("/api/approvals", s.handleApprovals)
+	mux.HandleFunc("/api/approvals/approve", s.handleApprovalAction)
+	mux.HandleFunc("/api/approvals/deny", s.handleApprovalDeny)
 
 	s.server = &http.Server{
 		Addr:         s.addr,
@@ -277,6 +288,73 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+// SetApprovalProvider sets the approval workflow provider.
+func (s *Server) SetApprovalProvider(ap ApprovalProvider) {
+	s.approvalFn = ap
+}
+
+func (s *Server) handleApprovals(w http.ResponseWriter, r *http.Request) {
+	if s.approvalFn == nil {
+		json.NewEncoder(w).Encode([]any{})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(s.approvalFn.PendingRequests())
+}
+
+func (s *Server) handleApprovalAction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.approvalFn == nil {
+		http.Error(w, `{"error":"approval not configured"}`, http.StatusInternalServerError)
+		return
+	}
+	id := r.URL.Query().Get("id")
+	approver := r.URL.Query().Get("approver")
+	if id == "" {
+		http.Error(w, `{"error":"missing id"}`, http.StatusBadRequest)
+		return
+	}
+	if approver == "" {
+		approver = "admin"
+	}
+	if err := s.approvalFn.Approve(id, approver); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "approved", "id": id})
+}
+
+func (s *Server) handleApprovalDeny(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.approvalFn == nil {
+		http.Error(w, `{"error":"approval not configured"}`, http.StatusInternalServerError)
+		return
+	}
+	id := r.URL.Query().Get("id")
+	approver := r.URL.Query().Get("approver")
+	reason := r.URL.Query().Get("reason")
+	if id == "" {
+		http.Error(w, `{"error":"missing id"}`, http.StatusBadRequest)
+		return
+	}
+	if approver == "" {
+		approver = "admin"
+	}
+	if err := s.approvalFn.Deny(id, approver, reason); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "denied", "id": id})
 }
 
 var (

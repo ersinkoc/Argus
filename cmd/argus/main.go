@@ -103,6 +103,29 @@ func main() {
 	// Create and start proxy
 	admin.Version = version
 	proxy := core.NewProxy(cfg, policyEngine, auditLogger)
+
+	// Query recording
+	if cfg.Audit.RecordFile != "" {
+		recorder, err := audit.NewQueryRecorder(cfg.Audit.RecordFile)
+		if err != nil {
+			log.Printf("Warning: query recorder failed: %v", err)
+		} else {
+			proxy.SetQueryRecorder(recorder)
+			log.Printf("Query recording enabled: %s", cfg.Audit.RecordFile)
+		}
+	}
+
+	// SIEM webhook
+	if cfg.Audit.WebhookURL != "" {
+		wh := audit.NewWebhookWriter(audit.WebhookConfig{
+			URL:       cfg.Audit.WebhookURL,
+			BatchSize: 100,
+		})
+		auditLogger.AddWriter(wh)
+		wh.Start()
+		log.Printf("SIEM webhook enabled: %s", cfg.Audit.WebhookURL)
+	}
+
 	if err := proxy.Start(); err != nil {
 		log.Fatalf("Failed to start proxy: %v", err)
 	}
@@ -118,6 +141,15 @@ func main() {
 			policyEngine.InvalidateCache()
 			return nil
 		})
+
+		// Wire approval workflow to admin API
+		adminServer.SetApprovalProvider(proxy.ApprovalManager())
+
+		// Wire WebSocket live monitoring
+		proxy.SetOnEvent(func(event any) {
+			adminServer.EventStream.Broadcast(event)
+		})
+
 		if err := adminServer.Start(); err != nil {
 			log.Printf("Warning: admin server failed to start: %v", err)
 		}

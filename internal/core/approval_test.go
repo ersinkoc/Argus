@@ -117,7 +117,8 @@ func TestApprovalPendingRequests(t *testing.T) {
 
 	// Approve all
 	for _, p := range pending {
-		am.Approve(p.ID, "admin")
+		req := p.(*ApprovalRequest)
+		am.Approve(req.ID, "admin")
 	}
 
 	if am.Count() != 0 {

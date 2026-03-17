@@ -130,12 +130,12 @@ func (am *ApprovalManager) Deny(id, approver, reason string) error {
 	return nil
 }
 
-// PendingRequests returns all pending approval requests.
-func (am *ApprovalManager) PendingRequests() []*ApprovalRequest {
+// PendingRequests returns all pending approval requests (as []any for interface compat).
+func (am *ApprovalManager) PendingRequests() []any {
 	am.mu.RLock()
 	defer am.mu.RUnlock()
 
-	result := make([]*ApprovalRequest, 0, len(am.pending))
+	result := make([]any, 0, len(am.pending))
 	for _, req := range am.pending {
 		result = append(result, req)
 	}

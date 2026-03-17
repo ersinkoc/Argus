@@ -170,6 +170,9 @@ type AuditConfig struct {
 	Outputs      []AuditOutput  `json:"outputs"`
 	BufferSize   int            `json:"buffer_size"`
 	SQLMaxLength int            `json:"sql_max_length"`
+	RecordFile   string         `json:"record_file,omitempty"` // forensic query recording
+	PIIAutoDetect bool          `json:"pii_auto_detect"`       // auto-detect PII columns
+	WebhookURL   string         `json:"webhook_url,omitempty"` // SIEM webhook endpoint
 }
 
 type AuditOutput struct {
