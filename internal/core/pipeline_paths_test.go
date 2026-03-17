@@ -11,6 +11,7 @@ import (
 	"github.com/ersinkoc/argus/internal/inspection"
 	"github.com/ersinkoc/argus/internal/policy"
 	pgcodec "github.com/ersinkoc/argus/internal/protocol/pg"
+	"github.com/ersinkoc/argus/internal/session"
 )
 
 // --- handleConnection: nil handler (unknown protocol) ---
@@ -393,48 +394,16 @@ func TestProxyPIIWithMaskingRules(t *testing.T) {
 	pgcodec.WriteMessage(conn, &pgcodec.Message{Type: pgcodec.MsgTerminate, Payload: nil})
 }
 
-// --- Stop: drain with deadline force-kill ---
+// --- Stop: drain loop coverage (unit-level) ---
 
-func TestProxyStopForceKillDrain(t *testing.T) {
-	backendLn, _ := net.Listen("tcp", "127.0.0.1:0")
-	defer backendLn.Close()
-	backendHost, backendPort, _ := net.SplitHostPort(backendLn.Addr().String())
-	port := parsePort(backendPort)
-
-	go func() {
-		conn, _ := backendLn.Accept()
-		if conn == nil {
-			return
-		}
-		defer conn.Close()
-		pgcodec.ReadStartupMessage(conn)
-		authOk := make([]byte, 4)
-		binary.BigEndian.PutUint32(authOk, 0)
-		pgcodec.WriteMessage(conn, &pgcodec.Message{Type: pgcodec.MsgAuth, Payload: authOk})
-		ps := append([]byte("server_version"), 0)
-		ps = append(ps, []byte("16")...)
-		ps = append(ps, 0)
-		pgcodec.WriteMessage(conn, &pgcodec.Message{Type: pgcodec.MsgParameterStatus, Payload: ps})
-		pgcodec.WriteMessage(conn, &pgcodec.Message{Type: pgcodec.MsgBackendKeyData, Payload: make([]byte, 8)})
-		pgcodec.WriteMessage(conn, pgcodec.BuildReadyForQuery('I'))
-		// Block on reading (never respond to queries) — keeps session alive
-		buf := make([]byte, 65536)
-		conn.Read(buf)
-	}()
-
+func TestProxyStopDrainLoop(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Server.Listeners = []config.ListenerConfig{{Address: "127.0.0.1:0", Protocol: "postgresql"}}
-	cfg.Targets = []config.Target{{Name: "t", Protocol: "postgresql", Host: backendHost, Port: port}}
-	cfg.Routing.DefaultTarget = "t"
 	cfg.Pool.MinIdleConnections = 0
 	cfg.Pool.HealthCheckInterval = 0
 	cfg.Audit.Outputs = nil
 
-	pset := &policy.PolicySet{
-		Defaults: policy.DefaultsConfig{Action: "allow"},
-		Roles:    map[string]policy.Role{},
-		Policies: []policy.PolicyRule{{Name: "allow", Match: policy.MatchConfig{}, Action: "allow"}},
-	}
+	pset := &policy.PolicySet{Defaults: policy.DefaultsConfig{Action: "allow"}, Roles: map[string]policy.Role{}}
 	loader := policy.NewLoader(nil, 0)
 	loader.SetCurrent(pset)
 	logger := audit.NewLogger(10, audit.LevelMinimal, 4096)
@@ -444,33 +413,22 @@ func TestProxyStopForceKillDrain(t *testing.T) {
 	proxy := NewProxy(cfg, policy.NewEngine(loader), logger)
 	proxy.Start()
 
-	proxyAddr := proxy.listeners[0].listener.Addr().String()
-	conn, _ := net.DialTimeout("tcp", proxyAddr, time.Second)
+	// Inject a session directly into the session manager so it's "active" when Stop runs
+	// This bypasses handleConnection but exercises the drain loop code path
+	clientConn, _ := net.Pipe()
+	sess := proxy.sessionManager.Create(&session.Info{
+		Username: "drain_test",
+		Database: "db",
+		ClientIP: net.ParseIP("127.0.0.1"),
+	}, clientConn)
 
-	startup := pgcodec.BuildStartupMessage(map[string]string{"user": "stuck_user", "database": "db"})
-	conn.Write(startup)
-	for {
-		conn.SetReadDeadline(time.Now().Add(3 * time.Second))
-		msg, err := pgcodec.ReadMessage(conn)
-		if err != nil {
-			break
-		}
-		if msg.Type == pgcodec.MsgReadyForQuery {
-			break
-		}
-	}
-
-	// Send query that backend will never respond to
-	query := append([]byte("SELECT pg_sleep(9999)"), 0)
-	pgcodec.WriteMessage(conn, &pgcodec.Message{Type: pgcodec.MsgQuery, Payload: query})
-
-	// Stop will hit 10s deadline and force-kill
-	// But we don't want to wait 10s in a test — just exercise the drain entry path
-	// Close the client connection after a delay so the commandLoop can exit
+	// Session is now active — Stop should enter the drain loop
+	// Remove it after a short delay so drain completes via ticker
 	go func() {
-		time.Sleep(2 * time.Second)
-		conn.Close()
+		time.Sleep(600 * time.Millisecond) // > 500ms ticker interval
+		proxy.sessionManager.Remove(sess.ID)
+		clientConn.Close()
 	}()
 
-	proxy.Stop() // exercises drain with active sessions
+	proxy.Stop() // should log "draining 1 active session(s)..." and "all sessions drained"
 }

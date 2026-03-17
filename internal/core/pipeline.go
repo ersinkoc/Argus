@@ -476,54 +476,9 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 			})
 
 		case policy.ActionMask, policy.ActionAllow, policy.ActionAudit:
-			// Approval workflow — disabled by default, only active when admin
-			// explicitly requests approval via API for a specific session.
-			// Auto-triggering on risk level caused production hangs on multi-statement queries.
-			if false {
-				// Reserved for future explicit approval policy integration
-				if cmd.RiskLevel >= inspection.RiskCritical {
-					approvalReq := &ApprovalRequest{
-						ID:         fmt.Sprintf("ar-%d", time.Now().UnixNano()),
-						SessionID:  sess.ID,
-						Username:   sess.Username,
-						Database:   sess.Database,
-						SQL:        sanitizedSQL,
-						RiskLevel:  cmd.RiskLevel.String(),
-						PolicyName: decision.PolicyName,
-					}
-
-					// Notify via WebSocket
-					if p.onEvent != nil {
-						p.onEvent(map[string]any{
-							"type":    "approval_required",
-							"request": approvalReq,
-						})
-					}
-
-					status, err := p.approvalManager.RequestApproval(ctx, approvalReq)
-					if err != nil || status != ApprovalApproved {
-						reason := "approval denied or timed out"
-						if err != nil {
-							reason = err.Error()
-						}
-						handler.WriteError(ctx, client, "42501",
-							fmt.Sprintf("Command requires approval: %s", reason))
-						p.auditLogger.Log(audit.Event{
-							EventType:   audit.CommandBlocked.String(),
-							SessionID:   sess.ID,
-							Username:    sess.Username,
-							ClientIP:    sess.ClientIP.String(),
-							Database:    sess.Database,
-							Command:     sanitizedSQL,
-							CommandType: cmd.Type.String(),
-							RiskLevel:   cmd.RiskLevel.String(),
-							Action:      "approval_denied",
-							Reason:      reason,
-						})
-						continue
-					}
-				}
-			}
+			// Note: approval workflow is available via Admin API (ApprovalManager)
+			// but not auto-triggered here — auto-triggering on risk level caused
+			// production hangs on multi-statement queries.
 
 			// Query rewrite (auto-LIMIT, WHERE injection)
 			if p.rewriter != nil && cmd.Type == inspection.CommandSELECT {
