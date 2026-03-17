@@ -47,6 +47,7 @@ check "PG SELECT rows"    "$PG 'SELECT count(*) FROM e2e_pg'"
 check "PG UPDATE"          "$PG \"UPDATE e2e_pg SET name = 'Updated' WHERE id = 1\""
 check "PG DELETE"          "$PG 'DELETE FROM e2e_pg WHERE id = 1'"
 check "PG DROP TABLE"      "$PG 'DROP TABLE IF EXISTS e2e_pg'"
+check "PG multi-statement" "$PG 'SELECT 1 AS a; SELECT 2 AS b'"
 
 echo ""
 echo -e "${YELLOW}[3/8] MySQL/MariaDB CRUD${NC}"
