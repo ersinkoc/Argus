@@ -476,9 +476,11 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 			})
 
 		case policy.ActionMask, policy.ActionAllow, policy.ActionAudit:
-			// Approval workflow for high-risk commands
-			if cmd.RiskLevel >= inspection.RiskHigh && p.approvalManager != nil && p.approvalManager.Count() >= 0 {
-				// Check if policy requires approval (risk >= high and action is not already block)
+			// Approval workflow — disabled by default, only active when admin
+			// explicitly requests approval via API for a specific session.
+			// Auto-triggering on risk level caused production hangs on multi-statement queries.
+			if false {
+				// Reserved for future explicit approval policy integration
 				if cmd.RiskLevel >= inspection.RiskCritical {
 					approvalReq := &ApprovalRequest{
 						ID:         fmt.Sprintf("ar-%d", time.Now().UnixNano()),
