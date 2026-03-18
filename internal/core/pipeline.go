@@ -90,13 +90,23 @@ func (p *Proxy) ApprovalManager() *ApprovalManager {
 func (p *Proxy) Start() error {
 	// Initialize connection pools for each target
 	for _, target := range p.cfg.Targets {
+		// Server-speaks-first protocols (MySQL, MSSQL) use fresh connections
+		// instead of pool, so disable warmup and health check to avoid
+		// "aborted connection" warnings from unauthenticated TCP probes.
+		minIdle := p.cfg.Pool.MinIdleConnections
+		healthInterval := p.cfg.Pool.HealthCheckInterval
+		if target.Protocol == "mysql" || target.Protocol == "mssql" {
+			minIdle = 0
+			healthInterval = 0 // disable TCP health probe for server-speaks-first
+		}
+
 		pl := pool.NewPool(
 			target.Address(),
 			p.cfg.Pool.MaxConnectionsPerTarget,
-			p.cfg.Pool.MinIdleConnections,
+			minIdle,
 			p.cfg.Pool.ConnectionMaxLifetime,
 			p.cfg.Pool.ConnectionTimeout,
-			p.cfg.Pool.HealthCheckInterval,
+			healthInterval,
 		)
 
 		// Configure TLS for backend connection if enabled

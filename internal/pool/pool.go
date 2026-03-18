@@ -290,6 +290,12 @@ func (p *Pool) checkHealth() {
 		p.mu.Unlock()
 		return
 	}
+
+	// For server-speaks-first protocols (MySQL, MSSQL), drain the greeting
+	// before closing to avoid "aborted connection" warnings on the server.
+	conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+	buf := make([]byte, 1024)
+	conn.Read(buf) // best-effort: read greeting if any
 	conn.Close()
 
 	p.mu.Lock()
