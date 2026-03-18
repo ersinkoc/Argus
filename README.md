@@ -421,9 +421,7 @@ argus/
 - [x] Web dashboard UI (embedded HTML/CSS/JS, real-time at `/ui`)
 - [x] Plugin system (custom transformers, audit writers, registry)
 - [x] Data classification engine (5 sensitivity levels, 17 rules)
-- [ ] Oracle TNS support
-- [ ] Kubernetes operator
-- [ ] Terraform provider
+- [ ] Oracle TNS protocol support
 
 ---
 
@@ -435,7 +433,7 @@ make test-verbose      # Verbose output
 make test-cover        # Coverage report (HTML)
 ```
 
-Current: **760 unit tests + 107 E2E = 867 total**, **85% coverage** (8 packages > 95%).
+Current: **1195 unit tests + 171 E2E**, **92.1% coverage** (19 packages, 4 at 100%).
 
 ### Web Dashboard
 

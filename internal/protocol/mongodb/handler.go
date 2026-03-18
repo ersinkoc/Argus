@@ -132,9 +132,60 @@ func (h *Handler) ReadAndForwardResult(ctx context.Context, backend, client net.
 }
 
 func (h *Handler) WriteError(ctx context.Context, client net.Conn, code string, message string) error {
-	// Build error response as OP_MSG with {ok:0, errmsg: message}
-	// Simplified — real implementation needs proper BSON encoding
-	return nil
+	// Build error response as OP_MSG with BSON document: {ok: 0, errmsg: message, code: 0}
+	bsonDoc := buildErrorBSON(message)
+
+	// OP_MSG: flagBits(4) + section_kind(1) + bson_doc
+	payload := make([]byte, 4+1+len(bsonDoc))
+	// flagBits = 0
+	payload[4] = 0 // section kind 0 (body)
+	copy(payload[5:], bsonDoc)
+
+	msg := &Message{
+		Header: MsgHeader{
+			OpCode: OpMsg,
+		},
+		Payload: payload,
+	}
+
+	return WriteMessage(client, msg)
+}
+
+// buildErrorBSON builds a minimal BSON document: {"ok": 0.0, "errmsg": message, "code": 0}
+func buildErrorBSON(message string) []byte {
+	var buf []byte
+
+	// "ok" : 0.0 (double, type 0x01)
+	buf = append(buf, 0x01)             // type: double
+	buf = append(buf, 'o', 'k', 0x00)  // key: "ok\0"
+	buf = append(buf, 0, 0, 0, 0, 0, 0, 0, 0) // 0.0 as float64
+
+	// "errmsg" : message (string, type 0x02)
+	buf = append(buf, 0x02)                                              // type: string
+	buf = append(buf, 'e', 'r', 'r', 'm', 's', 'g', 0x00)              // key: "errmsg\0"
+	strLen := len(message) + 1                                            // string length includes null terminator
+	buf = append(buf, byte(strLen), byte(strLen>>8), byte(strLen>>16), byte(strLen>>24)) // length (LE)
+	buf = append(buf, []byte(message)...)                                 // value
+	buf = append(buf, 0x00)                                               // null terminator
+
+	// "code" : 0 (int32, type 0x10)
+	buf = append(buf, 0x10)                       // type: int32
+	buf = append(buf, 'c', 'o', 'd', 'e', 0x00)  // key: "code\0"
+	buf = append(buf, 0, 0, 0, 0)                 // 0 as int32
+
+	// Document terminator
+	buf = append(buf, 0x00)
+
+	// Prepend document length (4 bytes LE)
+	docLen := len(buf) + 4
+	doc := make([]byte, 4, docLen)
+	doc[0] = byte(docLen)
+	doc[1] = byte(docLen >> 8)
+	doc[2] = byte(docLen >> 16)
+	doc[3] = byte(docLen >> 24)
+	doc = append(doc, buf...)
+
+	return doc
 }
 
 func (h *Handler) RebuildQuery(rawMsg []byte, newSQL string) []byte {

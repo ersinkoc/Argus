@@ -3,6 +3,7 @@ package mongodb
 import (
 	"context"
 	"net"
+	"strings"
 	"testing"
 	"time"
 )
@@ -82,11 +83,35 @@ func TestHandlerReadAndForwardResult(t *testing.T) {
 
 func TestHandlerWriteError(t *testing.T) {
 	h := New()
-	// WriteError currently returns nil (no-op)
-	err := h.WriteError(context.Background(), nil, "ERR", "test error")
+
+	clientConn, proxyConn := net.Pipe()
+	defer clientConn.Close()
+	defer proxyConn.Close()
+
+	// Read the error message in background
+	go func() {
+		msg, err := ReadMessage(clientConn)
+		if err != nil {
+			return
+		}
+		if msg.Header.OpCode != OpMsg {
+			t.Errorf("expected OP_MSG, got %d", msg.Header.OpCode)
+		}
+		// Check payload contains "errmsg" and our error text
+		payload := string(msg.Payload)
+		if !strings.Contains(payload, "errmsg") {
+			t.Errorf("payload missing errmsg field")
+		}
+		if !strings.Contains(payload, "test error") {
+			t.Errorf("payload missing error message")
+		}
+	}()
+
+	err := h.WriteError(context.Background(), proxyConn, "ERR", "test error")
 	if err != nil {
-		t.Errorf("err: %v", err)
+		t.Errorf("WriteError: %v", err)
 	}
+	time.Sleep(50 * time.Millisecond)
 }
 
 func TestReadCommandLegacyOpCode(t *testing.T) {

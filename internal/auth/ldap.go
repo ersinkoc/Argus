@@ -99,11 +99,169 @@ func (p *LDAPProvider) buildUserDN(username string) string {
 	return fmt.Sprintf("%s=%s,%s", attr, username, p.cfg.BaseDN)
 }
 
-// resolveGroups returns groups for a user.
-// In full implementation, this would do an LDAP search.
+// resolveGroups returns groups for a user by performing an LDAP search.
+// Connects with the service account (BindDN/BindPass) and searches
+// for entries matching the user filter under GroupDN (or BaseDN).
 func (p *LDAPProvider) resolveGroups(username string) []string {
-	// Placeholder — real implementation needs LDAP search
-	return nil
+	if p.cfg.BindDN == "" || p.cfg.BindPass == "" {
+		return nil
+	}
+
+	addr := fmt.Sprintf("%s:%d", p.cfg.Host, p.cfg.Port)
+	var conn net.Conn
+	var err error
+
+	if p.cfg.UseTLS {
+		tlsCfg := &tls.Config{InsecureSkipVerify: p.cfg.SkipVerify}
+		conn, err = tls.DialWithDialer(&net.Dialer{Timeout: p.cfg.Timeout}, "tcp", addr, tlsCfg)
+	} else {
+		conn, err = net.DialTimeout("tcp", addr, p.cfg.Timeout)
+	}
+	if err != nil {
+		return nil
+	}
+	defer conn.Close()
+
+	// Bind as service account
+	if err := ldapSimpleBind(conn, p.cfg.BindDN, p.cfg.BindPass); err != nil {
+		return nil
+	}
+
+	// Search for user's group memberships
+	searchBase := p.cfg.GroupDN
+	if searchBase == "" {
+		searchBase = p.cfg.BaseDN
+	}
+
+	userDN := p.buildUserDN(username)
+	filter := fmt.Sprintf("(%s=%s)", p.cfg.GroupAttr, userDN)
+	groups := ldapSearchGroups(conn, searchBase, filter)
+
+	return groups
+}
+
+// ldapSearchGroups performs an LDAP search and extracts CN values from results.
+func ldapSearchGroups(conn net.Conn, baseDN, filter string) []string {
+	// Build LDAP SearchRequest (msgID=2)
+	searchReq := buildLDAPSearchRequest(2, baseDN, filter, "cn")
+
+	conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	if _, err := conn.Write(searchReq); err != nil {
+		return nil
+	}
+
+	// Read search result entries
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	var groups []string
+
+	for {
+		resp := make([]byte, 4096)
+		n, err := conn.Read(resp)
+		if err != nil || n < 10 {
+			break
+		}
+
+		// Parse entries — extract CN values from SearchResultEntry (0x64)
+		// and stop at SearchResultDone (0x65)
+		data := resp[:n]
+		for i := 0; i < len(data)-2; i++ {
+			if data[i] == 0x65 { // SearchResultDone
+				return groups
+			}
+			if data[i] == 0x64 { // SearchResultEntry
+				cn := extractCNFromEntry(data[i:])
+				if cn != "" {
+					groups = append(groups, cn)
+				}
+			}
+		}
+	}
+	return groups
+}
+
+// extractCNFromEntry extracts the CN (common name) from an LDAP SearchResultEntry.
+func extractCNFromEntry(data []byte) string {
+	// Look for "cn" or "CN" attribute followed by its value
+	for i := 0; i < len(data)-4; i++ {
+		// OCTET STRING containing "cn"
+		if data[i] == 0x04 && i+1 < len(data) && data[i+1] == 2 {
+			if i+4 < len(data) && (data[i+2] == 'c' || data[i+2] == 'C') && (data[i+3] == 'n' || data[i+3] == 'N') {
+				// Next OCTET STRING is the value
+				valStart := i + 4
+				for valStart < len(data)-2 {
+					if data[valStart] == 0x04 {
+						vlen := int(data[valStart+1])
+						if valStart+2+vlen <= len(data) {
+							return string(data[valStart+2 : valStart+2+vlen])
+						}
+					}
+					valStart++
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// buildLDAPSearchRequest creates a minimal LDAP SearchRequest message.
+func buildLDAPSearchRequest(msgID int, baseDN, filter, attr string) []byte {
+	// SearchRequest components:
+	// baseObject: baseDN
+	// scope: wholeSubtree (2)
+	// derefAliases: neverDerefAliases (0)
+	// sizeLimit: 100
+	// timeLimit: 10
+	// typesOnly: false
+	// filter: (attr=value)
+	// attributes: [attr]
+
+	base := berEncodeOctetString(baseDN)
+	scope := berEncodeEnumerated(2)       // wholeSubtree
+	deref := berEncodeEnumerated(0)       // neverDerefAliases
+	sizeLimit := berEncodeInteger(100)
+	timeLimit := berEncodeInteger(10)
+	typesOnly := []byte{0x01, 0x01, 0x00} // BOOLEAN FALSE
+
+	// Encode filter as substring — simplified equality match
+	filterBytes := berEncodeFilter(filter)
+
+	// Attributes: SEQUENCE of OCTET STRING
+	attrBytes := berEncodeSequence(berEncodeOctetString(attr))
+
+	searchBody := append(base, scope...)
+	searchBody = append(searchBody, deref...)
+	searchBody = append(searchBody, sizeLimit...)
+	searchBody = append(searchBody, timeLimit...)
+	searchBody = append(searchBody, typesOnly...)
+	searchBody = append(searchBody, filterBytes...)
+	searchBody = append(searchBody, attrBytes...)
+
+	searchReq := berEncodeApplication(3, searchBody) // SearchRequest is Application[3]
+
+	msgIDBytes := berEncodeInteger(msgID)
+	msgBody := append(msgIDBytes, searchReq...)
+
+	return berEncodeSequence(msgBody)
+}
+
+// berEncodeEnumerated encodes an ENUMERATED BER value.
+func berEncodeEnumerated(val int) []byte {
+	return berEncodeTLV(0x0A, []byte{byte(val)})
+}
+
+// berEncodeFilter encodes an LDAP filter string like "(memberOf=cn=admin,dc=example,dc=com)".
+func berEncodeFilter(filter string) []byte {
+	// Strip outer parens
+	f := strings.TrimPrefix(strings.TrimSuffix(filter, ")"), "(")
+	parts := strings.SplitN(f, "=", 2)
+	if len(parts) != 2 {
+		// Fallback: present filter
+		return berEncodeTLV(0x87, []byte(f)) // context [7] = present
+	}
+	// EqualityMatch: context [3] { attr, value }
+	attr := berEncodeOctetString(parts[0])
+	val := berEncodeOctetString(parts[1])
+	return berEncodeTLV(0xA3, append(attr, val...))
 }
 
 // ldapSimpleBind performs a minimal LDAP simple bind.

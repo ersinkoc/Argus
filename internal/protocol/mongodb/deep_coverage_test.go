@@ -322,9 +322,19 @@ func TestEncodeHeaderFields(t *testing.T) {
 
 // --- WriteError and RebuildQuery ---
 
-func TestWriteErrorNoOp(t *testing.T) {
+func TestWriteErrorSendsOpMsg(t *testing.T) {
 	h := New()
-	err := h.WriteError(context.Background(), nil, "42000", "test")
+	c1, c2 := net.Pipe()
+	defer c1.Close()
+	defer c2.Close()
+
+	go func() {
+		buf := make([]byte, 4096)
+		c1.SetReadDeadline(time.Now().Add(time.Second))
+		c1.Read(buf)
+	}()
+
+	err := h.WriteError(context.Background(), c2, "42000", "access denied")
 	if err != nil {
 		t.Errorf("WriteError: %v", err)
 	}
