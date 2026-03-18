@@ -21,7 +21,7 @@ make cross-all                          # cross-compile linux/darwin/windows
 - **Zero external dependencies** — stdlib only, no CGO, single binary (~7.7MB)
 - Config and policy files use JSON format
 - 4 database protocols: PostgreSQL, MySQL, MSSQL, MongoDB
-- 1176 unit tests, 90.9% coverage (19 packages, min 81.7% admin, 4 at 100%)
+- 1195 unit tests, 92.1% coverage (19 packages, min 91.7% admin, 4 at 100%)
 - 171 E2E tests across 4 scripts: PG + MySQL CRUD, transactions, bulk data, error resilience, admin API, concurrent burst
 
 ### Key Packages (21 packages)
