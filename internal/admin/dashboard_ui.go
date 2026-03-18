@@ -36,7 +36,8 @@ td{padding:8px;color:#e2e8f0;font-size:13px;border-bottom:1px solid #1e293b}
 <div class="g" id="cards"></div>
 <div class="sec"><h2>Targets</h2><div id="tgts"></div></div>
 <div class="sec"><h2>Sessions</h2><table><thead><tr><th>ID</th><th>User</th><th>DB</th><th>Duration</th><th>Cmds</th></tr></thead><tbody id="sess"></tbody></table></div>
-<div class="ft">Argus - The Hundred-Eyed Database Guardian | Refreshes every 5s</div>
+<div class="sec"><h2>Live Events <span id="ws-status" style="font-size:11px;color:#64748b">(connecting...)</span></h2><div id="events" style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:12px;max-height:400px;overflow-y:auto;font-family:monospace;font-size:12px"></div></div>
+<div class="ft">Argus - The Hundred-Eyed Database Guardian | Dashboard refreshes every 5s | Live events via WebSocket</div>
 <script>
 const B=window.location.origin;
 function E(t){return document.getElementById(t)}
@@ -65,6 +66,51 @@ if(!s||s.length===0){const r=document.createElement('tr');const td=document.crea
 else{s.forEach(function(x){const r=document.createElement('tr');[x.id.substr(0,8),x.username,x.database||'-',x.duration,String(x.command_count)].forEach(function(t){const td=document.createElement('td');T(td,t);r.appendChild(td)});tb.appendChild(r)})}
 }catch(e){T(E('st'),'Error')}}
 R();setInterval(R,5000);
+/* Live Events via WebSocket */
+(function(){
+const evDiv=E('events'),wsSt=E('ws-status');
+let ws,reconn=1;
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function addEv(data){
+try{
+const e=JSON.parse(data);
+const row=document.createElement('div');
+row.style.cssText='padding:4px 0;border-bottom:1px solid #1e293b';
+const ts=new Date().toLocaleTimeString();
+const parts=[];
+if(e.type==='command'){
+const color=e.action==='block'?'#f87171':e.action==='mask'?'#fbbf24':'#34d399';
+parts.push(mk('span','',ts+' '));parts[0].style.color='#64748b';
+const act=mk('span','',e.action);act.style.color=color;act.style.fontWeight='bold';
+parts.push(document.createTextNode(' '));parts.push(act);
+parts.push(document.createTextNode(' '+esc(e.username)+'@'+esc(e.database)+' '));
+const cmd=mk('span','',esc(e.command));cmd.style.color='#38bdf8';parts.push(cmd);
+parts.push(document.createTextNode(' ('+e.rows+' rows, '+(e.duration_us/1000).toFixed(1)+'ms)'));
+}else if(e.type==='anomaly'){
+parts.push(document.createTextNode(ts+' ANOMALY '+JSON.stringify(e.alert)));
+row.style.color='#fbbf24';
+}else if(e.type==='high_cost_query'){
+parts.push(document.createTextNode(ts+' HIGH COST '+esc(e.username)+' cost='+e.cost));
+row.style.color='#f87171';
+}else if(e.type==='query_rewrite'){
+parts.push(document.createTextNode(ts+' REWRITE '+esc(e.username)+' '+JSON.stringify(e.rewrites)));
+row.style.color='#a78bfa';
+}else{parts.push(document.createTextNode(ts+' '+JSON.stringify(e)))}
+parts.forEach(function(p){row.appendChild(p)});
+evDiv.insertBefore(row,evDiv.firstChild);
+while(evDiv.children.length>200)evDiv.removeChild(evDiv.lastChild);
+}catch(ex){const row=document.createElement('div');T(row,data);evDiv.insertBefore(row,evDiv.firstChild)}
+}
+function connect(){
+const proto=location.protocol==='https:'?'wss:':'ws:';
+ws=new WebSocket(proto+'//'+location.host+'/api/events/ws');
+ws.onopen=function(){T(wsSt,'(connected)');wsSt.style.color='#34d399';reconn=1};
+ws.onmessage=function(ev){addEv(ev.data)};
+ws.onclose=function(){T(wsSt,'(disconnected)');wsSt.style.color='#f87171';setTimeout(connect,Math.min(reconn*1000,10000));reconn*=2};
+ws.onerror=function(){ws.close()};
+}
+connect();
+})();
 </script>
 </body>
 </html>`)
