@@ -96,6 +96,8 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/classify", s.handleClassify)
 	mux.HandleFunc("/api/plugins", s.handlePlugins)
 	mux.HandleFunc("/ui", HandleDashboardUI)
+	mux.HandleFunc("/ui/test", HandleTestRunnerUI)
+	mux.HandleFunc("/api/test/run", handleTestRun)
 	mux.HandleFunc("/ready", s.handleReady)
 	mux.HandleFunc("/livez", s.handleLive)
 

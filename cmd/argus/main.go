@@ -248,6 +248,33 @@ func main() {
 			}
 		})
 
+		// Wire test runner with proxy addresses
+		if len(cfg.Targets) > 0 {
+			trc := &admin.TestRunnerConfig{}
+			for _, t := range cfg.Targets {
+				switch t.Protocol {
+				case "postgresql":
+					for _, l := range cfg.Server.Listeners {
+						if l.Protocol == "postgresql" {
+							trc.PGHost = "host.docker.internal"
+							trc.PGPort = extractPort(l.Address)
+							trc.PGPassword = "argus_pass"
+						}
+					}
+				case "mysql":
+					for _, l := range cfg.Server.Listeners {
+						if l.Protocol == "mysql" {
+							trc.MySQLHost = "host.docker.internal"
+							trc.MySQLPort = extractPort(l.Address)
+							trc.MySQLUser = "argus_test"
+							trc.MySQLPassword = "argus_pass"
+						}
+					}
+				}
+			}
+			admin.SetTestRunnerConfig(trc)
+		}
+
 		if err := adminServer.Start(); err != nil {
 			log.Printf("Warning: admin server failed to start: %v", err)
 		}
@@ -310,6 +337,20 @@ func main() {
 	case <-shutdownCtx.Done():
 		log.Println("Shutdown timed out, forcing exit.")
 	}
+}
+
+func extractPort(addr string) int {
+	// addr is like ":30100" or "0.0.0.0:30100"
+	for i := len(addr) - 1; i >= 0; i-- {
+		if addr[i] == ':' {
+			p := 0
+			for _, c := range addr[i+1:] {
+				p = p*10 + int(c-'0')
+			}
+			return p
+		}
+	}
+	return 0
 }
 
 func countErrors(issues []policy.ValidationIssue) int {

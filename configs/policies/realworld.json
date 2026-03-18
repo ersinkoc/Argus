@@ -1,0 +1,101 @@
+{
+  "version": "2.0",
+  "defaults": {
+    "action": "allow",
+    "log_level": "verbose"
+  },
+  "roles": {
+    "admin": {
+      "users": ["admin", "dba"]
+    },
+    "analyst": {
+      "users": ["analyst", "reporter"]
+    },
+    "support": {
+      "users": ["support_*", "helpdesk"]
+    },
+    "app": {
+      "users": ["webapp", "api_service"]
+    }
+  },
+  "policies": [
+    {
+      "name": "block-drop-table",
+      "match": {
+        "roles": ["!admin"],
+        "commands": ["DDL"]
+      },
+      "condition": {
+        "sql_contains": ["DROP"]
+      },
+      "action": "block",
+      "reason": "DROP TABLE is restricted to admin users only"
+    },
+    {
+      "name": "block-delete-no-where",
+      "match": {
+        "commands": ["DELETE"]
+      },
+      "condition": {
+        "risk_level_gte": "medium"
+      },
+      "action": "block",
+      "reason": "DELETE without WHERE clause is prohibited"
+    },
+    {
+      "name": "mask-support-pii",
+      "match": {
+        "roles": ["support"],
+        "commands": ["SELECT"]
+      },
+      "action": "mask",
+      "masking": [
+        {"column": "email", "transformer": "partial_email"},
+        {"column": "phone", "transformer": "partial"},
+        {"column": "password_hash", "transformer": "redact"},
+        {"column": "credit_card", "transformer": "partial"},
+        {"column": "ssn", "transformer": "redact"},
+        {"column": "salary", "transformer": "redact"}
+      ]
+    },
+    {
+      "name": "mask-analyst-sensitive",
+      "match": {
+        "roles": ["analyst"],
+        "commands": ["SELECT"]
+      },
+      "action": "mask",
+      "masking": [
+        {"column": "password_hash", "transformer": "redact"},
+        {"column": "credit_card", "transformer": "partial"},
+        {"column": "ssn", "transformer": "redact"}
+      ]
+    },
+    {
+      "name": "rate-limit-app",
+      "match": {
+        "roles": ["app"],
+        "commands": ["SELECT"]
+      },
+      "action": "allow",
+      "rate_limit": {
+        "rate": 50,
+        "burst": 100
+      }
+    },
+    {
+      "name": "row-limit-non-admin",
+      "match": {
+        "roles": ["!admin"],
+        "commands": ["SELECT"]
+      },
+      "action": "allow",
+      "max_rows": 500
+    },
+    {
+      "name": "allow-all",
+      "match": {},
+      "action": "allow"
+    }
+  ]
+}
