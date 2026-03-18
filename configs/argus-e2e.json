@@ -1,0 +1,66 @@
+{
+  "server": {
+    "listeners": [
+      {
+        "address": ":30100",
+        "protocol": "postgresql"
+      },
+      {
+        "address": ":30101",
+        "protocol": "mysql"
+      }
+    ]
+  },
+  "targets": [
+    {
+      "name": "postgres",
+      "protocol": "postgresql",
+      "host": "127.0.0.1",
+      "port": 35432
+    },
+    {
+      "name": "mysql",
+      "protocol": "mysql",
+      "host": "127.0.0.1",
+      "port": 33306
+    }
+  ],
+  "routing": {
+    "default_target": "postgres"
+  },
+  "policy": {
+    "files": ["policies/default.json"],
+    "reload_interval": "5s"
+  },
+  "pool": {
+    "max_connections_per_target": 20,
+    "min_idle_connections": 1,
+    "connection_max_lifetime": "30m",
+    "connection_timeout": "5s",
+    "health_check_interval": "10s"
+  },
+  "session": {
+    "idle_timeout": "10m",
+    "max_duration": "1h"
+  },
+  "rewrite": {
+    "max_limit": 1000
+  },
+  "audit": {
+    "level": "verbose",
+    "outputs": [
+      {"type": "stdout"}
+    ],
+    "buffer_size": 1000,
+    "sql_max_length": 4096,
+    "pii_auto_detect": true
+  },
+  "admin": {
+    "enabled": true,
+    "address": ":30200"
+  },
+  "metrics": {
+    "enabled": true,
+    "address": ":30201"
+  }
+}
