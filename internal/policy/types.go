@@ -140,11 +140,17 @@ type MatchConfig struct {
 // ConditionConfig defines additional conditions.
 type ConditionConfig struct {
 	SQLContains    []string `json:"sql_contains,omitempty"`
+	SQLNotContains []string `json:"sql_not_contains,omitempty"` // block if SQL does NOT contain these
 	RiskLevelGTE   string   `json:"risk_level_gte,omitempty"`
 	WorkHours      string   `json:"work_hours,omitempty"`
 	WorkDays       []string `json:"work_days,omitempty"`
 	SourceIPIn     []string `json:"source_ip_in,omitempty"`
 	SourceIPNotIn  []string `json:"source_ip_not_in,omitempty"`
 	MaxCostGTE     int      `json:"max_cost_gte,omitempty"`
-	SQLRegex       []string `json:"sql_regex,omitempty"` // regex patterns to match against SQL
+	SQLRegex       []string `json:"sql_regex,omitempty"`           // regex patterns to match against SQL
+	MaxQueryLength int      `json:"max_query_length,omitempty"`    // max SQL length in bytes
+	MaxTables      int      `json:"max_tables,omitempty"`          // max tables in a single query
+	RequireWhere   bool     `json:"require_where,omitempty"`       // require WHERE on write ops
+	MaxJoins       int      `json:"max_joins,omitempty"`           // max JOINs in a query
+	SQLInjection   bool     `json:"sql_injection,omitempty"`       // enable SQLi pattern detection
 }

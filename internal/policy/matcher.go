@@ -179,7 +179,140 @@ func matchCondition(ctx *Context, cond *ConditionConfig) bool {
 		}
 	}
 
+	// SQL not contains — matches when the SQL does NOT contain ALL specified strings
+	if len(cond.SQLNotContains) > 0 {
+		upper := strings.ToUpper(ctx.RawSQL)
+		for _, s := range cond.SQLNotContains {
+			if !strings.Contains(upper, strings.ToUpper(s)) {
+				// SQL does not contain this string → condition matches
+				return true
+			}
+		}
+		// SQL contains all strings → condition does not match
+		return false
+	}
+
+	// Max query length
+	if cond.MaxQueryLength > 0 {
+		if len(ctx.RawSQL) < cond.MaxQueryLength {
+			return false
+		}
+	}
+
+	// Max tables
+	if cond.MaxTables > 0 {
+		if len(ctx.Tables) < cond.MaxTables {
+			return false
+		}
+	}
+
+	// Require WHERE on write operations
+	if cond.RequireWhere {
+		if ctx.HasWhere {
+			return false // has WHERE → condition does not trigger
+		}
+	}
+
+	// Max JOINs
+	if cond.MaxJoins > 0 {
+		joinCount := countJoins(ctx.RawSQL)
+		if joinCount < cond.MaxJoins {
+			return false
+		}
+	}
+
+	// SQL injection detection
+	if cond.SQLInjection {
+		if !detectSQLInjection(ctx.RawSQL) {
+			return false
+		}
+	}
+
 	return true
+}
+
+// countJoins counts JOIN keywords in SQL.
+func countJoins(sql string) int {
+	upper := strings.ToUpper(sql)
+	// Count all JOIN occurrences (each INNER/LEFT/RIGHT/CROSS/FULL JOIN contains exactly one " JOIN ")
+	return strings.Count(upper, " JOIN ")
+}
+
+// detectSQLInjection checks for common SQL injection patterns.
+func detectSQLInjection(sql string) bool {
+	upper := strings.ToUpper(sql)
+
+	// Tautology patterns: OR 1=1, OR 'a'='a', OR true
+	for _, pattern := range sqliTautologyPatterns {
+		if strings.Contains(upper, pattern) {
+			return true
+		}
+	}
+
+	// UNION-based injection
+	if strings.Contains(upper, "UNION") && strings.Contains(upper, "SELECT") {
+		// UNION SELECT in a query that also has another SELECT
+		unionIdx := strings.Index(upper, "UNION")
+		selectAfter := strings.Contains(upper[unionIdx:], "SELECT")
+		if selectAfter {
+			return true
+		}
+	}
+
+	// Comment-based termination: '; -- or '; #
+	if (strings.Contains(sql, "'--") || strings.Contains(sql, "'#") ||
+		strings.Contains(sql, "\"--") || strings.Contains(sql, "\"#")) {
+		return true
+	}
+
+	// Stacked queries with dangerous commands after semicolon
+	if idx := strings.Index(sql, ";"); idx >= 0 && idx < len(sql)-1 {
+		after := strings.TrimSpace(strings.ToUpper(sql[idx+1:]))
+		for _, cmd := range []string{"DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "EXEC", "CREATE", "GRANT", "SHUTDOWN"} {
+			if strings.HasPrefix(after, cmd) {
+				return true
+			}
+		}
+	}
+
+	// Hex/char encoding tricks — flag CHAR()/CHR()/CONCAT() with multiple args (obfuscation)
+	if strings.Contains(upper, "CHAR(") || strings.Contains(upper, "CHR(") || strings.Contains(upper, "CONCAT(") {
+		// Only flag if combined with suspicious context
+		if strings.Contains(upper, "UNION") || strings.Contains(upper, "DROP") || strings.Contains(upper, "EXEC") {
+			return true
+		}
+		// CHAR/CHR with comma-separated args (building strings char-by-char)
+		for _, fn := range []string{"CHAR(", "CHR("} {
+			if idx := strings.Index(upper, fn); idx >= 0 {
+				rest := upper[idx+len(fn):]
+				if strings.Contains(rest[:min(len(rest), 30)], ",") {
+					return true
+				}
+			}
+		}
+	}
+
+	// Sleep/benchmark-based blind injection
+	if strings.Contains(upper, "SLEEP(") || strings.Contains(upper, "BENCHMARK(") ||
+		strings.Contains(upper, "PG_SLEEP(") || strings.Contains(upper, "WAITFOR DELAY") {
+		return true
+	}
+
+	// System command execution
+	if strings.Contains(upper, "XP_CMDSHELL") || strings.Contains(upper, "INTO OUTFILE") ||
+		strings.Contains(upper, "INTO DUMPFILE") || strings.Contains(upper, "LOAD_FILE(") {
+		return true
+	}
+
+	return false
+}
+
+// sqliTautologyPatterns are common tautology injection patterns.
+var sqliTautologyPatterns = []string{
+	"OR 1=1", "OR '1'='1'", "OR 'A'='A'", "OR TRUE",
+	"OR 1 =1", "OR 1= 1", "OR 1 = 1",
+	"OR ''='", "OR \"\"=\"",
+	"' OR '1", "' OR '", "\" OR \"",
 }
 
 func matchWorkHours(t time.Time, hoursRange string) bool {

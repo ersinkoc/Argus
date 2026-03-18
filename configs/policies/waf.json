@@ -1,0 +1,485 @@
+{
+  "version": "1",
+  "defaults": {
+    "action": "audit",
+    "log_level": "verbose",
+    "max_rows": 50000
+  },
+  "roles": {
+    "dba": {
+      "users": ["admin", "postgres", "root", "sa", "dba_*"]
+    },
+    "developer": {
+      "users": ["dev_*", "eng_*"]
+    },
+    "support": {
+      "users": ["support_*", "cs_*", "helpdesk_*"]
+    },
+    "finance": {
+      "users": ["finance_*", "accounting_*", "payroll_*"]
+    },
+    "readonly": {
+      "users": ["reader_*", "report_*", "bi_*", "analytics_*", "grafana_*"]
+    },
+    "contractor": {
+      "users": ["contractor_*", "vendor_*", "external_*", "tmp_*"]
+    },
+    "service": {
+      "users": ["svc_*", "app_*", "api_*", "webapp_*"]
+    },
+    "auditor": {
+      "users": ["auditor_*", "compliance_*"]
+    }
+  },
+  "policies": [
+
+    {"name": "--- WAF: SQL INJECTION PROTECTION ---", "match": {}, "action": "audit"},
+
+    {
+      "name": "waf-sqli-detection",
+      "description": "Block queries with SQL injection patterns (tautology, UNION, stacked, blind)",
+      "match": {},
+      "condition": {
+        "sql_injection": true
+      },
+      "action": "block",
+      "reason": "SQL injection pattern detected"
+    },
+    {
+      "name": "waf-block-schema-enumeration",
+      "description": "Block metadata/schema reconnaissance by non-DBA",
+      "match": {
+        "roles": ["!dba"]
+      },
+      "condition": {
+        "sql_regex": [
+          "(?i)information_schema\\.",
+          "(?i)pg_catalog\\.",
+          "(?i)pg_shadow",
+          "(?i)pg_authid",
+          "(?i)pg_roles",
+          "(?i)pg_user",
+          "(?i)mysql\\.user",
+          "(?i)sys\\.server_principals",
+          "(?i)sys\\.sql_logins",
+          "(?i)sys\\.database_permissions",
+          "(?i)sys\\.objects",
+          "(?i)sysdatabases",
+          "(?i)master\\.dbo\\.",
+          "(?i)msdb\\.dbo\\.",
+          "(?i)SHOW\\s+(GRANTS|DATABASES|PROCESSLIST|VARIABLES|STATUS)"
+        ]
+      },
+      "action": "block",
+      "reason": "Schema/metadata enumeration blocked — contact DBA"
+    },
+    {
+      "name": "waf-block-comment-injection",
+      "description": "Block queries with dangerous keywords hidden in comments",
+      "match": {
+        "roles": ["!dba"]
+      },
+      "condition": {
+        "risk_level_gte": "high"
+      },
+      "action": "block",
+      "reason": "Suspicious query pattern — possible comment injection"
+    },
+
+    {"name": "--- WAF: DESTRUCTIVE OPERATION PROTECTION ---", "match": {}, "action": "audit"},
+
+    {
+      "name": "waf-block-ddl-non-dba",
+      "description": "Only DBA can run destructive DDL (DROP, TRUNCATE, ALTER)",
+      "match": {
+        "roles": ["!dba"],
+        "commands": ["DDL"]
+      },
+      "condition": {
+        "sql_contains": ["DROP"]
+      },
+      "action": "block",
+      "reason": "DROP requires DBA role"
+    },
+    {
+      "name": "waf-block-truncate",
+      "description": "Block TRUNCATE for non-DBA",
+      "match": {
+        "roles": ["!dba"],
+        "commands": ["DDL"]
+      },
+      "condition": {
+        "sql_contains": ["TRUNCATE"]
+      },
+      "action": "block",
+      "reason": "TRUNCATE requires DBA role"
+    },
+    {
+      "name": "waf-block-alter-table-non-dba",
+      "description": "Block ALTER TABLE for non-DBA",
+      "match": {
+        "roles": ["!dba"],
+        "commands": ["DDL"]
+      },
+      "condition": {
+        "sql_contains": ["ALTER"]
+      },
+      "action": "block",
+      "reason": "Schema modifications require DBA role"
+    },
+
+    {"name": "--- WAF: BULK OPERATION PROTECTION ---", "match": {}, "action": "audit"},
+
+    {
+      "name": "waf-block-delete-no-where",
+      "description": "Block DELETE without WHERE clause",
+      "match": {
+        "commands": ["DELETE"]
+      },
+      "condition": {
+        "require_where": true
+      },
+      "action": "block",
+      "reason": "DELETE without WHERE clause is prohibited"
+    },
+    {
+      "name": "waf-block-update-no-where",
+      "description": "Block UPDATE without WHERE clause",
+      "match": {
+        "commands": ["UPDATE"]
+      },
+      "condition": {
+        "require_where": true
+      },
+      "action": "block",
+      "reason": "UPDATE without WHERE clause is prohibited"
+    },
+
+    {"name": "--- WAF: DATA EXFILTRATION PROTECTION ---", "match": {}, "action": "audit"},
+
+    {
+      "name": "waf-block-oversized-queries",
+      "description": "Block abnormally large SQL (possible payload injection)",
+      "match": {
+        "roles": ["!dba"]
+      },
+      "condition": {
+        "max_query_length": 8192
+      },
+      "action": "block",
+      "reason": "Query exceeds maximum length (8KB) — possible injection payload"
+    },
+    {
+      "name": "waf-block-excessive-joins",
+      "description": "Block queries joining too many tables (anti-join-bomb)",
+      "match": {
+        "roles": ["!dba"]
+      },
+      "condition": {
+        "max_joins": 8
+      },
+      "action": "block",
+      "reason": "Query joins too many tables (max 8) — possible resource exhaustion"
+    },
+    {
+      "name": "waf-block-excessive-tables",
+      "description": "Block queries touching too many tables",
+      "match": {
+        "roles": ["!dba"]
+      },
+      "condition": {
+        "max_tables": 10
+      },
+      "action": "block",
+      "reason": "Query accesses too many tables (max 10)"
+    },
+    {
+      "name": "waf-block-expensive-queries",
+      "description": "Block queries with high cost score for non-DBA",
+      "match": {
+        "roles": ["!dba"],
+        "commands": ["SELECT"]
+      },
+      "condition": {
+        "max_cost_gte": 80
+      },
+      "action": "block",
+      "reason": "Query too expensive — optimize or contact DBA"
+    },
+    {
+      "name": "waf-row-limit",
+      "description": "Limit result sets for non-DBA users",
+      "match": {
+        "roles": ["!dba"],
+        "commands": ["SELECT"]
+      },
+      "max_rows": 50000
+    },
+
+    {"name": "--- WAF: PRIVILEGE ESCALATION PROTECTION ---", "match": {}, "action": "audit"},
+
+    {
+      "name": "waf-block-dcl-non-dba",
+      "description": "Block privilege changes (GRANT/REVOKE) for non-DBA",
+      "match": {
+        "roles": ["!dba"],
+        "commands": ["DCL"]
+      },
+      "action": "block",
+      "reason": "Privilege management requires DBA role"
+    },
+    {
+      "name": "waf-block-user-management",
+      "description": "Block user/role creation and modification",
+      "match": {
+        "roles": ["!dba"]
+      },
+      "condition": {
+        "sql_regex": [
+          "(?i)CREATE\\s+(USER|ROLE|LOGIN)",
+          "(?i)ALTER\\s+(USER|ROLE|LOGIN)",
+          "(?i)DROP\\s+(USER|ROLE|LOGIN)",
+          "(?i)CREATE\\s+USER",
+          "(?i)sp_addlogin",
+          "(?i)sp_addsrvrolemember",
+          "(?i)SET\\s+ROLE",
+          "(?i)SET\\s+SESSION\\s+AUTHORIZATION"
+        ]
+      },
+      "action": "block",
+      "reason": "User/role management requires DBA role"
+    },
+    {
+      "name": "waf-block-system-commands",
+      "description": "Block system-level operations (file access, shell commands)",
+      "match": {
+        "roles": ["!dba"]
+      },
+      "condition": {
+        "sql_regex": [
+          "(?i)xp_cmdshell",
+          "(?i)xp_regread",
+          "(?i)xp_fileexist",
+          "(?i)sp_OACreate",
+          "(?i)OPENROWSET",
+          "(?i)OPENDATASOURCE",
+          "(?i)INTO\\s+OUTFILE",
+          "(?i)INTO\\s+DUMPFILE",
+          "(?i)LOAD_FILE\\s*\\(",
+          "(?i)LOAD\\s+DATA\\s+INFILE",
+          "(?i)COPY\\s+.*\\s+FROM\\s+'",
+          "(?i)pg_read_file",
+          "(?i)pg_ls_dir",
+          "(?i)lo_import",
+          "(?i)lo_export"
+        ]
+      },
+      "action": "block",
+      "reason": "System-level operations are prohibited"
+    },
+
+    {"name": "--- WAF: ACCESS CONTROL ---", "match": {}, "action": "audit"},
+
+    {
+      "name": "waf-readonly-enforcement",
+      "description": "Read-only users cannot write or modify schema",
+      "match": {
+        "roles": ["readonly"],
+        "commands": ["INSERT", "UPDATE", "DELETE", "DDL", "DCL"]
+      },
+      "action": "block",
+      "reason": "Read-only access — write operations not permitted"
+    },
+    {
+      "name": "waf-contractor-office-hours",
+      "description": "Contractors allowed only during business hours (Mon-Fri 08-19)",
+      "match": {
+        "roles": ["contractor"]
+      },
+      "condition": {
+        "work_hours": "08:00-19:00",
+        "work_days": ["monday", "tuesday", "wednesday", "thursday", "friday"]
+      },
+      "action": "block",
+      "reason": "Contractor access outside business hours not permitted"
+    },
+    {
+      "name": "waf-contractor-readonly",
+      "description": "Contractors cannot modify data",
+      "match": {
+        "roles": ["contractor"],
+        "commands": ["INSERT", "UPDATE", "DELETE", "DDL", "DCL"]
+      },
+      "action": "block",
+      "reason": "Contractor access is read-only"
+    },
+    {
+      "name": "waf-production-ip-restriction",
+      "description": "Production access only from internal network",
+      "match": {
+        "databases": ["production", "prod_*"]
+      },
+      "condition": {
+        "source_ip_not_in": ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.1"]
+      },
+      "action": "block",
+      "reason": "Production access restricted to internal network"
+    },
+
+    {"name": "--- WAF: RATE LIMITING ---", "match": {}, "action": "audit"},
+
+    {
+      "name": "waf-rate-limit-contractors",
+      "description": "Rate limit contractor queries (5 qps, burst 10)",
+      "match": {
+        "roles": ["contractor"]
+      },
+      "rate_limit": {
+        "rate": 5,
+        "burst": 10
+      }
+    },
+    {
+      "name": "waf-rate-limit-services",
+      "description": "Rate limit service accounts (100 qps, burst 200)",
+      "match": {
+        "roles": ["service"]
+      },
+      "rate_limit": {
+        "rate": 100,
+        "burst": 200
+      }
+    },
+
+    {"name": "--- WAF: SENSITIVE TABLE PROTECTION ---", "match": {}, "action": "audit"},
+
+    {
+      "name": "waf-protect-credentials-table",
+      "description": "Block non-DBA access to credential/password tables",
+      "match": {
+        "roles": ["!dba", "!service"],
+        "tables": ["credentials", "passwords", "secrets", "api_keys", "tokens", "auth_tokens", "oauth_tokens"]
+      },
+      "action": "block",
+      "reason": "Access to credential tables requires DBA role"
+    },
+    {
+      "name": "waf-protect-audit-tables",
+      "description": "Prevent modification of audit/log tables",
+      "match": {
+        "roles": ["!dba"],
+        "commands": ["UPDATE", "DELETE", "DDL"],
+        "tables": ["audit_log", "audit_logs", "event_log", "access_log", "security_log", "change_log"]
+      },
+      "action": "block",
+      "reason": "Audit log modification prohibited — tamper protection"
+    },
+
+    {"name": "--- WAF: DATA MASKING ---", "match": {}, "action": "audit"},
+
+    {
+      "name": "waf-mask-pii-support",
+      "description": "Mask PII for support team",
+      "match": {
+        "roles": ["support"],
+        "commands": ["SELECT"]
+      },
+      "masking": [
+        {"column": "email", "transformer": "partial_email"},
+        {"column": "phone", "transformer": "partial_phone"},
+        {"column": "mobile", "transformer": "partial_phone"},
+        {"column": "tc_kimlik", "transformer": "redact"},
+        {"column": "identity_no", "transformer": "redact"},
+        {"column": "ssn", "transformer": "redact"},
+        {"column": "card_number", "transformer": "partial_card"},
+        {"column": "credit_card", "transformer": "partial_card"},
+        {"column": "iban", "transformer": "partial_iban"},
+        {"column": "password", "transformer": "redact"},
+        {"column": "password_hash", "transformer": "redact"},
+        {"column": "salary", "transformer": "redact"},
+        {"column": "bank_account", "transformer": "redact"},
+        {"column": "tax_id", "transformer": "redact"},
+        {"column": "passport_no", "transformer": "redact"},
+        {"column": "driver_license", "transformer": "redact"},
+        {"column": "date_of_birth", "transformer": "redact"}
+      ]
+    },
+    {
+      "name": "waf-mask-finance-restricted",
+      "description": "Only finance/DBA can see compensation data",
+      "match": {
+        "roles": ["!finance", "!dba"],
+        "tables": ["salaries", "payroll", "compensation", "bonuses", "tax_records", "bank_accounts"]
+      },
+      "masking": [
+        {"column": "*", "transformer": "redact"}
+      ],
+      "action": "mask",
+      "reason": "Financial data restricted to finance team"
+    },
+    {
+      "name": "waf-mask-contractor-all-pii",
+      "description": "Contractors see all PII masked",
+      "match": {
+        "roles": ["contractor"],
+        "commands": ["SELECT"]
+      },
+      "masking": [
+        {"column": "email", "transformer": "hash"},
+        {"column": "phone", "transformer": "redact"},
+        {"column": "mobile", "transformer": "redact"},
+        {"column": "name", "transformer": "hash"},
+        {"column": "first_name", "transformer": "hash"},
+        {"column": "last_name", "transformer": "hash"},
+        {"column": "address", "transformer": "redact"},
+        {"column": "city", "transformer": "redact"},
+        {"column": "ssn", "transformer": "redact"},
+        {"column": "tc_kimlik", "transformer": "redact"},
+        {"column": "salary", "transformer": "null"},
+        {"column": "card_number", "transformer": "redact"},
+        {"column": "iban", "transformer": "redact"},
+        {"column": "password", "transformer": "redact"},
+        {"column": "password_hash", "transformer": "redact"},
+        {"column": "ip_address", "transformer": "redact"},
+        {"column": "date_of_birth", "transformer": "redact"}
+      ]
+    },
+
+    {"name": "--- WAF: DEFAULT ACTIONS ---", "match": {}, "action": "audit"},
+
+    {
+      "name": "waf-allow-reads",
+      "description": "Allow reads with standard logging",
+      "match": {
+        "commands": ["SELECT"]
+      },
+      "action": "allow",
+      "log_level": "standard"
+    },
+    {
+      "name": "waf-allow-writes",
+      "description": "Allow writes with verbose logging",
+      "match": {
+        "commands": ["INSERT", "UPDATE", "DELETE"]
+      },
+      "action": "allow",
+      "log_level": "verbose"
+    },
+    {
+      "name": "waf-allow-transaction",
+      "description": "Allow transaction control",
+      "match": {
+        "commands": ["TCL"]
+      },
+      "action": "allow",
+      "log_level": "minimal"
+    },
+    {
+      "name": "waf-default-audit",
+      "description": "Default: allow with full audit",
+      "match": {},
+      "action": "audit",
+      "log_level": "verbose"
+    }
+  ]
+}
