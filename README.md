@@ -14,14 +14,14 @@ Argus is a protocol-aware database access proxy written in Go. It sits between a
 ```
 ┌──────────┐         ┌──────────────────────────────────────────┐         ┌──────────┐
 │          │   TCP   │                 Argus                    │   TCP   │          │
-│  Client  │────────>│  ┌─────────┐  ┌────────┐  ┌──────────┐ │────────>│ Database │
-│  (App)   │<────────│  │Protocol │  │ Policy │  │ Masking  │ │<────────│ Server   │
-│          │         │  │ Handler │  │ Engine │  │ Pipeline │ │         │          │
-└──────────┘         │  └─────────┘  └────────┘  └──────────┘ │         └──────────┘
-                     │  ┌─────────┐  ┌────────┐  ┌──────────┐ │
-                     │  │Session  │  │ Audit  │  │Connection│ │
-                     │  │Manager  │  │ Logger │  │  Pool    │ │
-                     │  └─────────┘  └────────┘  └──────────┘ │
+│  Client  │────────>│  ┌─────────┐  ┌────────┐  ┌──────────┐   │────────>│ Database │
+│  (App)   │<────────│  │Protocol │  │ Policy │  │ Masking  │   │<────────│ Server   │
+│          │         │  │ Handler │  │ Engine │  │ Pipeline │   │         │          │
+└──────────┘         │  └─────────┘  └────────┘  └──────────┘   │         └──────────┘
+                     │  ┌─────────┐  ┌────────┐  ┌──────────┐   │
+                     │  │Session  │  │ Audit  │  │Connection│   │
+                     │  │Manager  │  │ Logger │  │  Pool    │   │
+                     │  └─────────┘  └────────┘  └──────────┘   │
                      └──────────────────────────────────────────┘
 ```
 
