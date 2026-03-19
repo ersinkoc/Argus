@@ -141,10 +141,10 @@ check "Prometheus protocol stats" \
     "curl -sf http://localhost:30200/metrics | grep argus_protocol_commands_total"
 
 check "Prometheus query duration" \
-    "curl -sf http://localhost:30200/metrics | grep argus_query_duration_count"
+    "curl -sf http://localhost:30200/metrics | grep argus_query_duration_microseconds_count"
 
 check "Prometheus pool wait" \
-    "curl -sf http://localhost:30200/metrics | grep argus_pool_wait_count"
+    "curl -sf http://localhost:30200/metrics | grep argus_pool_acquire_wait_microseconds_count"
 
 # ---- Summary ----
 echo ""

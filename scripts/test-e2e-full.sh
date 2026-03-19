@@ -84,9 +84,9 @@ M=$(curl -sf $API/metrics)
 check "active_sessions"    "echo '$M' | grep argus_active_sessions"
 check "connections_total"  "echo '$M' | grep argus_connections_total"
 check "commands_total"     "echo '$M' | grep argus_commands_total"
-check "query_duration"     "echo '$M' | grep argus_query_duration_count"
+check "query_duration"     "echo '$M' | grep argus_query_duration_microseconds_count"
 check "protocol_stats"     "echo '$M' | grep argus_protocol_commands_total"
-check "pool_wait"          "echo '$M' | grep argus_pool_wait_count"
+check "pool_wait"          "echo '$M' | grep argus_pool_acquire_wait_microseconds_count"
 check "go_goroutines"      "echo '$M' | grep argus_go_goroutines"
 
 echo ""

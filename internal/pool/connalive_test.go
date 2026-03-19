@@ -20,16 +20,18 @@ func TestIsConnAliveHealthy(t *testing.T) {
 }
 
 func TestIsConnAliveClosed(t *testing.T) {
-	ln, _ := net.Listen("tcp", "127.0.0.1:0")
-	defer ln.Close()
-	go func() { c, _ := ln.Accept(); if c != nil { c.Close() } }()
+	// Use net.Pipe so the close is synchronous (no TCP FIN propagation delay on Windows).
+	client, server := net.Pipe()
+	server.Close() // immediate EOF on client's next Read
 
-	conn, _ := net.Dial("tcp", ln.Addr().String())
-	time.Sleep(200 * time.Millisecond) // let server close (needs more time on Windows)
+	// Small sleep to let the OS surface the close, then check.
+	time.Sleep(50 * time.Millisecond)
 
-	if isConnAlive(conn) {
+	if isConnAlive(client) {
+		client.Close()
 		t.Error("closed connection should not be alive")
 	}
+	client.Close()
 }
 
 func TestIsConnAliveNil(t *testing.T) {

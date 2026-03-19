@@ -142,11 +142,11 @@ check_output "Audit: commands total > 0" \
     "argus_commands_total [1-9]"
 
 check_output "Audit: PG protocol commands > 0" \
-    "echo '$METRICS' | grep 'pg_commands'" \
+    "echo '$METRICS' | grep 'argus_protocol_commands_total'" \
     "[1-9]"
 
 check_output "Audit: query duration recorded" \
-    "echo '$METRICS' | grep 'argus_query_duration_count'" \
+    "echo '$METRICS' | grep 'argus_query_duration_microseconds_count'" \
     "[1-9]"
 
 # Verify audit via dashboard
@@ -217,15 +217,15 @@ check_output "Metric: pool active per target" \
 
 check_output "Metric: pool idle per target" \
     "echo '$METRICS'" \
-    "argus_pool_idle_connections"
+    "argus_pool_connections"
 
 check_output "Metric: query latency p50" \
     "echo '$METRICS'" \
-    "argus_query_duration_p50_us"
+    "argus_query_duration_microseconds_bucket"
 
 check_output "Metric: pool wait p95" \
     "echo '$METRICS'" \
-    "argus_pool_wait_p95_us"
+    "argus_pool_acquire_wait_microseconds_bucket"
 
 check_output "Metric: go memory" \
     "echo '$METRICS'" \

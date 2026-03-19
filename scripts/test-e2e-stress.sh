@@ -224,9 +224,9 @@ echo -e "${YELLOW}[7/7] Metrics Consistency${NC}"
 M=$(curl -sf $API/metrics)
 
 # PG commands should be > MySQL commands (we ran more PG queries)
-PG_CMD=$(echo "$M" | grep 'pg_commands' | grep -o '[0-9]*' | tail -1)
-check_output "PG protocol tracked" "echo '$M'" "pg_commands"
-check_output "Query duration avg > 0" "echo '$M'" "argus_query_duration_avg_us"
+PG_CMD=$(echo "$M" | grep 'argus_protocol_commands_total' | grep -o '[0-9]*' | tail -1)
+check_output "PG protocol tracked" "echo '$M'" "argus_protocol_commands_total"
+check_output "Query duration avg > 0" "echo '$M'" "argus_query_duration_microseconds_sum"
 check_output "Go goroutines present" "echo '$M'" "argus_go_goroutines"
 check_output "Go sys bytes present" "echo '$M'" "argus_go_sys_bytes"
 
