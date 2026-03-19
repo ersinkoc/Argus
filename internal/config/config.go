@@ -13,17 +13,18 @@ import (
 
 // Config is the main Argus configuration.
 type Config struct {
-	Server    ServerConfig    `json:"server"`
-	Targets   []Target        `json:"targets"`
-	Routing   RoutingConfig   `json:"routing"`
-	Policy    PolicyConfig    `json:"policy"`
-	Pool      PoolConfig      `json:"pool"`
-	Session   SessionConfig   `json:"session"`
-	Audit     AuditConfig     `json:"audit"`
-	Admin     AdminConfig     `json:"admin"`
-	Metrics   MetricsConfig   `json:"metrics"`
-	Rewrite   RewriteConfig   `json:"rewrite,omitempty"`
-	SlowQuery SlowQueryConfig `json:"slow_query,omitempty"`
+	Server       ServerConfig       `json:"server"`
+	Targets      []Target           `json:"targets"`
+	Routing      RoutingConfig      `json:"routing"`
+	Policy       PolicyConfig       `json:"policy"`
+	Pool         PoolConfig         `json:"pool"`
+	Session      SessionConfig      `json:"session"`
+	Audit        AuditConfig        `json:"audit"`
+	Admin        AdminConfig        `json:"admin"`
+	Metrics      MetricsConfig      `json:"metrics"`
+	Rewrite      RewriteConfig      `json:"rewrite,omitempty"`
+	SlowQuery    SlowQueryConfig    `json:"slow_query,omitempty"`
+	PlanAnalysis PlanAnalysisConfig `json:"plan_analysis,omitempty"`
 }
 
 type ServerConfig struct {
@@ -37,11 +38,13 @@ type ListenerConfig struct {
 }
 
 type TLSConfig struct {
-	Enabled  bool   `json:"enabled"`
-	CertFile string `json:"cert_file"`
-	KeyFile  string `json:"key_file"`
-	CAFile   string `json:"ca_file"`
-	Verify   bool   `json:"verify"`
+	Enabled        bool   `json:"enabled"`
+	CertFile       string `json:"cert_file"`
+	KeyFile        string `json:"key_file"`
+	CAFile         string `json:"ca_file"`
+	Verify         bool   `json:"verify"`
+	ClientAuth     bool   `json:"client_auth"`      // require client certificate (mTLS)
+	ClientCAFile   string `json:"client_ca_file"`   // CA to verify client certs
 }
 
 type Target struct {
@@ -94,20 +97,24 @@ func (p *PolicyConfig) UnmarshalJSON(data []byte) error {
 }
 
 type PoolConfig struct {
-	MaxConnectionsPerTarget int           `json:"max_connections_per_target"`
-	MinIdleConnections      int           `json:"min_idle_connections"`
-	ConnectionMaxLifetime   time.Duration `json:"connection_max_lifetime"`
-	ConnectionTimeout       time.Duration `json:"connection_timeout"`
-	HealthCheckInterval     time.Duration `json:"health_check_interval"`
+	MaxConnectionsPerTarget    int           `json:"max_connections_per_target"`
+	MinIdleConnections         int           `json:"min_idle_connections"`
+	ConnectionMaxLifetime      time.Duration `json:"connection_max_lifetime"`
+	ConnectionTimeout          time.Duration `json:"connection_timeout"`
+	HealthCheckInterval        time.Duration `json:"health_check_interval"`
+	CircuitBreakerThreshold    int           `json:"circuit_breaker_threshold,omitempty"`    // failures before open, default 5
+	CircuitBreakerResetTimeout time.Duration `json:"circuit_breaker_reset_timeout,omitempty"` // default 30s
 }
 
 func (p *PoolConfig) UnmarshalJSON(data []byte) error {
 	type Alias struct {
-		MaxConnectionsPerTarget int    `json:"max_connections_per_target"`
-		MinIdleConnections      int    `json:"min_idle_connections"`
-		ConnectionMaxLifetime   string `json:"connection_max_lifetime"`
-		ConnectionTimeout       string `json:"connection_timeout"`
-		HealthCheckInterval     string `json:"health_check_interval"`
+		MaxConnectionsPerTarget    int    `json:"max_connections_per_target"`
+		MinIdleConnections         int    `json:"min_idle_connections"`
+		ConnectionMaxLifetime      string `json:"connection_max_lifetime"`
+		ConnectionTimeout          string `json:"connection_timeout"`
+		HealthCheckInterval        string `json:"health_check_interval"`
+		CircuitBreakerThreshold    int    `json:"circuit_breaker_threshold"`
+		CircuitBreakerResetTimeout string `json:"circuit_breaker_reset_timeout"`
 	}
 	var a Alias
 	if err := json.Unmarshal(data, &a); err != nil {
@@ -115,6 +122,7 @@ func (p *PoolConfig) UnmarshalJSON(data []byte) error {
 	}
 	p.MaxConnectionsPerTarget = a.MaxConnectionsPerTarget
 	p.MinIdleConnections = a.MinIdleConnections
+	p.CircuitBreakerThreshold = a.CircuitBreakerThreshold
 	var err error
 	if a.ConnectionMaxLifetime != "" {
 		p.ConnectionMaxLifetime, err = time.ParseDuration(a.ConnectionMaxLifetime)
@@ -134,6 +142,12 @@ func (p *PoolConfig) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("invalid health_check_interval: %w", err)
 		}
 	}
+	if a.CircuitBreakerResetTimeout != "" {
+		p.CircuitBreakerResetTimeout, err = time.ParseDuration(a.CircuitBreakerResetTimeout)
+		if err != nil {
+			return fmt.Errorf("invalid circuit_breaker_reset_timeout: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -146,6 +160,12 @@ type SessionConfig struct {
 type RewriteConfig struct {
 	MaxLimit   int    `json:"max_limit,omitempty"`   // auto-add LIMIT N to SELECT
 	ForceWhere string `json:"force_where,omitempty"` // inject WHERE condition
+}
+
+type PlanAnalysisConfig struct {
+	Enabled  bool   `json:"enabled"`            // run EXPLAIN before policy eval for SELECT
+	Timeout  string `json:"timeout,omitempty"`  // max time per EXPLAIN, default 500ms
+	Protocol string `json:"protocol,omitempty"` // "postgresql" (only PG supported)
 }
 
 type SlowQueryConfig struct {
@@ -383,6 +403,9 @@ func Validate(cfg *Config) error {
 		if l.TLS.Enabled {
 			if l.TLS.CertFile == "" || l.TLS.KeyFile == "" {
 				return fmt.Errorf("listener[%d]: TLS enabled but cert_file or key_file missing", i)
+			}
+			if l.TLS.ClientAuth && l.TLS.ClientCAFile == "" {
+				return fmt.Errorf("listener[%d]: client_auth requires client_ca_file", i)
 			}
 		}
 	}

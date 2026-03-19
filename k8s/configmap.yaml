@@ -1,0 +1,97 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argus-config
+  namespace: argus
+  labels:
+    app.kubernetes.io/name: argus
+data:
+  argus.json: |
+    {
+      "server": {
+        "listeners": [
+          {"address": ":15432", "protocol": "postgresql"},
+          {"address": ":13306", "protocol": "mysql"}
+        ]
+      },
+      "targets": [
+        {
+          "name": "pg-primary",
+          "protocol": "postgresql",
+          "host": "$ENV{DB_PG_HOST}",
+          "port": 5432
+        },
+        {
+          "name": "mysql-primary",
+          "protocol": "mysql",
+          "host": "$ENV{DB_MYSQL_HOST}",
+          "port": 3306
+        }
+      ],
+      "routing": {
+        "default_target": "pg-primary",
+        "rules": [
+          {"database": "mysql_*", "target": "mysql-primary"}
+        ]
+      },
+      "policy": {
+        "files": ["/etc/argus/policies/base.json"],
+        "reload_interval": "5s"
+      },
+      "pool": {
+        "max_connections_per_target": 100,
+        "min_idle_connections": 5,
+        "connection_max_lifetime": "1h",
+        "connection_timeout": "10s",
+        "health_check_interval": "30s",
+        "circuit_breaker_threshold": 5,
+        "circuit_breaker_reset_timeout": "30s"
+      },
+      "session": {
+        "idle_timeout": "30m",
+        "max_duration": "8h",
+        "max_per_user": 10
+      },
+      "audit": {
+        "level": "standard",
+        "outputs": [
+          {"type": "stdout"}
+        ],
+        "buffer_size": 10000,
+        "sql_max_length": 4096,
+        "pii_auto_detect": true
+      },
+      "admin": {
+        "enabled": true,
+        "address": ":9090",
+        "auth_token": "$ENV{ARGUS_ADMIN_TOKEN}"
+      },
+      "metrics": {
+        "enabled": true,
+        "address": ":9091"
+      }
+    }
+
+  base-policy.json: |
+    {
+      "version": "1.0",
+      "defaults": {"action": "allow", "log_level": "standard"},
+      "roles": {},
+      "policies": [
+        {
+          "name": "block-sqli",
+          "description": "Block SQL injection attempts",
+          "match": {"commands": ["SELECT", "INSERT", "UPDATE", "DELETE"]},
+          "condition": {"sql_injection": true},
+          "action": "block",
+          "reason": "SQL injection detected"
+        },
+        {
+          "name": "block-drop",
+          "description": "Block DROP TABLE and similar DDL",
+          "match": {"commands": ["DROP", "TRUNCATE"]},
+          "action": "block",
+          "reason": "DDL not allowed via proxy"
+        }
+      ]
+    }

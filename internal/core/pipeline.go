@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/ersinkoc/argus/internal/audit"
@@ -13,6 +14,7 @@ import (
 	"github.com/ersinkoc/argus/internal/inspection"
 	"github.com/ersinkoc/argus/internal/masking"
 	"github.com/ersinkoc/argus/internal/metrics"
+	"github.com/ersinkoc/argus/internal/plan"
 	"github.com/ersinkoc/argus/internal/policy"
 	"github.com/ersinkoc/argus/internal/pool"
 	"github.com/ersinkoc/argus/internal/protocol"
@@ -120,6 +122,13 @@ func (p *Proxy) Start() error {
 				d := tls.Dialer{Config: tlsCfg}
 				return d.DialContext(ctx, "tcp", targetAddr)
 			})
+		}
+
+		// Apply custom circuit breaker thresholds if configured
+		if p.cfg.Pool.CircuitBreakerThreshold > 0 || p.cfg.Pool.CircuitBreakerResetTimeout > 0 {
+			threshold := p.cfg.Pool.CircuitBreakerThreshold
+			resetTimeout := p.cfg.Pool.CircuitBreakerResetTimeout
+			pl.SetCircuitBreaker(threshold, resetTimeout)
 		}
 
 		pl.Start()
@@ -396,6 +405,26 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 		// Query cost estimation (before policy eval so policies can use it)
 		costEstimate := inspection.EstimateCost(cmd)
 
+		// Real plan cost via EXPLAIN — only for PG SELECT when plan_analysis is enabled.
+		var planCost float64
+		if p.cfg.PlanAnalysis.Enabled &&
+			protocolName == "postgresql" &&
+			cmd.Type == inspection.CommandSELECT &&
+			cmd.Raw != "" && !strings.HasPrefix(strings.ToUpper(strings.TrimSpace(cmd.Raw)), "EXPLAIN") {
+
+			planTimeout := plan.DefaultTimeout
+			if p.cfg.PlanAnalysis.Timeout != "" {
+				if d, err := time.ParseDuration(p.cfg.PlanAnalysis.Timeout); err == nil {
+					planTimeout = d
+				}
+			}
+			planCtx, cancel := context.WithTimeout(ctx, planTimeout)
+			if pr, err := plan.ExplainPG(planCtx, backend, cmd.Raw, planTimeout); err == nil {
+				planCost = pr.TotalCost
+			}
+			cancel()
+		}
+
 		// Build policy context
 		policyCtx := &policy.Context{
 			Username:    sess.Username,
@@ -412,6 +441,7 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 			Confidence:  cmd.Confidence,
 			HasWhere:    cmd.HasWhere,
 			CostScore:   costEstimate.Score,
+			PlanCost:    planCost,
 		}
 
 		// Evaluate policy

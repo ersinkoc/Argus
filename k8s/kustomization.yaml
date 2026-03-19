@@ -1,0 +1,24 @@
+## kubectl apply -k k8s/
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: argus
+
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - secret.yaml
+  - configmap.yaml
+  - deployment.yaml
+  - service.yaml
+  - hpa.yaml
+  - pdb.yaml
+
+images:
+  - name: ghcr.io/ersinkoc/argus
+    newTag: latest
+
+## Override for a specific environment:
+## kustomize build k8s/ | kubectl apply -f -
+## or:
+## kubectl apply -k k8s/

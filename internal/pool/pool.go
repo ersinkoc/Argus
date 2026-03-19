@@ -52,6 +52,12 @@ func (p *Pool) SetConnectFunc(fn func(ctx context.Context) (net.Conn, error)) {
 	p.connectFn = fn
 }
 
+// SetCircuitBreaker replaces the circuit breaker with custom thresholds.
+// Must be called before Start().
+func (p *Pool) SetCircuitBreaker(threshold int, resetTimeout time.Duration) {
+	p.breaker = NewCircuitBreaker(threshold, resetTimeout)
+}
+
 // Start begins background health checking and warms up idle connections.
 func (p *Pool) Start() {
 	p.wg.Add(1)

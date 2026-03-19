@@ -66,7 +66,8 @@ type Context struct {
 	RawSQL      string
 	Confidence  float64
 	HasWhere    bool
-	CostScore   int // query cost estimate 0-100
+	CostScore   int     // heuristic query cost estimate 0-100
+	PlanCost    float64 // real planner cost from EXPLAIN (0 = not available)
 }
 
 // Decision is the result of policy evaluation.
@@ -153,4 +154,5 @@ type ConditionConfig struct {
 	RequireWhere   bool     `json:"require_where,omitempty"`       // require WHERE on write ops
 	MaxJoins       int      `json:"max_joins,omitempty"`           // max JOINs in a query
 	SQLInjection   bool     `json:"sql_injection,omitempty"`       // enable SQLi pattern detection
+	PlanCostGTE    float64  `json:"plan_cost_gte,omitempty"`       // block if EXPLAIN total cost >= value
 }

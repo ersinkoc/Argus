@@ -10,6 +10,8 @@ import (
 )
 
 // MakeServerTLSConfig creates a TLS config for the listener (client-facing).
+// If cfg.ClientAuth is true, requires clients to present a valid certificate
+// signed by the CA in cfg.ClientCAFile (mTLS).
 func MakeServerTLSConfig(cfg config.TLSConfig) (*tls.Config, error) {
 	if !cfg.Enabled {
 		return nil, nil
@@ -23,6 +25,19 @@ func MakeServerTLSConfig(cfg config.TLSConfig) (*tls.Config, error) {
 	tlsCfg := &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		MinVersion:   tls.VersionTLS12,
+	}
+
+	if cfg.ClientAuth {
+		caCert, err := os.ReadFile(cfg.ClientCAFile)
+		if err != nil {
+			return nil, fmt.Errorf("reading client CA certificate: %w", err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("failed to parse client CA certificate")
+		}
+		tlsCfg.ClientCAs = pool
+		tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
 	}
 
 	return tlsCfg, nil

@@ -99,3 +99,32 @@ func TestMatchRoleEmpty(t *testing.T) {
 		t.Error("empty roles should match all")
 	}
 }
+
+func TestMatchCondition_PlanCostGTE(t *testing.T) {
+	cond := &ConditionConfig{PlanCostGTE: 1000.0}
+
+	// Plan cost above threshold → condition matches (triggers block)
+	if !matchCondition(&Context{PlanCost: 1500.0}, cond) {
+		t.Error("expected condition to match when PlanCost >= PlanCostGTE")
+	}
+
+	// Plan cost equal to threshold → matches
+	if !matchCondition(&Context{PlanCost: 1000.0}, cond) {
+		t.Error("expected condition to match when PlanCost == PlanCostGTE")
+	}
+
+	// Plan cost below threshold → does not match
+	if matchCondition(&Context{PlanCost: 500.0}, cond) {
+		t.Error("expected condition to not match when PlanCost < PlanCostGTE")
+	}
+
+	// Plan cost not available (0) → skip check, condition does not trigger
+	if matchCondition(&Context{PlanCost: 0}, cond) {
+		t.Error("expected condition to not match when PlanCost is 0 (unavailable)")
+	}
+
+	// Condition not set (0) → always passes through
+	if !matchCondition(&Context{PlanCost: 9999.0}, &ConditionConfig{PlanCostGTE: 0}) {
+		t.Error("expected condition to pass when PlanCostGTE is 0")
+	}
+}

@@ -7,7 +7,9 @@
         "tls": {
           "enabled": true,
           "cert_file": "/etc/argus/tls/server.crt",
-          "key_file": "/etc/argus/tls/server.key"
+          "key_file": "/etc/argus/tls/server.key",
+          "client_auth": true,
+          "client_ca_file": "/etc/argus/tls/client-ca.crt"
         }
       },
       {

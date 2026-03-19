@@ -1,0 +1,129 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argus
+  namespace: argus
+  labels:
+    app.kubernetes.io/name: argus
+    app.kubernetes.io/component: proxy
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argus
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: argus
+        app.kubernetes.io/component: proxy
+      annotations:
+        ## Restart pods when config changes
+        checksum/config: "{{ sha256sum .Values.config }}"
+    spec:
+      serviceAccountName: argus
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: argus
+          image: ghcr.io/ersinkoc/argus:latest
+          imagePullPolicy: Always
+          args: ["-config", "/etc/argus/argus.json"]
+          ports:
+            - name: pg-proxy
+              containerPort: 15432
+              protocol: TCP
+            - name: mysql-proxy
+              containerPort: 13306
+              protocol: TCP
+            - name: admin
+              containerPort: 9090
+              protocol: TCP
+            - name: metrics
+              containerPort: 9091
+              protocol: TCP
+          env:
+            - name: DB_PG_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: argus-secrets
+                  key: DB_PG_HOST
+            - name: DB_PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: argus-secrets
+                  key: DB_PG_PASSWORD
+            - name: DB_MYSQL_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: argus-secrets
+                  key: DB_MYSQL_HOST
+            - name: DB_MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: argus-secrets
+                  key: DB_MYSQL_PASSWORD
+            - name: ARGUS_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: argus-secrets
+                  key: ARGUS_ADMIN_TOKEN
+            - name: SIEM_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: argus-secrets
+                  key: SIEM_WEBHOOK_URL
+                  optional: true
+          volumeMounts:
+            - name: config
+              mountPath: /etc/argus
+              readOnly: true
+            - name: logs
+              mountPath: /var/log/argus
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: metrics
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "1000m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: config
+          configMap:
+            name: argus-config
+            items:
+              - key: argus.json
+                path: argus.json
+              - key: base-policy.json
+                path: policies/base.json
+        - name: logs
+          emptyDir: {}
+      terminationGracePeriodSeconds: 30

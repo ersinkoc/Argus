@@ -228,6 +228,15 @@ func matchCondition(ctx *Context, cond *ConditionConfig) bool {
 		}
 	}
 
+	// Real planner cost (from EXPLAIN) threshold.
+	// If plan cost is unavailable (0), the condition cannot be evaluated
+	// and is treated as not matching — the policy rule is skipped.
+	if cond.PlanCostGTE > 0 {
+		if ctx.PlanCost <= 0 || ctx.PlanCost < cond.PlanCostGTE {
+			return false
+		}
+	}
+
 	return true
 }
 

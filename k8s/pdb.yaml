@@ -1,0 +1,14 @@
+## PodDisruptionBudget ensures at least 1 argus replica is always available
+## during node drains, rolling updates, and cluster maintenance.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: argus
+  namespace: argus
+  labels:
+    app.kubernetes.io/name: argus
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argus

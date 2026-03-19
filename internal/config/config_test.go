@@ -91,6 +91,11 @@ func TestValidate(t *testing.T) {
 		}, true},
 		{"bad audit level", func(c *Config) { c.Audit.Level = "debug" }, true},
 		{"bad pool max", func(c *Config) { c.Pool.MaxConnectionsPerTarget = 0 }, true},
+		{"mtls without client_ca_file", func(c *Config) {
+			c.Server.Listeners[0].TLS = TLSConfig{
+				Enabled: true, CertFile: "c.crt", KeyFile: "c.key", ClientAuth: true,
+			}
+		}, true},
 	}
 
 	for _, tt := range tests {
