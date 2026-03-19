@@ -9,20 +9,20 @@
 
 > *Know who connects. Control what they do. Protect what they see.*
 
-Argus is a protocol-aware database access proxy written in Go. It sits between applications and databases — inspecting every connection, enforcing access policies in real time, masking sensitive data at the result level, and logging everything for audit and compliance.
+Argus is a protocol-aware database firewall and access proxy written in Go. It sits between applications and databases — inspecting every query, blocking SQL injection and dangerous operations, enforcing access policies in real time, masking sensitive data at the result level, and logging everything for audit and compliance.
 
 ```
-┌──────────┐         ┌──────────────────────────────────────────┐         ┌──────────┐
-│          │   TCP   │                 Argus                    │   TCP   │          │
-│  Client  │────────>│  ┌─────────┐  ┌────────┐  ┌──────────┐   │────────>│ Database │
-│  (App)   │<────────│  │Protocol │  │ Policy │  │ Masking  │   │<────────│ Server   │
-│          │         │  │ Handler │  │ Engine │  │ Pipeline │   │         │          │
-└──────────┘         │  └─────────┘  └────────┘  └──────────┘   │         └──────────┘
-                     │  ┌─────────┐  ┌────────┐  ┌──────────┐   │
-                     │  │Session  │  │ Audit  │  │Connection│   │
-                     │  │Manager  │  │ Logger │  │  Pool    │   │
-                     │  └─────────┘  └────────┘  └──────────┘   │
-                     └──────────────────────────────────────────┘
+┌──────────┐         ┌──────────────────────────────────────────────────┐         ┌──────────┐
+│          │   TCP   │                     Argus                        │   TCP   │          │
+│  Client  │────────>│  ┌─────────┐  ┌─────────┐  ┌────────────────┐   │────────>│ Database │
+│  (App)   │<────────│  │Protocol │  │  WAF /  │  │   Masking /    │   │<────────│ Server   │
+│          │         │  │ Handler │  │ Policy  │  │ PII Protection │   │         │          │
+└──────────┘         │  └─────────┘  └─────────┘  └────────────────┘   │         └──────────┘
+                     │  ┌─────────┐  ┌─────────┐  ┌────────────────┐   │
+                     │  │Session  │  │ Audit / │  │ Connection     │   │
+                     │  │Manager  │  │ SIEM    │  │ Pool + CB      │   │
+                     │  └─────────┘  └─────────┘  └────────────────┘   │
+                     └──────────────────────────────────────────────────┘
 ```
 
 ---
@@ -32,38 +32,60 @@ Argus is a protocol-aware database access proxy written in Go. It sits between a
 Traditional PAM tools manage credentials. They answer **"who connected."**
 They do not answer **"what did they do"** or **"what did they see."**
 
-Argus answers all three:
+Argus answers all three — and blocks what shouldn't happen:
 
-| Question | Capability |
-|----------|-----------|
-| **Who connected?** | Session-level identity, role mapping, IP tracking |
-| **What did they do?** | Command-level inspection, classification, risk scoring |
-| **What did they see?** | Result-level filtering, column masking, row limits |
+| Layer | Capability |
+|-------|-----------|
+| **Identity** | Session-level identity, role mapping, LDAP/SSO, IP tracking |
+| **Inspection** | SQL parsing, classification, risk scoring, anomaly detection |
+| **Protection** | SQL injection blocking, query cost limits, WHERE enforcement |
+| **Access Control** | Role/time/IP-based policies, rate limiting, approval workflows |
+| **Data Protection** | Column masking, PII auto-detection, row limits, sensitive table lockdown |
+| **Audit** | Structured JSON logs, SIEM webhook, session replay, query fingerprinting |
 
 ---
 
 ## Features
 
-### Core
+### Database WAF (Web Application Firewall for Databases)
+- **SQL injection detection** — tautology (`OR 1=1`), UNION-based, stacked queries, blind injection (`SLEEP`, `BENCHMARK`, `WAITFOR DELAY`), comment termination, encoding tricks (`CHAR()` obfuscation)
+- **Schema enumeration blocking** — `information_schema`, `pg_catalog`, `sys.*`, `mysql.user` access detection
+- **System command blocking** — `xp_cmdshell`, `INTO OUTFILE`, `LOAD_FILE`, `pg_read_file`, `lo_export`
+- **Privilege escalation detection** — `CREATE USER`, `GRANT`, `SET ROLE`, `SET SESSION AUTHORIZATION`
+- **Query complexity limits** — max query length, max tables, max JOINs, cost threshold
+- **Bulk operation protection** — `require_where` enforces WHERE on UPDATE/DELETE
+- **Sensitive table lockdown** — block non-DBA access to credential, audit, and secret tables
+- **Audit log tamper protection** — prevent modification of audit/log tables
+
+### Protocol Support
 - **4 database protocols** — PostgreSQL, MySQL, MSSQL TDS, and MongoDB wire protocols
 - **Protocol-native proxy** — speaks each database's wire protocol natively, not JDBC/ODBC wrapping
 - **Zero external dependencies** — standard library only, no CGO, single binary (~7.8MB)
-- **Web dashboard** — embedded real-time UI at `/ui` with auto-refresh
-- **Streaming architecture** — O(1) memory per row, no full result set buffering
-- **TLS support** — client-facing and backend connections, two-segment TLS
 
-### Policy Engine
-- **Declarative policies** — JSON-based rules, no code changes needed
-- **Role-based access** — wildcard user matching, negation support (`!dba`)
-- **Command-type rules** — allow/block/mask by SELECT, INSERT, UPDATE, DELETE, DDL, DCL
-- **Time-based rules** — office hours, work days enforcement
-- **IP-based rules** — CIDR range restrictions
-- **Risk scoring** — automatic detection of dangerous patterns (DROP, bulk DELETE, injection)
-- **Hot-reload** — policy files watched and reloaded without restart
-- **Decision cache** — LRU cache with TTL for repeated query patterns
+### Policy Engine (14 Condition Types)
+
+| Condition | Purpose | Example |
+|-----------|---------|---------|
+| `sql_contains` | Substring match (case-insensitive) | `["DROP", "TRUNCATE"]` |
+| `sql_not_contains` | Block when SQL lacks required pattern | `["WHERE"]` |
+| `sql_regex` | Full regex pattern matching | `["(?i)information_schema\\."]` |
+| `sql_injection` | Enable built-in SQLi signature detection | `true` |
+| `risk_level_gte` | Minimum risk level threshold | `"medium"`, `"high"`, `"critical"` |
+| `max_cost_gte` | Query cost estimation threshold (0-100) | `80` |
+| `max_query_length` | Max SQL length in bytes | `8192` |
+| `max_tables` | Max tables accessed in one query | `10` |
+| `max_joins` | Max JOIN operations | `8` |
+| `require_where` | Enforce WHERE clause on write ops | `true` |
+| `work_hours` | Time range (blocks outside range) | `"08:00-19:00"` |
+| `work_days` | Day restriction (blocks outside days) | `["monday", "friday"]` |
+| `source_ip_in` | IP whitelist (CIDR) | `["10.0.0.0/8"]` |
+| `source_ip_not_in` | IP blacklist (CIDR) | `["203.0.113.0/24"]` |
+
+Plus: role-based matching (`!dba`), command-type filtering, database/table wildcards, rate limiting per policy, row count limits, and masking rules.
 
 ### Data Masking
-- **Column-level masking** — per-column transformer rules
+- **Column-level masking** — per-column transformer rules with wildcard support
+- **PII auto-detection** — 17 patterns, Luhn validation, TC Kimlik check
 - **8 built-in transformers:**
 
 | Transformer | Input | Output |
@@ -78,14 +100,36 @@ Argus answers all three:
 | `null` | `anything` | `NULL` |
 
 - **Row count enforcement** — configurable limits per policy
-- **Streaming** — masking applied per-row without buffering
+- **Streaming** — masking applied per-row, O(1) memory
 
 ### Audit & Observability
-- **Structured JSON audit logs** — every connection, command, and decision recorded
+- **Structured JSON audit logs** — every connection, command, and decision
 - **Three log levels** — minimal, standard, verbose
 - **Async logging** — buffered channel, never blocks the proxy pipeline
+- **SIEM webhook** — batched HTTP POST to external systems
 - **Prometheus metrics** — connections, commands, masking, pool stats, Go runtime
-- **Health endpoint** — per-target backend health, session count
+- **Query fingerprinting** — top query patterns, slow query logging
+- **Session replay** — reconstruct full query timeline for any session
+- **Audit search & CSV export** — filter by user, time, action, command type
+- **Log rotation + compaction** — size-based rotation, age-based cleanup
+- **Health endpoints** — `/healthz`, `/ready`, `/livez` with per-target backend health
+
+### Authentication
+- **Auth passthrough** — observes username without storing passwords
+- **LDAP/Active Directory** — bind authentication with group resolution
+- **SSO/JWT** — HMAC-SHA256 verification, claim extraction, expiry validation
+
+### Enterprise Features
+- **Approval workflows** — hold critical commands for manual approve/deny with timeout
+- **Anomaly detection** — behavioral baseline learning, unusual command/table/hour/frequency spike alerts
+- **Query cost estimation** — heuristic scoring (0-100) based on JOINs, subqueries, missing WHERE
+- **Query rewriting** — auto-LIMIT injection, WHERE clause enforcement for multi-tenant isolation
+- **Rate limiting** — per-policy token bucket (configurable rate/burst per role)
+- **Connection pool** — dedicated + shared modes, circuit breaker, warmup, wait histogram
+- **Certificate rotation** — TLS cert reload without restart
+- **Data classification** — 5 sensitivity levels, 17 rules, confidence scoring
+- **Plugin system** — custom transformers, audit writers, auth providers
+- **Web dashboard** — embedded real-time UI at `/ui` with auto-refresh + interactive test runner at `/ui/test`
 
 ---
 
@@ -94,9 +138,7 @@ Argus answers all three:
 ### Build
 
 ```bash
-# Build
 go build -o argus ./cmd/argus/
-
 # Or with Makefile
 make build
 ```
@@ -124,12 +166,13 @@ Create `argus.json`:
     "default_target": "my-postgres"
   },
   "policy": {
-    "files": ["policies/default.json"],
+    "files": ["policies/waf.json"],
     "reload_interval": "5s"
   },
   "audit": {
-    "level": "standard",
-    "outputs": [{"type": "stdout"}]
+    "level": "verbose",
+    "outputs": [{"type": "stdout"}],
+    "pii_auto_detect": true
   },
   "metrics": {
     "enabled": true,
@@ -160,8 +203,6 @@ No application code changes required. Same protocol, same tools.
 
 ### Docker Multi-Database Setup
 
-Run Argus with PostgreSQL, MySQL, and MSSQL in Docker:
-
 ```bash
 # Start all services
 make docker-up
@@ -182,34 +223,106 @@ mysql -h 127.0.0.1 -P 30101 -u argus_test -pargus_pass testdb
 # Run E2E tests
 make e2e
 
-# View Argus logs
-make docker-logs
-
 # Dashboard
-curl http://localhost:30200/api/dashboard | jq
-
-# Stop
-make docker-down
+open http://localhost:30200/ui
 ```
 
 ---
 
-## Policy Examples
+## WAF Policy Examples
 
-### Block destructive DDL for non-DBAs
+### Block SQL injection
 
 ```json
 {
-  "name": "block-destructive-ddl",
-  "match": {
-    "roles": ["!dba"],
-    "commands": ["DDL"]
-  },
+  "name": "waf-sqli-detection",
+  "match": {},
+  "condition": { "sql_injection": true },
+  "action": "block",
+  "reason": "SQL injection pattern detected"
+}
+```
+
+Detects: `OR 1=1`, `UNION SELECT`, `; DROP TABLE`, `SLEEP(5)`, `xp_cmdshell`, `' OR '--`, `CHAR(68,82,79,80)`, `INTO OUTFILE`, `LOAD_FILE()`, `WAITFOR DELAY`, `BENCHMARK()`.
+
+### Block DELETE/UPDATE without WHERE
+
+```json
+{
+  "name": "waf-require-where",
+  "match": { "commands": ["DELETE", "UPDATE"] },
+  "condition": { "require_where": true },
+  "action": "block",
+  "reason": "WHERE clause required for write operations"
+}
+```
+
+### Block schema enumeration
+
+```json
+{
+  "name": "waf-block-schema-scan",
+  "match": { "roles": ["!dba"] },
   "condition": {
-    "sql_contains": ["DROP", "TRUNCATE"]
+    "sql_regex": ["(?i)information_schema\\.", "(?i)pg_catalog\\.", "(?i)sys\\."]
   },
   "action": "block",
-  "reason": "Destructive DDL requires DBA role"
+  "reason": "Schema metadata access restricted to DBA"
+}
+```
+
+### Block oversized queries (anti-injection payload)
+
+```json
+{
+  "name": "waf-max-query-length",
+  "match": { "roles": ["!dba"] },
+  "condition": { "max_query_length": 8192 },
+  "action": "block",
+  "reason": "Query exceeds 8KB — possible injection payload"
+}
+```
+
+### Block excessive JOINs (anti-resource exhaustion)
+
+```json
+{
+  "name": "waf-max-joins",
+  "match": { "roles": ["!dba"] },
+  "condition": { "max_joins": 8 },
+  "action": "block",
+  "reason": "Too many JOINs — possible resource exhaustion"
+}
+```
+
+### Protect sensitive tables
+
+```json
+{
+  "name": "waf-protect-credentials",
+  "match": {
+    "roles": ["!dba"],
+    "tables": ["credentials", "passwords", "secrets", "api_keys"]
+  },
+  "action": "block",
+  "reason": "Access to credential tables requires DBA role"
+}
+```
+
+### Block system-level commands
+
+```json
+{
+  "name": "waf-block-system-commands",
+  "match": { "roles": ["!dba"] },
+  "condition": {
+    "sql_regex": [
+      "(?i)xp_cmdshell", "(?i)INTO\\s+OUTFILE", "(?i)LOAD_FILE\\s*\\(",
+      "(?i)LOAD\\s+DATA\\s+INFILE", "(?i)pg_read_file", "(?i)lo_export"
+    ]
+  },
+  "action": "block",
+  "reason": "System-level operations are prohibited"
 }
 ```
 
@@ -218,51 +331,59 @@ make docker-down
 ```json
 {
   "name": "mask-pii-for-support",
-  "match": {
-    "roles": ["support"],
-    "commands": ["SELECT"]
-  },
+  "match": { "roles": ["support"], "commands": ["SELECT"] },
   "masking": [
     {"column": "email", "transformer": "partial_email"},
     {"column": "phone", "transformer": "partial_phone"},
     {"column": "tc_kimlik", "transformer": "redact"},
     {"column": "card_number", "transformer": "partial_card"},
-    {"column": "salary", "transformer": "redact"}
+    {"column": "salary", "transformer": "redact"},
+    {"column": "password_hash", "transformer": "redact"},
+    {"column": "date_of_birth", "transformer": "redact"}
   ]
 }
 ```
 
-### Block bulk writes without WHERE
+### Rate limit + office hours for contractors
 
 ```json
 {
-  "name": "block-bulk-writes",
-  "match": {
-    "commands": ["DELETE", "UPDATE"]
-  },
-  "condition": {
-    "risk_level_gte": "medium"
-  },
-  "action": "block",
-  "reason": "Bulk write operations require WHERE clause"
+  "name": "contractor-rate-limit",
+  "match": { "roles": ["contractor"] },
+  "rate_limit": { "rate": 5, "burst": 10 }
 }
 ```
-
-### Restrict production access to office network
 
 ```json
 {
-  "name": "ip-restriction-production",
-  "match": {
-    "databases": ["production", "prod_*"]
-  },
+  "name": "contractor-office-hours",
+  "match": { "roles": ["contractor"] },
   "condition": {
-    "source_ip_not_in": ["10.0.0.0/8", "172.16.0.0/12"]
+    "work_hours": "08:00-19:00",
+    "work_days": ["monday", "tuesday", "wednesday", "thursday", "friday"]
   },
   "action": "block",
-  "reason": "Production access restricted to office network"
+  "reason": "Contractor access outside business hours"
 }
 ```
+
+### Restrict production to internal network
+
+```json
+{
+  "name": "production-ip-restriction",
+  "match": { "databases": ["production", "prod_*"] },
+  "condition": {
+    "source_ip_not_in": ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+  },
+  "action": "block",
+  "reason": "Production access restricted to internal network"
+}
+```
+
+### Ready-to-use WAF policy
+
+A comprehensive WAF policy with 30+ rules is included at `configs/policies/waf.json`. It covers all the above plus audit log tamper protection, privilege escalation blocking, data exfiltration limits, and role-specific masking for 8 predefined roles.
 
 ---
 
@@ -291,6 +412,16 @@ Use `$ENV{VAR}` syntax in config for secrets:
 }
 ```
 
+### Policy Files
+
+Three built-in policy profiles:
+
+| File | Use Case | Rules |
+|------|----------|-------|
+| `configs/policies/default.json` | Minimal — basic DDL/bulk protection | 8 rules |
+| `configs/policies/production.json` | Production — RBAC, IP, time, rate limiting | 13 rules |
+| `configs/policies/waf.json` | Full WAF — SQLi, exfiltration, masking, everything | 30+ rules |
+
 ---
 
 ## API Endpoints
@@ -302,6 +433,8 @@ Use `$ENV{VAR}` syntax in config for secrets:
 | `/api/sessions` | GET | List active sessions with details |
 | `/api/sessions/kill?id=` | POST | Kill a session by ID |
 | `/api/policies/reload` | POST | Hot-reload policy files |
+| `/api/policies/dryrun?username=&sql=` | POST | Test policy without enforcing |
+| `/api/policies/validate` | GET | Validate policy rules for conflicts |
 | `/api/stats` | GET | Runtime statistics (memory, goroutines, counters) |
 | `/api/approvals` | GET | List pending approval requests |
 | `/api/approvals/approve?id=` | POST | Approve a pending command |
@@ -310,16 +443,18 @@ Use `$ENV{VAR}` syntax in config for secrets:
 | `/api/audit/replay?session_id=` | GET | Replay a session's queries |
 | `/api/audit/fingerprints?limit=` | GET | Top query patterns |
 | `/api/audit/compact` | POST | Clean up old audit log files |
-| `/api/policies/dryrun?username=&sql=` | POST | Test policy without enforcing |
-| `/api/config/export` | GET | Export current configuration |
 | `/api/audit/export?username=` | GET | CSV export of audit events |
+| `/api/config/export` | GET | Export current configuration |
 | `/api/pool/health` | GET | Per-target pool health summary |
 | `/api/health/deep` | GET | Deep TCP health check with latency |
-| `/api/policies/validate` | GET | Validate policy rules for conflicts |
 | `/api/dashboard` | GET | Aggregated dashboard data |
+| `/api/classify` | POST | Data classification engine |
+| `/api/plugins` | GET | List registered plugins |
 | `/ready` | GET | Kubernetes readiness probe |
 | `/livez` | GET | Kubernetes liveness probe |
 | `/api/events/ws` | WebSocket | Live event stream |
+| `/ui` | GET | Web dashboard |
+| `/ui/test` | GET | Interactive test runner |
 
 ---
 
@@ -327,25 +462,59 @@ Use `$ENV{VAR}` syntax in config for secrets:
 
 ```
 argus/
-├── cmd/argus/              # Binary entry point
+├── cmd/argus/              # Binary entry point, signal handling
 ├── internal/
 │   ├── core/               # Listener, TLS, router, pipeline, approval workflow
 │   ├── protocol/
 │   │   ├── handler.go      # ProtocolHandler interface
 │   │   ├── pg/             # PostgreSQL (Simple + Extended + COPY + SSL)
-│   │   ├── mysql/          # MySQL (COM_QUERY, handshake, result sets)
-│   │   └── mssql/          # MSSQL TDS (Pre-Login, Login7, SQL Batch)
-│   ├── inspection/         # Tokenizer, classifier, fingerprint, anomaly, splitter
-│   ├── policy/             # Policy engine, rule matching, decision cache
-│   ├── masking/            # Streaming pipeline, PII auto-detection
+│   │   ├── mysql/          # MySQL (COM_QUERY, prepared statements, masking)
+│   │   ├── mssql/          # MSSQL TDS (Pre-Login, Login7, SQL Batch, masking)
+│   │   └── mongodb/        # MongoDB (OP_MSG, BSON command extraction)
+│   ├── inspection/         # Tokenizer, classifier, fingerprint, anomaly, cost, splitter
+│   ├── policy/             # Engine, matcher (14 conditions), WAF rules, decision cache
+│   ├── masking/            # Streaming pipeline, 8 transformers, PII auto-detection
 │   ├── ratelimit/          # Token bucket rate limiter
-│   ├── session/            # Session lifecycle, identity, timeout
-│   ├── pool/               # Connection pool (dedicated + shared), histogram
-│   ├── audit/              # Async structured audit logging
-│   ├── config/             # Configuration loading, validation
-│   └── admin/              # Metrics, health, session API
-├── configs/                # Example configuration files
-└── docs/                   # Documentation
+│   ├── session/            # Lifecycle, identity, timeout, tagging, concurrency
+│   ├── pool/               # Dedicated + shared pool, circuit breaker, histogram, health
+│   ├── audit/              # Logger, rotation, webhook, recorder, search, replay, compaction
+│   ├── admin/              # 26 REST endpoints + WebSocket, auth middleware, dashboard UI
+│   ├── auth/               # LDAP (BER encoding, group resolution) + SSO (JWT/HMAC-SHA256)
+│   ├── classify/           # Data classification engine (5 levels, 17 rules)
+│   ├── cluster/            # Multi-instance shared session store
+│   ├── config/             # Loading, validation, env overrides
+│   ├── metrics/            # Counters, query latency histogram
+│   └── plugin/             # Plugin registry (transformer, audit writer, auth provider)
+├── configs/
+│   ├── argus-multidb.json  # Multi-database Docker config
+│   └── policies/
+│       ├── default.json    # Minimal policy (8 rules)
+│       ├── production.json # Production policy (13 rules)
+│       └── waf.json        # Full WAF policy (30+ rules)
+└── scripts/                # E2E test scripts
+```
+
+### Pipeline Flow
+
+```
+Client Request
+  → Protocol Decode (PG/MySQL/MSSQL/MongoDB)
+  → SQL Inspection (tokenize, classify, risk score, fingerprint)
+  → Cost Estimation (0-100 heuristic)
+  → Policy Evaluation (14 conditions, role/command/table match, cache)
+    → SQLi Detection (tautology, UNION, stacked, blind, encoding)
+    → Rate Limit Check (token bucket per policy)
+    → Anomaly Detection (baseline + frequency spike)
+  → Decision:
+    ├── BLOCK → return error to client, audit log
+    ├── ALLOW → forward to backend
+    │   → Query Rewrite (auto-LIMIT, WHERE injection)
+    │   → Forward Results (streaming)
+    │     → Masking Pipeline (explicit rules + PII auto-detect)
+    │     → Row Limit Enforcement
+    │   → Latency Measurement → Slow Query Check
+    │   → Audit Log + Metrics + Live Broadcast
+    └── APPROVAL → hold for manual approve/deny
 ```
 
 ### Design Principles
@@ -353,8 +522,8 @@ argus/
 1. **Invisible to applications** — same protocol, same tools, only connection target changes
 2. **Streaming-first** — results processed per-row, never buffered entirely
 3. **Policy-driven** — every decision comes from the policy engine, no hardcoded rules
-4. **Observable** — every connection, command, and decision is logged
-5. **Modular** — each database protocol is an independent adapter
+4. **Defense in depth** — SQLi detection + risk scoring + cost limits + rate limiting + anomaly detection
+5. **Observable** — every connection, command, and decision is logged and measurable
 
 ---
 
@@ -367,7 +536,7 @@ argus/
 | Max concurrent sessions | 10,000+ |
 | Memory per session | < 64KB baseline |
 | Audit throughput | 100,000 events/sec |
-| Policy evaluation time | < 100us (cached) |
+| Policy evaluation time | < 100μs (cached) |
 | Startup time | < 2 seconds |
 | Binary size | < 20MB |
 
@@ -375,8 +544,9 @@ argus/
 
 ## Roadmap
 
-### Phase 1 — MVP (Current)
-- [x] PostgreSQL Simple Query protocol
+### Phase 1 — Core Proxy (Complete)
+- [x] PostgreSQL Simple Query + Extended Query + COPY + SSL
+- [x] MySQL wire protocol (handshake, COM_QUERY, prepared statements)
 - [x] Auth passthrough mode
 - [x] SQL inspection (tokenizer, classifier, risk scoring)
 - [x] Policy engine (role, command, time, IP rules)
@@ -384,18 +554,15 @@ argus/
 - [x] Async audit logging (JSON, file/stdout)
 - [x] Connection pooling with health checks
 - [x] TLS support (client + backend)
-- [x] Prometheus metrics & health endpoint
+- [x] Prometheus metrics & health endpoints
 - [x] Configuration with env overrides
 
 ### Phase 2 — Production Hardening (Complete)
-- [x] MySQL wire protocol (handshake, COM_QUERY, prepared statements, masking)
-- [x] PostgreSQL Extended Query (Parse/Bind/Describe/Execute/Sync)
-- [x] PostgreSQL COPY protocol (CopyIn/CopyOut passthrough)
-- [x] Admin REST API (23 endpoints + WebSocket)
+- [x] Admin REST API (26 endpoints + WebSocket)
 - [x] SQL literal sanitization in audit logs
 - [x] SIEM webhook export (batched HTTP POST)
 - [x] Audit log file rotation + compaction
-- [x] PII auto-detection (15 patterns, Luhn, TC Kimlik)
+- [x] PII auto-detection (17 patterns, Luhn, TC Kimlik)
 - [x] Graceful shutdown with connection draining
 - [x] GitHub Actions CI/CD
 - [x] Kubernetes readiness/liveness probes
@@ -411,16 +578,22 @@ argus/
 - [x] Policy dry-run, inheritance, validator
 - [x] Connection pool circuit breaker + warmup
 - [x] Certificate rotation without restart
-- [x] Admin API token authentication
-- [x] Session tagging
-- [x] Slow query logging
-- [x] Query latency histogram (p50/p95/p99)
+- [x] LDAP authentication with group resolution
+- [x] SSO/JWT authentication (HMAC-SHA256)
 
-### Phase 4 — Extended Platform (Complete)
+### Phase 4 — Database WAF (Complete)
 - [x] MongoDB wire protocol (OP_MSG, BSON command extraction)
-- [x] Web dashboard UI (embedded HTML/CSS/JS, real-time at `/ui`)
-- [x] Plugin system (custom transformers, audit writers, registry)
+- [x] Web dashboard UI + interactive test runner
+- [x] Plugin system (custom transformers, audit writers)
 - [x] Data classification engine (5 sensitivity levels, 17 rules)
+- [x] SQL injection detection (tautology, UNION, stacked, blind, encoding, system commands)
+- [x] Schema enumeration blocking
+- [x] System command blocking (xp_cmdshell, OUTFILE, LOAD_FILE)
+- [x] Privilege escalation detection
+- [x] Query complexity limits (length, tables, JOINs, cost)
+- [x] WHERE clause enforcement
+- [x] Sensitive table lockdown
+- [x] Comprehensive WAF policy (30+ rules, 8 roles)
 - [ ] Oracle TNS protocol support
 
 ---
@@ -428,17 +601,14 @@ argus/
 ## Testing
 
 ```bash
-make test              # Run all tests
-make test-verbose      # Verbose output
-make test-cover        # Coverage report (HTML)
+go test ./... -count=1          # Run all tests
+go test ./... -v                # Verbose output
+make test-cover                 # HTML coverage report
+bash scripts/e2e-realworld.sh   # Real-world E2E (45 tests)
+bash scripts/e2e-extra-scenarios.sh  # Extra scenarios (63 tests)
 ```
 
-Current: **1195 unit tests + 171 E2E**, **92.1% coverage** (19 packages, 4 at 100%).
-
-### Web Dashboard
-
-Access the real-time dashboard at `http://localhost:30200/ui` (or your admin port).
-Shows sessions, commands, targets, health status — auto-refreshes every 5s.
+Current: **1220 unit tests + 171 E2E**, **92% coverage** (19 packages, 4 at 100%).
 
 ---
 
@@ -450,7 +620,7 @@ Shows sessions, commands, targets, health status — auto-refreshes every 5s.
 
 ## License
 
-TBD (MIT or dual MIT/Enterprise)
+MIT
 
 ---
 

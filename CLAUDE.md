@@ -1,4 +1,4 @@
-# Argus — Database Access Proxy
+# Argus — Database Firewall & Access Proxy
 
 ## Build & Test
 ```bash
@@ -18,10 +18,12 @@ make cross-all                          # cross-compile linux/darwin/windows
 ```
 
 ## Architecture
-- **Zero external dependencies** — stdlib only, no CGO, single binary (~7.7MB)
+- **Zero external dependencies** — stdlib only, no CGO, single binary (~7.8MB)
 - Config and policy files use JSON format
 - 4 database protocols: PostgreSQL, MySQL, MSSQL, MongoDB
-- 1195 unit tests, 92.1% coverage (19 packages, min 91.7% admin, 4 at 100%)
+- Database WAF: SQLi detection, schema enumeration blocking, system command blocking
+- 14 policy condition types including sql_injection, require_where, max_joins, max_tables
+- 1220 unit tests, 92% coverage (19 packages, 4 at 100%)
 - 171 E2E tests across 4 scripts: PG + MySQL CRUD, transactions, bulk data, error resilience, admin API, concurrent burst
 
 ### Key Packages (21 packages)
@@ -32,16 +34,16 @@ make cross-all                          # cross-compile linux/darwin/windows
 | `internal/protocol/pg/` | PostgreSQL (Simple + Extended + COPY + SSL) |
 | `internal/protocol/mysql/` | MySQL (COM_QUERY + prepared statements) |
 | `internal/protocol/mssql/` | MSSQL TDS (Pre-Login, Login7, SQL Batch, result masking) |
+| `internal/protocol/mongodb/` | MongoDB (OP_MSG + BSON extraction + error response) |
 | `internal/inspection/` | Tokenizer, classifier, extractor, fingerprint, anomaly, splitter, cost |
-| `internal/policy/` | Engine, matcher, cache, dry-run, inheritance, validator |
+| `internal/policy/` | Engine, matcher (14 conditions), WAF rules, cache, dry-run, validator |
 | `internal/masking/` | Streaming pipeline, 8 transformers, PII auto-detection |
 | `internal/ratelimit/` | Token bucket rate limiter |
-| `internal/session/` | Lifecycle, identity, timeout, tagging |
+| `internal/session/` | Lifecycle, identity, timeout, tagging, concurrency |
 | `internal/pool/` | Dedicated + shared pool, circuit breaker, histogram, health |
 | `internal/audit/` | Logger, rotation, webhook, recorder, search, replay, compaction, slow query |
-| `internal/admin/` | 23 REST endpoints + WebSocket, auth middleware |
-| `internal/protocol/mongodb/` | MongoDB (OP_MSG + BSON extraction) |
-| `internal/auth/` | LDAP (BER encoding) + SSO (JWT/HMAC-SHA256) |
+| `internal/admin/` | 26 REST endpoints + WebSocket, auth middleware, dashboard UI, test runner |
+| `internal/auth/` | LDAP (BER encoding, group resolution) + SSO (JWT/HMAC-SHA256) |
 | `internal/cluster/` | Multi-instance shared session store |
 | `internal/plugin/` | Plugin registry (TransformerPlugin, AuditWriterPlugin) |
 | `internal/classify/` | Data classification engine (5 levels, 17 rules) |
@@ -50,10 +52,20 @@ make cross-all                          # cross-compile linux/darwin/windows
 
 ### Pipeline Flow
 ```
-Command → Inspect → Cost → Policy (8 conditions + cost) → Rate Limit
+Command → Inspect → Cost → Policy (14 conditions + SQLi detection) → Rate Limit
   → Anomaly → Approval (critical) → Forward → PII Auto-Mask
   → Result → Latency → Slow Query → Record → Audit → Broadcast
 ```
+
+### Policy Condition Types
+`sql_contains`, `sql_not_contains`, `sql_regex`, `sql_injection`, `risk_level_gte`,
+`max_cost_gte`, `max_query_length`, `max_tables`, `max_joins`, `require_where`,
+`work_hours`, `work_days`, `source_ip_in`, `source_ip_not_in`
+
+### Policy Files
+- `configs/policies/default.json` — minimal (8 rules)
+- `configs/policies/production.json` — production RBAC (13 rules)
+- `configs/policies/waf.json` — full WAF (30+ rules, 8 roles)
 
 ## Conventions
 - Protocol handlers implement `protocol.Handler` interface
@@ -65,3 +77,4 @@ Command → Inspect → Cost → Policy (8 conditions + cost) → Rate Limit
 - Tests use `net.Pipe()` for protocol-level testing
 - Admin API uses `SessionProvider` interface to avoid import cycles
 - Circuit breaker protects backend connections
+- SQLi detection in `internal/policy/matcher.go` — `detectSQLInjection()` function
