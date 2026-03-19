@@ -105,6 +105,17 @@ func TestCircuitBreakerReset(t *testing.T) {
 	}
 }
 
+func TestPoolSetCircuitBreaker(t *testing.T) {
+	// SetCircuitBreaker replaces the breaker — just verify it doesn't panic
+	// and the pool continues to function.
+	p := NewPool("127.0.0.1:1", 5, 0, 0, 0, 0)
+	p.SetCircuitBreaker(10, 5*time.Second)
+	// Pool not started — just verify the breaker was replaced
+	if p.breaker == nil {
+		t.Error("breaker should not be nil after SetCircuitBreaker")
+	}
+}
+
 func TestCircuitBreakerSuccessResetsFailures(t *testing.T) {
 	cb := NewCircuitBreaker(3, time.Second)
 

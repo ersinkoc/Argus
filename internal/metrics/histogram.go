@@ -82,16 +82,17 @@ func (h *LatencyHistogram) Percentile(p float64) float64 {
 
 // Snapshot returns current histogram state.
 type LatencySnapshot struct {
-	Count  int64   `json:"count"`
-	AvgUS  float64 `json:"avg_us"`
-	P50US  float64 `json:"p50_us"`
-	P95US  float64 `json:"p95_us"`
-	P99US  float64 `json:"p99_us"`
-	SumUS  int64   `json:"sum_us"`
+	Count   int64     `json:"count"`
+	AvgUS   float64   `json:"avg_us"`
+	P50US   float64   `json:"p50_us"`
+	P95US   float64   `json:"p95_us"`
+	P99US   float64   `json:"p99_us"`
+	SumUS   int64     `json:"sum_us"`
+	Buckets [12]int64 `json:"buckets"` // cumulative counts per upper bound
 }
 
 func (h *LatencyHistogram) Snapshot() LatencySnapshot {
-	return LatencySnapshot{
+	s := LatencySnapshot{
 		Count: h.count.Load(),
 		AvgUS: h.AvgMicroseconds(),
 		P50US: h.Percentile(50),
@@ -99,4 +100,16 @@ func (h *LatencyHistogram) Snapshot() LatencySnapshot {
 		P99US: h.Percentile(99),
 		SumUS: h.sum.Load(),
 	}
+	// Cumulative bucket counts (Prometheus histogram convention)
+	cum := int64(0)
+	for i := range latencyBounds {
+		cum += h.buckets[i].Load()
+		s.Buckets[i] = cum
+	}
+	return s
+}
+
+// Bounds returns the histogram bucket upper bounds in microseconds.
+func Bounds() [12]float64 {
+	return latencyBounds
 }

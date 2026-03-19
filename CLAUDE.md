@@ -22,8 +22,8 @@ make cross-all                          # cross-compile linux/darwin/windows
 - Config and policy files use JSON format
 - 4 database protocols: PostgreSQL, MySQL, MSSQL, MongoDB
 - Database WAF: SQLi detection, schema enumeration blocking, system command blocking
-- 14 policy condition types including sql_injection, require_where, max_joins, max_tables
-- 1220 unit tests, 92% coverage (19 packages, 4 at 100%)
+- 15 policy condition types including sql_injection, plan_cost_gte, require_where, max_joins, max_tables
+- 1304 unit tests, 92.2% coverage (21 packages, 4 at 100%)
 - 171 E2E tests across 4 scripts: PG + MySQL CRUD, transactions, bulk data, error resilience, admin API, concurrent burst
 
 ### Key Packages (21 packages)
@@ -49,6 +49,7 @@ make cross-all                          # cross-compile linux/darwin/windows
 | `internal/classify/` | Data classification engine (5 levels, 17 rules) |
 | `internal/config/` | Loading, validation, env overrides, cross-reference |
 | `internal/metrics/` | Counters, query latency histogram |
+| `internal/plan/` | EXPLAIN-based query plan cost analysis (PostgreSQL + MySQL) |
 
 ### Pipeline Flow
 ```
@@ -60,7 +61,7 @@ Command → Inspect → Cost → Policy (14 conditions + SQLi detection) → Rat
 ### Policy Condition Types
 `sql_contains`, `sql_not_contains`, `sql_regex`, `sql_injection`, `risk_level_gte`,
 `max_cost_gte`, `max_query_length`, `max_tables`, `max_joins`, `require_where`,
-`work_hours`, `work_days`, `source_ip_in`, `source_ip_not_in`
+`work_hours`, `work_days`, `source_ip_in`, `source_ip_not_in`, `plan_cost_gte`
 
 ### Policy Files
 - `configs/policies/default.json` — minimal (8 rules)
@@ -78,3 +79,6 @@ Command → Inspect → Cost → Policy (14 conditions + SQLi detection) → Rat
 - Admin API uses `SessionProvider` interface to avoid import cycles
 - Circuit breaker protects backend connections
 - SQLi detection in `internal/policy/matcher.go` — `detectSQLInjection()` function
+- Query plan cost analysis via EXPLAIN in `internal/plan/` — `ExplainPG()` and `ExplainMySQL()`
+- mTLS client certificate auth via `config.TLSConfig.ClientAuth` + `ClientCAFile`
+- Circuit breaker thresholds configurable via `pool.CircuitBreakerThreshold` + `CircuitBreakerResetTimeout`

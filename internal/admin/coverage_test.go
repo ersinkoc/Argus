@@ -161,10 +161,10 @@ func TestHandleMetricsContent(t *testing.T) {
 		"argus_active_sessions",
 		"argus_connections_total",
 		"argus_commands_total",
-		"argus_query_duration_count",
+		"argus_query_duration_microseconds_count",
 		"argus_protocol_commands_total",
 		"argus_go_goroutines",
-		"argus_pool_wait_count",
+		"argus_pool_acquire_wait_microseconds_count",
 	}
 	for _, check := range checks {
 		if !containsStr(body, check) {

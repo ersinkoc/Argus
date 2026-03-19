@@ -1,0 +1,538 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>plan: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/ersinkoc/argus/internal/plan/plan.go (92.9%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">// Package plan provides query plan cost analysis via EXPLAIN for PostgreSQL
+// and MySQL. It executes EXPLAIN on the backend connection and extracts the
+// planner's total cost estimate, which is more accurate than heuristic
+// scoring for policy enforcement via the plan_cost_gte condition.
+package plan
+
+import (
+        "context"
+        "encoding/binary"
+        "encoding/json"
+        "fmt"
+        "io"
+        "net"
+        "strings"
+        "time"
+)
+
+const (
+        // DefaultTimeout is the maximum time to wait for an EXPLAIN response.
+        DefaultTimeout = 500 * time.Millisecond
+)
+
+// Result holds the parsed PostgreSQL query plan.
+type Result struct {
+        TotalCost float64 // planner's top-level total cost estimate
+        PlanRows  float64 // estimated number of rows
+        PlanWidth int     // estimated row width in bytes
+}
+
+// ExplainPG runs EXPLAIN (FORMAT JSON) &lt;sql&gt; on the given backend connection
+// and returns the plan cost. It must be called before forwarding the real
+// query — the connection is shared so care must be taken by the caller.
+//
+// Only works for PostgreSQL Simple Query protocol connections that are
+// already past the startup/auth phase.
+func ExplainPG(ctx context.Context, backend net.Conn, sql string, timeout time.Duration) (*Result, error) <span class="cov8" title="1">{
+        if timeout &lt;= 0 </span><span class="cov0" title="0">{
+                timeout = DefaultTimeout
+        }</span>
+
+        <span class="cov8" title="1">deadline := time.Now().Add(timeout)
+        if dl, ok := ctx.Deadline(); ok &amp;&amp; dl.Before(deadline) </span><span class="cov8" title="1">{
+                deadline = dl
+        }</span>
+
+        // Send EXPLAIN query as Simple Query
+        <span class="cov8" title="1">explainSQL := "EXPLAIN (FORMAT JSON) " + sql
+        msg := buildSimpleQuery(explainSQL)
+        if err := backend.SetWriteDeadline(deadline); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("plan: set write deadline: %w", err)
+        }</span>
+        <span class="cov8" title="1">if _, err := backend.Write(msg); err != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("plan: sending EXPLAIN: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">if err := backend.SetReadDeadline(deadline); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("plan: set read deadline: %w", err)
+        }</span>
+        <span class="cov8" title="1">defer backend.SetReadDeadline(time.Time{}) //nolint:errcheck // best-effort reset
+        defer backend.SetWriteDeadline(time.Time{}) //nolint:errcheck
+
+        return readExplainResult(backend)</span>
+}
+
+// buildSimpleQuery encodes a PostgreSQL Simple Query ('Q') message.
+func buildSimpleQuery(sql string) []byte <span class="cov8" title="1">{
+        payload := []byte(sql)
+        payload = append(payload, 0) // null terminator
+
+        buf := make([]byte, 1+4+len(payload))
+        buf[0] = 'Q'
+        binary.BigEndian.PutUint32(buf[1:], uint32(4+len(payload)))
+        copy(buf[5:], payload)
+        return buf
+}</span>
+
+// readMessage reads one PostgreSQL backend message (type byte + int32 len + payload).
+func readMessage(r io.Reader) (byte, []byte, error) <span class="cov8" title="1">{
+        hdr := make([]byte, 5)
+        if _, err := io.ReadFull(r, hdr); err != nil </span><span class="cov8" title="1">{
+                return 0, nil, err
+        }</span>
+        <span class="cov8" title="1">msgType := hdr[0]
+        msgLen := int(binary.BigEndian.Uint32(hdr[1:])) - 4
+        if msgLen &lt; 0 </span><span class="cov0" title="0">{
+                return 0, nil, fmt.Errorf("plan: negative message length")
+        }</span>
+        <span class="cov8" title="1">payload := make([]byte, msgLen)
+        if _, err := io.ReadFull(r, payload); err != nil </span><span class="cov8" title="1">{
+                return 0, nil, err
+        }</span>
+        <span class="cov8" title="1">return msgType, payload, nil</span>
+}
+
+// readExplainResult reads backend messages until ReadyForQuery, collecting DataRow text.
+func readExplainResult(backend net.Conn) (*Result, error) <span class="cov8" title="1">{
+        var jsonBuf strings.Builder
+
+        for </span><span class="cov8" title="1">{
+                msgType, payload, err := readMessage(backend)
+                if err != nil </span><span class="cov8" title="1">{
+                        return nil, fmt.Errorf("plan: reading backend message: %w", err)
+                }</span>
+
+                <span class="cov8" title="1">switch msgType </span>{
+                case 'T':<span class="cov8" title="1"></span> // RowDescription — ignore
+                case 'D':<span class="cov8" title="1"> // DataRow
+                        text := extractDataRowText(payload)
+                        jsonBuf.WriteString(text)</span>
+                case 'C':<span class="cov8" title="1"></span> // CommandComplete
+                case 'Z':<span class="cov8" title="1"> // ReadyForQuery — done
+                        return parseExplainJSON(jsonBuf.String())</span>
+                case 'E':<span class="cov8" title="1"> // ErrorResponse
+                        msg := extractErrorMessage(payload)
+                        return nil, fmt.Errorf("plan: EXPLAIN error: %s", msg)</span>
+                // ignore: notice ('N'), parameter status ('S'), etc.
+                }
+        }
+}
+
+// extractDataRowText extracts text fields from a DataRow payload.
+// Each field is: int32 length (-1 = NULL), then bytes.
+func extractDataRowText(payload []byte) string <span class="cov8" title="1">{
+        if len(payload) &lt; 2 </span><span class="cov0" title="0">{
+                return ""
+        }</span>
+        <span class="cov8" title="1">fieldCount := int(binary.BigEndian.Uint16(payload[:2]))
+        off := 2
+        var sb strings.Builder
+        for i := 0; i &lt; fieldCount &amp;&amp; off &lt; len(payload); i++ </span><span class="cov8" title="1">{
+                if off+4 &gt; len(payload) </span><span class="cov0" title="0">{
+                        break</span>
+                }
+                <span class="cov8" title="1">flen := int(int32(binary.BigEndian.Uint32(payload[off:])))
+                off += 4
+                if flen &lt; 0 </span><span class="cov8" title="1">{
+                        continue</span> // NULL
+                }
+                <span class="cov8" title="1">if off+flen &gt; len(payload) </span><span class="cov8" title="1">{
+                        break</span>
+                }
+                <span class="cov8" title="1">sb.Write(payload[off : off+flen])
+                off += flen</span>
+        }
+        <span class="cov8" title="1">return sb.String()</span>
+}
+
+// extractErrorMessage extracts the 'M' (message) field from an ErrorResponse payload.
+func extractErrorMessage(payload []byte) string <span class="cov8" title="1">{
+        for i := 0; i &lt; len(payload)-1; i++ </span><span class="cov8" title="1">{
+                if payload[i] == 'M' </span><span class="cov8" title="1">{
+                        end := i + 1
+                        for end &lt; len(payload) &amp;&amp; payload[end] != 0 </span><span class="cov8" title="1">{
+                                end++
+                        }</span>
+                        <span class="cov8" title="1">return string(payload[i+1 : end])</span>
+                }
+        }
+        <span class="cov8" title="1">return "unknown error"</span>
+}
+
+// pgExplainOutput is the top-level structure returned by EXPLAIN (FORMAT JSON).
+type pgExplainOutput []struct {
+        Plan pgPlanNode `json:"Plan"`
+}
+
+type pgPlanNode struct {
+        TotalCost  float64 `json:"Total Cost"`
+        PlanRows   float64 `json:"Plan Rows"`
+        PlanWidth  int     `json:"Plan Width"`
+}
+
+// parseExplainJSON parses the JSON output from EXPLAIN (FORMAT JSON).
+func parseExplainJSON(raw string) (*Result, error) <span class="cov8" title="1">{
+        raw = strings.TrimSpace(raw)
+        if raw == "" </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("plan: empty EXPLAIN output")
+        }</span>
+
+        <span class="cov8" title="1">var out pgExplainOutput
+        if err := json.Unmarshal([]byte(raw), &amp;out); err != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("plan: parsing EXPLAIN JSON: %w", err)
+        }</span>
+        <span class="cov8" title="1">if len(out) == 0 </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("plan: EXPLAIN returned no plans")
+        }</span>
+
+        <span class="cov8" title="1">return &amp;Result{
+                TotalCost: out[0].Plan.TotalCost,
+                PlanRows:  out[0].Plan.PlanRows,
+                PlanWidth: out[0].Plan.PlanWidth,
+        }, nil</span>
+}
+
+// ── MySQL ────────────────────────────────────────────────────────────────────
+
+// ExplainMySQL runs EXPLAIN FORMAT=JSON &lt;sql&gt; on the given MySQL backend
+// connection and returns the estimated query cost. It uses the raw MySQL
+// wire protocol (COM_QUERY) to avoid importing the mysql package.
+//
+// Only works for MySQL connections that are already past the handshake phase
+// (i.e. authentication is complete and the connection is ready for commands).
+func ExplainMySQL(ctx context.Context, backend net.Conn, sql string, timeout time.Duration) (*Result, error) <span class="cov8" title="1">{
+        if timeout &lt;= 0 </span><span class="cov0" title="0">{
+                timeout = DefaultTimeout
+        }</span>
+
+        <span class="cov8" title="1">deadline := time.Now().Add(timeout)
+        if dl, ok := ctx.Deadline(); ok &amp;&amp; dl.Before(deadline) </span><span class="cov8" title="1">{
+                deadline = dl
+        }</span>
+
+        // Build COM_QUERY packet: header(3-byte LE len + seq=0) + 0x03 + sql bytes
+        <span class="cov8" title="1">query := "EXPLAIN FORMAT=JSON " + sql
+        payload := make([]byte, 1+len(query))
+        payload[0] = 0x03 // COM_QUERY
+        copy(payload[1:], query)
+
+        pktLen := len(payload)
+        buf := make([]byte, 4+pktLen)
+        buf[0] = byte(pktLen)
+        buf[1] = byte(pktLen &gt;&gt; 8)
+        buf[2] = byte(pktLen &gt;&gt; 16)
+        buf[3] = 0 // sequence ID
+
+        copy(buf[4:], payload)
+
+        if err := backend.SetWriteDeadline(deadline); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("plan: mysql set write deadline: %w", err)
+        }</span>
+        <span class="cov8" title="1">if _, err := backend.Write(buf); err != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("plan: mysql sending EXPLAIN: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">if err := backend.SetReadDeadline(deadline); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("plan: mysql set read deadline: %w", err)
+        }</span>
+        <span class="cov8" title="1">defer backend.SetReadDeadline(time.Time{}) //nolint:errcheck
+        defer backend.SetWriteDeadline(time.Time{}) //nolint:errcheck
+
+        return readMySQLExplainResult(backend)</span>
+}
+
+// readMySQLExplainResult reads a MySQL text result set and extracts the
+// EXPLAIN FORMAT=JSON output. MySQL result set structure:
+//   1. Column count packet (length-encoded int)
+//   2. N column definition packets
+//   3. EOF packet (0xfe)
+//   4. Row data packets (length-encoded strings per column)
+//   5. EOF packet (0xfe) or ERR packet (0xff)
+func readMySQLExplainResult(r net.Conn) (*Result, error) <span class="cov8" title="1">{
+        // Read column count packet
+        pkt, err := readMySQLPacket(r)
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("plan: mysql reading column count: %w", err)
+        }</span>
+        <span class="cov8" title="1">if len(pkt) == 0 </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("plan: mysql empty column count packet")
+        }</span>
+        // Check for ERR packet (first byte 0xff)
+        <span class="cov8" title="1">if pkt[0] == 0xff </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("plan: mysql EXPLAIN error: %s", mysqlErrorMessage(pkt))
+        }</span>
+        <span class="cov8" title="1">colCount, _, err := readLenEnc(pkt, 0)
+        if err != nil || colCount == 0 </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("plan: mysql invalid column count")
+        }</span>
+
+        // Skip column definition packets
+        <span class="cov8" title="1">for i := uint64(0); i &lt; colCount; i++ </span><span class="cov8" title="1">{
+                if _, err := readMySQLPacket(r); err != nil </span><span class="cov8" title="1">{
+                        return nil, fmt.Errorf("plan: mysql reading column def: %w", err)
+                }</span>
+        }
+
+        // Read/skip EOF after column definitions (MySQL 4.1+)
+        <span class="cov8" title="1">eof, err := readMySQLPacket(r)
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("plan: mysql reading EOF after columns: %w", err)
+        }</span>
+        <span class="cov8" title="1">if len(eof) == 0 || eof[0] != 0xfe </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("plan: mysql expected EOF packet, got 0x%02x", eof[0])
+        }</span>
+
+        // Read row packets until EOF
+        <span class="cov8" title="1">var jsonText string
+        for </span><span class="cov8" title="1">{
+                row, err := readMySQLPacket(r)
+                if err != nil </span><span class="cov8" title="1">{
+                        return nil, fmt.Errorf("plan: mysql reading row: %w", err)
+                }</span>
+                <span class="cov8" title="1">if len(row) == 0 </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+                // EOF packet terminates rows
+                <span class="cov8" title="1">if row[0] == 0xfe &amp;&amp; len(row) &lt; 9 </span><span class="cov8" title="1">{
+                        break</span>
+                }
+                // ERR packet
+                <span class="cov8" title="1">if row[0] == 0xff </span><span class="cov8" title="1">{
+                        return nil, fmt.Errorf("plan: mysql row error: %s", mysqlErrorMessage(row))
+                }</span>
+                // Extract first column text (length-encoded string)
+                <span class="cov8" title="1">if jsonText == "" </span><span class="cov8" title="1">{
+                        val, _, err := readLenEncString(row, 0)
+                        if err == nil </span><span class="cov8" title="1">{
+                                jsonText = val
+                        }</span>
+                }
+        }
+
+        <span class="cov8" title="1">return parseMySQLExplainJSON(jsonText)</span>
+}
+
+// readMySQLPacket reads one MySQL packet and returns the payload bytes.
+func readMySQLPacket(r io.Reader) ([]byte, error) <span class="cov8" title="1">{
+        hdr := make([]byte, 4)
+        if _, err := io.ReadFull(r, hdr); err != nil </span><span class="cov8" title="1">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">length := int(hdr[0]) | int(hdr[1])&lt;&lt;8 | int(hdr[2])&lt;&lt;16
+        if length == 0 </span><span class="cov8" title="1">{
+                return []byte{}, nil
+        }</span>
+        <span class="cov8" title="1">payload := make([]byte, length)
+        if _, err := io.ReadFull(r, payload); err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">return payload, nil</span>
+}
+
+// readLenEnc reads a length-encoded integer from buf at offset off.
+// Returns value, new offset, error.
+func readLenEnc(buf []byte, off int) (uint64, int, error) <span class="cov8" title="1">{
+        if off &gt;= len(buf) </span><span class="cov8" title="1">{
+                return 0, off, fmt.Errorf("plan: mysql buffer underflow")
+        }</span>
+        <span class="cov8" title="1">b := buf[off]
+        off++
+        switch </span>{
+        case b &lt; 0xfb:<span class="cov8" title="1">
+                return uint64(b), off, nil</span>
+        case b == 0xfc:<span class="cov8" title="1">
+                if off+2 &gt; len(buf) </span><span class="cov8" title="1">{
+                        return 0, off, fmt.Errorf("plan: mysql buffer underflow (2-byte)")
+                }</span>
+                <span class="cov8" title="1">v := uint64(buf[off]) | uint64(buf[off+1])&lt;&lt;8
+                return v, off + 2, nil</span>
+        case b == 0xfd:<span class="cov8" title="1">
+                if off+3 &gt; len(buf) </span><span class="cov8" title="1">{
+                        return 0, off, fmt.Errorf("plan: mysql buffer underflow (3-byte)")
+                }</span>
+                <span class="cov8" title="1">v := uint64(buf[off]) | uint64(buf[off+1])&lt;&lt;8 | uint64(buf[off+2])&lt;&lt;16
+                return v, off + 3, nil</span>
+        case b == 0xfe:<span class="cov8" title="1">
+                if off+8 &gt; len(buf) </span><span class="cov8" title="1">{
+                        return 0, off, fmt.Errorf("plan: mysql buffer underflow (8-byte)")
+                }</span>
+                <span class="cov8" title="1">v := binary.LittleEndian.Uint64(buf[off:])
+                return v, off + 8, nil</span>
+        default:<span class="cov0" title="0">
+                return 0, off, fmt.Errorf("plan: mysql NULL length-encoded int (0x%02x)", b)</span>
+        }
+}
+
+// readLenEncString reads a length-encoded string from buf at offset off.
+func readLenEncString(buf []byte, off int) (string, int, error) <span class="cov8" title="1">{
+        if off &gt;= len(buf) </span><span class="cov8" title="1">{
+                return "", off, fmt.Errorf("plan: mysql buffer underflow for string")
+        }</span>
+        // NULL value
+        <span class="cov8" title="1">if buf[off] == 0xfb </span><span class="cov8" title="1">{
+                return "", off + 1, nil
+        }</span>
+        <span class="cov8" title="1">length, newOff, err := readLenEnc(buf, off)
+        if err != nil </span><span class="cov0" title="0">{
+                return "", newOff, err
+        }</span>
+        <span class="cov8" title="1">end := newOff + int(length)
+        if end &gt; len(buf) </span><span class="cov8" title="1">{
+                return "", end, fmt.Errorf("plan: mysql string extends beyond packet")
+        }</span>
+        <span class="cov8" title="1">return string(buf[newOff:end]), end, nil</span>
+}
+
+// mysqlErrorMessage extracts the human-readable message from an ERR packet.
+// ERR packet: 0xff + 2-byte error code + (if ≥4.1: '#' + 5-byte sqlstate) + message
+func mysqlErrorMessage(pkt []byte) string <span class="cov8" title="1">{
+        if len(pkt) &lt; 3 </span><span class="cov8" title="1">{
+                return "unknown error"
+        }</span>
+        <span class="cov8" title="1">off := 3 // skip 0xff + 2-byte error code
+        if off &lt; len(pkt) &amp;&amp; pkt[off] == '#' </span><span class="cov8" title="1">{
+                off += 6 // skip '#' + 5-char SQLSTATE
+        }</span>
+        <span class="cov8" title="1">if off &lt; len(pkt) </span><span class="cov8" title="1">{
+                return string(pkt[off:])
+        }</span>
+        <span class="cov8" title="1">return "unknown error"</span>
+}
+
+// mysqlExplainOutput is the top-level structure of MySQL EXPLAIN FORMAT=JSON.
+// {"query_block": {"cost_info": {"query_cost": "123.45"}, ...}}
+type mysqlExplainOutput struct {
+        QueryBlock struct {
+                CostInfo struct {
+                        QueryCost string `json:"query_cost"`
+                } `json:"cost_info"`
+        } `json:"query_block"`
+}
+
+// parseMySQLExplainJSON parses the JSON output from MySQL EXPLAIN FORMAT=JSON.
+func parseMySQLExplainJSON(raw string) (*Result, error) <span class="cov8" title="1">{
+        raw = strings.TrimSpace(raw)
+        if raw == "" </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("plan: mysql empty EXPLAIN output")
+        }</span>
+
+        <span class="cov8" title="1">var out mysqlExplainOutput
+        if err := json.Unmarshal([]byte(raw), &amp;out); err != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("plan: mysql parsing EXPLAIN JSON: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">costStr := out.QueryBlock.CostInfo.QueryCost
+        if costStr == "" </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("plan: mysql EXPLAIN missing query_cost")
+        }</span>
+
+        <span class="cov8" title="1">var cost float64
+        if _, err := fmt.Sscanf(costStr, "%f", &amp;cost); err != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("plan: mysql parsing query_cost %q: %w", costStr, err)
+        }</span>
+
+        <span class="cov8" title="1">return &amp;Result{TotalCost: cost}, nil</span>
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

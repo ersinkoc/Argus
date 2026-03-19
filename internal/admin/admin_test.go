@@ -65,10 +65,61 @@ func TestMetricsEndpoint(t *testing.T) {
 	if len(body) == 0 {
 		t.Error("metrics body should not be empty")
 	}
-	// Should contain key metrics
-	for _, metric := range []string{"argus_active_sessions", "argus_commands_total", "argus_go_goroutines"} {
-		if !containsStr(body, metric) {
-			t.Errorf("metrics should contain %q", metric)
+
+	// Prometheus text format checks
+	required := []string{
+		"# HELP argus_active_sessions",
+		"# TYPE argus_active_sessions gauge",
+		"# HELP argus_connections_total",
+		"# TYPE argus_connections_total counter",
+		"argus_connections_total{status=\"success\"}",
+		"argus_connections_total{status=\"failed\"}",
+		"# HELP argus_commands_total",
+		"argus_commands_total{action=\"allowed\"}",
+		"argus_commands_total{action=\"blocked\"}",
+		"# HELP argus_policy_evaluations_total",
+		"argus_policy_cache_hits_total{result=\"hit\"}",
+		"argus_pool_connections{",
+		"argus_pool_healthy{",
+		// Proper histogram format
+		"# TYPE argus_query_duration_microseconds histogram",
+		"argus_query_duration_microseconds_bucket{le=",
+		"argus_query_duration_microseconds_bucket{le=\"+Inf\"}",
+		"argus_query_duration_microseconds_sum",
+		"argus_query_duration_microseconds_count",
+		// Pool wait histogram
+		"# TYPE argus_pool_acquire_wait_microseconds histogram",
+		"argus_pool_acquire_wait_microseconds_bucket{le=",
+		// Protocol labels
+		"argus_protocol_commands_total{protocol=\"postgresql\",type=\"query\"}",
+		// Runtime
+		"# TYPE argus_go_goroutines gauge",
+		"argus_go_alloc_bytes",
+		"argus_go_gc_runs_total",
+	}
+	for _, expected := range required {
+		if !containsStr(body, expected) {
+			t.Errorf("metrics missing %q", expected)
+		}
+	}
+
+	// Content-Type should indicate Prometheus format
+	ct := w.Header().Get("Content-Type")
+	if !containsStr(ct, "text/plain") {
+		t.Errorf("Content-Type = %q, want text/plain", ct)
+	}
+}
+
+func TestReadyzEndpoint(t *testing.T) {
+	server := NewServer(newMockProvider(), ":0")
+
+	// /readyz should behave identically to /ready
+	for _, path := range []string{"/ready", "/readyz"} {
+		req := httptest.NewRequest("GET", path, nil)
+		w := httptest.NewRecorder()
+		server.handleReady(w, req)
+		if w.Code != http.StatusOK {
+			t.Errorf("%s: status = %d, want 200", path, w.Code)
 		}
 	}
 }

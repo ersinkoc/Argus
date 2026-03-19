@@ -69,6 +69,21 @@ func TestLatencyEmpty(t *testing.T) {
 	}
 }
 
+func TestBounds(t *testing.T) {
+	b := Bounds()
+	if len(b) != 12 {
+		t.Errorf("len(Bounds) = %d, want 12", len(b))
+	}
+	// First bound is 100us, last is 1s
+	if b[0] != 100 {
+		t.Errorf("Bounds[0] = %v, want 100", b[0])
+	}
+	if b[11] != 1000000 {
+		t.Errorf("Bounds[11] = %v, want 1000000", b[11])
+	}
+}
+
+
 func BenchmarkLatencyObserve(b *testing.B) {
 	h := &LatencyHistogram{}
 	for b.Loop() {

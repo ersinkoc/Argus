@@ -405,10 +405,10 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 		// Query cost estimation (before policy eval so policies can use it)
 		costEstimate := inspection.EstimateCost(cmd)
 
-		// Real plan cost via EXPLAIN — only for PG SELECT when plan_analysis is enabled.
+		// Real plan cost via EXPLAIN — for PG and MySQL SELECT when plan_analysis is enabled.
 		var planCost float64
 		if p.cfg.PlanAnalysis.Enabled &&
-			protocolName == "postgresql" &&
+			(protocolName == "postgresql" || protocolName == "mysql") &&
 			cmd.Type == inspection.CommandSELECT &&
 			cmd.Raw != "" && !strings.HasPrefix(strings.ToUpper(strings.TrimSpace(cmd.Raw)), "EXPLAIN") {
 
@@ -419,7 +419,14 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 				}
 			}
 			planCtx, cancel := context.WithTimeout(ctx, planTimeout)
-			if pr, err := plan.ExplainPG(planCtx, backend, cmd.Raw, planTimeout); err == nil {
+			var pr *plan.Result
+			var planErr error
+			if protocolName == "mysql" {
+				pr, planErr = plan.ExplainMySQL(planCtx, backend, cmd.Raw, planTimeout)
+			} else {
+				pr, planErr = plan.ExplainPG(planCtx, backend, cmd.Raw, planTimeout)
+			}
+			if planErr == nil {
 				planCost = pr.TotalCost
 			}
 			cancel()

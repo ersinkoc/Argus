@@ -99,6 +99,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/ui/test", HandleTestRunnerUI)
 	mux.HandleFunc("/api/test/run", handleTestRun)
 	mux.HandleFunc("/ready", s.handleReady)
+	mux.HandleFunc("/readyz", s.handleReady) // Kubernetes readiness probe alias
 	mux.HandleFunc("/livez", s.handleLive)
 
 	var handler http.Handler = mux
@@ -166,106 +167,134 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 
-	// Active sessions
-	fmt.Fprintf(w, "# HELP argus_active_sessions Current active sessions\n")
+	// ── Sessions ─────────────────────────────────────────────────────────
+	fmt.Fprintf(w, "# HELP argus_active_sessions Current number of active client sessions\n")
 	fmt.Fprintf(w, "# TYPE argus_active_sessions gauge\n")
-	fmt.Fprintf(w, "argus_active_sessions %d\n\n", sm.Count())
+	fmt.Fprintf(w, "argus_active_sessions %d\n", sm.Count())
 
-	// Connections
-	fmt.Fprintf(w, "# HELP argus_connections_total Total connections\n")
+	// ── Connections ───────────────────────────────────────────────────────
+	fmt.Fprintf(w, "# HELP argus_connections_total Total client connections\n")
 	fmt.Fprintf(w, "# TYPE argus_connections_total counter\n")
 	fmt.Fprintf(w, "argus_connections_total{status=\"success\"} %d\n", m.ConnectionsTotal.Load())
-	fmt.Fprintf(w, "argus_connections_total{status=\"failed\"} %d\n\n", m.ConnectionsFailed.Load())
+	fmt.Fprintf(w, "argus_connections_total{status=\"failed\"} %d\n", m.ConnectionsFailed.Load())
 
-	// Commands
-	fmt.Fprintf(w, "# HELP argus_commands_total Total commands processed\n")
+	// ── Commands ──────────────────────────────────────────────────────────
+	fmt.Fprintf(w, "# HELP argus_commands_total Total SQL commands processed\n")
 	fmt.Fprintf(w, "# TYPE argus_commands_total counter\n")
-	fmt.Fprintf(w, "argus_commands_total %d\n\n", m.CommandsTotal.Load())
+	fmt.Fprintf(w, "argus_commands_total{action=\"allowed\"} %d\n", m.CommandsTotal.Load()-m.CommandsBlocked.Load())
+	fmt.Fprintf(w, "argus_commands_total{action=\"blocked\"} %d\n", m.CommandsBlocked.Load())
+	fmt.Fprintf(w, "argus_commands_total{action=\"masked\"} %d\n", m.CommandsMasked.Load())
 
-	fmt.Fprintf(w, "# HELP argus_commands_blocked_total Total commands blocked\n")
-	fmt.Fprintf(w, "# TYPE argus_commands_blocked_total counter\n")
-	fmt.Fprintf(w, "argus_commands_blocked_total %d\n\n", m.CommandsBlocked.Load())
-
-	// Results
-	fmt.Fprintf(w, "# HELP argus_result_rows_total Total result rows\n")
+	// ── Results ───────────────────────────────────────────────────────────
+	fmt.Fprintf(w, "# HELP argus_result_rows_total Total result rows returned to clients\n")
 	fmt.Fprintf(w, "# TYPE argus_result_rows_total counter\n")
-	fmt.Fprintf(w, "argus_result_rows_total %d\n\n", m.ResultRowsTotal.Load())
+	fmt.Fprintf(w, "argus_result_rows_total %d\n", m.ResultRowsTotal.Load())
 
-	fmt.Fprintf(w, "# HELP argus_result_masked_total Total masked result sets\n")
-	fmt.Fprintf(w, "# TYPE argus_result_masked_total counter\n")
-	fmt.Fprintf(w, "argus_result_masked_total %d\n\n", m.CommandsMasked.Load())
-
-	// Policy
+	// ── Policy ────────────────────────────────────────────────────────────
 	fmt.Fprintf(w, "# HELP argus_policy_evaluations_total Total policy evaluations\n")
 	fmt.Fprintf(w, "# TYPE argus_policy_evaluations_total counter\n")
-	fmt.Fprintf(w, "argus_policy_evaluations_total %d\n\n", m.PolicyEvals.Load())
+	fmt.Fprintf(w, "argus_policy_evaluations_total %d\n", m.PolicyEvals.Load())
 
-	fmt.Fprintf(w, "# HELP argus_policy_cache_hits_total Policy cache hits\n")
+	fmt.Fprintf(w, "# HELP argus_policy_cache_hits_total Policy evaluation cache hits\n")
 	fmt.Fprintf(w, "# TYPE argus_policy_cache_hits_total counter\n")
-	fmt.Fprintf(w, "argus_policy_cache_hits_total %d\n\n", m.PolicyCacheHits.Load())
+	fmt.Fprintf(w, "argus_policy_cache_hits_total{result=\"hit\"} %d\n", m.PolicyCacheHits.Load())
+	fmt.Fprintf(w, "argus_policy_cache_hits_total{result=\"miss\"} %d\n", m.PolicyCacheMisses.Load())
 
-	// Pool metrics
-	fmt.Fprintf(w, "# HELP argus_pool_active_connections Active pool connections per target\n")
-	fmt.Fprintf(w, "# TYPE argus_pool_active_connections gauge\n")
+	// ── Connection pool ───────────────────────────────────────────────────
+	fmt.Fprintf(w, "# HELP argus_pool_connections Active and idle pool connections per target\n")
+	fmt.Fprintf(w, "# TYPE argus_pool_connections gauge\n")
 	for name, ps := range poolStats {
-		fmt.Fprintf(w, "argus_pool_active_connections{target=%q} %d\n", name, ps.Active)
-	}
-	fmt.Fprintf(w, "\n# HELP argus_pool_idle_connections Idle pool connections per target\n")
-	fmt.Fprintf(w, "# TYPE argus_pool_idle_connections gauge\n")
-	for name, ps := range poolStats {
-		fmt.Fprintf(w, "argus_pool_idle_connections{target=%q} %d\n", name, ps.Idle)
+		fmt.Fprintf(w, "argus_pool_connections{target=%q,state=\"active\"} %d\n", name, ps.Active)
+		fmt.Fprintf(w, "argus_pool_connections{target=%q,state=\"idle\"} %d\n", name, ps.Idle)
+		fmt.Fprintf(w, "argus_pool_connections{target=%q,state=\"total\"} %d\n", name, ps.Total)
 	}
 
-	// Query latency histogram
+	fmt.Fprintf(w, "# HELP argus_pool_healthy Whether each target is healthy (1=healthy, 0=unhealthy)\n")
+	fmt.Fprintf(w, "# TYPE argus_pool_healthy gauge\n")
+	for name, ps := range poolStats {
+		healthy := 0
+		if ps.Healthy {
+			healthy = 1
+		}
+		fmt.Fprintf(w, "argus_pool_healthy{target=%q} %d\n", name, healthy)
+	}
+
+	// ── Query latency histogram (Prometheus native format) ────────────────
 	latency := metrics.QueryLatency.Snapshot()
-	fmt.Fprintf(w, "\n# HELP argus_query_duration_us Query execution duration in microseconds\n")
-	fmt.Fprintf(w, "# TYPE argus_query_duration_us summary\n")
-	fmt.Fprintf(w, "argus_query_duration_count %d\n", latency.Count)
-	fmt.Fprintf(w, "argus_query_duration_avg_us %.0f\n", latency.AvgUS)
-	fmt.Fprintf(w, "argus_query_duration_p50_us %.0f\n", latency.P50US)
-	fmt.Fprintf(w, "argus_query_duration_p95_us %.0f\n", latency.P95US)
-	fmt.Fprintf(w, "argus_query_duration_p99_us %.0f\n", latency.P99US)
+	bounds := metrics.Bounds()
+	fmt.Fprintf(w, "# HELP argus_query_duration_microseconds Query execution latency in microseconds\n")
+	fmt.Fprintf(w, "# TYPE argus_query_duration_microseconds histogram\n")
+	for i, bound := range bounds {
+		fmt.Fprintf(w, "argus_query_duration_microseconds_bucket{le=\"%.0f\"} %d\n", bound, latency.Buckets[i])
+	}
+	fmt.Fprintf(w, "argus_query_duration_microseconds_bucket{le=\"+Inf\"} %d\n", latency.Count)
+	fmt.Fprintf(w, "argus_query_duration_microseconds_sum %.0f\n", float64(latency.SumUS))
+	fmt.Fprintf(w, "argus_query_duration_microseconds_count %d\n", latency.Count)
 
-	// Per-protocol stats
-	protoStats := metrics.ProtocolStats.Snapshot()
-	fmt.Fprintf(w, "\n# HELP argus_protocol_commands_total Commands per protocol\n")
+	// ── Pool acquire wait histogram ────────────────────────────────────────
+	hist := pool.WaitHistogram.Snapshot()
+	fmt.Fprintf(w, "# HELP argus_pool_acquire_wait_microseconds Pool connection acquire wait latency\n")
+	fmt.Fprintf(w, "# TYPE argus_pool_acquire_wait_microseconds histogram\n")
+	poolBounds := pool.WaitHistogram.Bounds()
+	poolBuckets := pool.WaitHistogram.CumulativeBuckets()
+	for i, bound := range poolBounds {
+		fmt.Fprintf(w, "argus_pool_acquire_wait_microseconds_bucket{le=\"%.0f\"} %d\n", bound, poolBuckets[i])
+	}
+	fmt.Fprintf(w, "argus_pool_acquire_wait_microseconds_bucket{le=\"+Inf\"} %d\n", hist.Count)
+	fmt.Fprintf(w, "argus_pool_acquire_wait_microseconds_sum %d\n", hist.Sum)
+	fmt.Fprintf(w, "argus_pool_acquire_wait_microseconds_count %d\n", hist.Count)
+
+	// ── Per-protocol commands ─────────────────────────────────────────────
+	ps := metrics.ProtocolStats
+	fmt.Fprintf(w, "# HELP argus_protocol_commands_total Commands processed per protocol and type\n")
 	fmt.Fprintf(w, "# TYPE argus_protocol_commands_total counter\n")
-	for proto, count := range protoStats {
-		fmt.Fprintf(w, "argus_protocol_commands_total{protocol=%q} %d\n", proto, count)
-	}
+	fmt.Fprintf(w, "argus_protocol_commands_total{protocol=\"postgresql\",type=\"query\"} %d\n", ps.PGQueries.Load())
+	fmt.Fprintf(w, "argus_protocol_commands_total{protocol=\"postgresql\",type=\"extended\"} %d\n", ps.PGExtended.Load())
+	fmt.Fprintf(w, "argus_protocol_commands_total{protocol=\"postgresql\",type=\"copy\"} %d\n", ps.PGCopy.Load())
+	fmt.Fprintf(w, "argus_protocol_commands_total{protocol=\"mysql\",type=\"query\"} %d\n", ps.MySQLQueries.Load())
+	fmt.Fprintf(w, "argus_protocol_commands_total{protocol=\"mysql\",type=\"prepared\"} %d\n", ps.MySQLPrepared.Load())
+	fmt.Fprintf(w, "argus_protocol_commands_total{protocol=\"mssql\",type=\"batch\"} %d\n", ps.MSSQLBatches.Load())
 
-	// Per-database stats
+	// ── Per-database stats ────────────────────────────────────────────────
 	dbStats := metrics.DatabaseStats.Snapshot()
-	fmt.Fprintf(w, "\n# HELP argus_database_queries_total Queries per database\n")
-	fmt.Fprintf(w, "# TYPE argus_database_queries_total counter\n")
-	for db, stats := range dbStats {
-		fmt.Fprintf(w, "argus_database_queries_total{database=%q} %d\n", db, stats["queries"])
-		fmt.Fprintf(w, "argus_database_writes_total{database=%q} %d\n", db, stats["writes"])
-		fmt.Fprintf(w, "argus_database_rows_total{database=%q} %d\n", db, stats["rows"])
+	if len(dbStats) > 0 {
+		fmt.Fprintf(w, "# HELP argus_database_queries_total Queries processed per database\n")
+		fmt.Fprintf(w, "# TYPE argus_database_queries_total counter\n")
+		for db, stat := range dbStats {
+			fmt.Fprintf(w, "argus_database_queries_total{database=%q} %d\n", db, stat["queries"])
+		}
+		fmt.Fprintf(w, "# HELP argus_database_writes_total Write commands per database\n")
+		fmt.Fprintf(w, "# TYPE argus_database_writes_total counter\n")
+		for db, stat := range dbStats {
+			fmt.Fprintf(w, "argus_database_writes_total{database=%q} %d\n", db, stat["writes"])
+		}
+		fmt.Fprintf(w, "# HELP argus_database_blocked_total Blocked commands per database\n")
+		fmt.Fprintf(w, "# TYPE argus_database_blocked_total counter\n")
+		for db, stat := range dbStats {
+			fmt.Fprintf(w, "argus_database_blocked_total{database=%q} %d\n", db, stat["blocked"])
+		}
+		fmt.Fprintf(w, "# HELP argus_database_rows_total Rows returned per database\n")
+		fmt.Fprintf(w, "# TYPE argus_database_rows_total counter\n")
+		for db, stat := range dbStats {
+			fmt.Fprintf(w, "argus_database_rows_total{database=%q} %d\n", db, stat["rows"])
+		}
 	}
 
-	// Go runtime
+	// ── Go runtime ────────────────────────────────────────────────────────
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
-	fmt.Fprintf(w, "\n# HELP argus_go_goroutines Number of goroutines\n")
+	fmt.Fprintf(w, "# HELP argus_go_goroutines Current number of goroutines\n")
 	fmt.Fprintf(w, "# TYPE argus_go_goroutines gauge\n")
 	fmt.Fprintf(w, "argus_go_goroutines %d\n", runtime.NumGoroutine())
-	fmt.Fprintf(w, "\n# HELP argus_go_alloc_bytes Current memory allocation in bytes\n")
+	fmt.Fprintf(w, "# HELP argus_go_alloc_bytes Bytes of allocated heap objects\n")
 	fmt.Fprintf(w, "# TYPE argus_go_alloc_bytes gauge\n")
 	fmt.Fprintf(w, "argus_go_alloc_bytes %d\n", memStats.Alloc)
-	fmt.Fprintf(w, "\n# HELP argus_go_sys_bytes Total memory obtained from the OS\n")
+	fmt.Fprintf(w, "# HELP argus_go_sys_bytes Total bytes of memory obtained from the OS\n")
 	fmt.Fprintf(w, "# TYPE argus_go_sys_bytes gauge\n")
 	fmt.Fprintf(w, "argus_go_sys_bytes %d\n", memStats.Sys)
-
-	// Pool wait time histogram
-	hist := pool.WaitHistogram.Snapshot()
-	fmt.Fprintf(w, "\n# HELP argus_pool_wait_seconds Pool connection acquire wait time\n")
-	fmt.Fprintf(w, "# TYPE argus_pool_wait_seconds histogram\n")
-	fmt.Fprintf(w, "argus_pool_wait_count %d\n", hist.Count)
-	fmt.Fprintf(w, "argus_pool_wait_sum_us %d\n", hist.Sum)
-	fmt.Fprintf(w, "argus_pool_wait_p50_us %.0f\n", hist.P50)
-	fmt.Fprintf(w, "argus_pool_wait_p95_us %.0f\n", hist.P95)
-	fmt.Fprintf(w, "argus_pool_wait_p99_us %.0f\n", hist.P99)
+	fmt.Fprintf(w, "# HELP argus_go_gc_runs_total Total number of completed GC cycles\n")
+	fmt.Fprintf(w, "# TYPE argus_go_gc_runs_total counter\n")
+	fmt.Fprintf(w, "argus_go_gc_runs_total %d\n", memStats.NumGC)
 }
 
 func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {

@@ -68,6 +68,61 @@ func TestHistogramSnapshot(t *testing.T) {
 	}
 }
 
+func TestHistogramBounds(t *testing.T) {
+	h := NewHistogram(nil)
+	bounds := h.Bounds()
+	if len(bounds) != len(DefaultBuckets) {
+		t.Errorf("len(Bounds) = %d, want %d", len(bounds), len(DefaultBuckets))
+	}
+	if bounds[0] != DefaultBuckets[0] {
+		t.Errorf("Bounds[0] = %v, want %v", bounds[0], DefaultBuckets[0])
+	}
+}
+
+func TestHistogramCumulativeBuckets(t *testing.T) {
+	h := NewHistogram(nil)
+	h.Observe(100)  // fits in bucket 0 (≤100)
+	h.Observe(500)  // fits in bucket 1 (≤500)
+	h.Observe(1000) // fits in bucket 2 (≤1000)
+
+	cum := h.CumulativeBuckets()
+	if len(cum) != len(DefaultBuckets) {
+		t.Errorf("len(CumulativeBuckets) = %d", len(cum))
+	}
+	// bucket 0: 1, bucket 1: cumulative=2, bucket 2: cumulative=3
+	if cum[0] != 1 {
+		t.Errorf("cum[0] = %d, want 1", cum[0])
+	}
+	if cum[1] != 2 {
+		t.Errorf("cum[1] = %d, want 2", cum[1])
+	}
+	if cum[2] != 3 {
+		t.Errorf("cum[2] = %d, want 3", cum[2])
+	}
+}
+
+func TestHistogramPercentile_Overflow(t *testing.T) {
+	h := NewHistogram(nil)
+	// Observe beyond the last bucket
+	h.Observe(20000000) // 20s — beyond 10s last bound
+	// With count=1, p99 falls in overflow, returns last bound * 2
+	p99 := h.Percentile(99)
+	want := DefaultBuckets[len(DefaultBuckets)-1] * 2
+	if p99 != want {
+		t.Errorf("overflow p99 = %v, want %v", p99, want)
+	}
+}
+
+func TestWaitHistogram_NotNil(t *testing.T) {
+	if WaitHistogram == nil {
+		t.Error("WaitHistogram should not be nil")
+	}
+	WaitHistogram.Observe(1000)
+	if WaitHistogram.Count() == 0 {
+		t.Error("WaitHistogram count should be > 0 after observe")
+	}
+}
+
 func BenchmarkHistogramObserve(b *testing.B) {
 	h := NewHistogram(nil)
 	for b.Loop() {

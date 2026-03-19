@@ -159,6 +159,22 @@ func itoa64(n int64) string {
 	return string(digits)
 }
 
+// Bounds returns the bucket upper boundaries in microseconds.
+func (h *Histogram) Bounds() []float64 {
+	return h.bounds
+}
+
+// CumulativeBuckets returns cumulative counts per bucket (Prometheus convention).
+func (h *Histogram) CumulativeBuckets() []int64 {
+	cum := make([]int64, len(h.bounds))
+	var running int64
+	for i := range h.bounds {
+		running += h.buckets[i].Load()
+		cum[i] = running
+	}
+	return cum
+}
+
 // WaitHistogram is the global pool wait time histogram.
 var WaitHistogram = NewHistogram(nil)
 
