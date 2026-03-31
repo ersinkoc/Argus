@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ersinkoc/argus/internal/policy"
 	"github.com/ersinkoc/argus/internal/pool"
 )
 
@@ -180,6 +181,52 @@ func TestExecutePG_MaxRows(t *testing.T) {
 	// Should only collect 3 rows even though backend sent 10
 	if result.RowCount != 3 {
 		t.Errorf("row_count = %d, want 3 (maxRows capped)", result.RowCount)
+	}
+}
+
+func TestExecutePG_WithMasking(t *testing.T) {
+	var resp []byte
+	resp = append(resp, pgRowDescription([]string{"id", "email"})...)
+	resp = append(resp, pgDataRow([]string{"1", "alice@example.com"})...)
+	resp = append(resp, pgCommandComplete("SELECT 1")...)
+	resp = append(resp, pgReadyForQuery()...)
+
+	pl := mockPGPool(t, resp)
+
+	// Masking rules: mask the "email" column
+	maskRules := []policy.MaskingRule{
+		{Column: "email", Transformer: "redact"},
+	}
+
+	result, err := executePG(context.Background(), pl, "SELECT id, email FROM users", 100, maskRules, nil, false)
+	if err != nil {
+		t.Fatalf("executePG with masking failed: %v", err)
+	}
+	if result.RowCount != 1 {
+		t.Errorf("row_count = %d, want 1", result.RowCount)
+	}
+	// Email should be masked (not original value)
+	if len(result.Rows) > 0 && result.Rows[0][1] == "alice@example.com" {
+		t.Error("email should be masked, got original value")
+	}
+	if len(result.MaskedCols) == 0 {
+		t.Error("masked_cols should not be empty")
+	}
+}
+
+func TestExecutePG_EmptyQuery(t *testing.T) {
+	var resp []byte
+	resp = append(resp, pgMsg('I', nil)...)    // EmptyQueryResponse
+	resp = append(resp, pgReadyForQuery()...)
+
+	pl := mockPGPool(t, resp)
+
+	result, err := executePG(context.Background(), pl, "", 100, nil, nil, false)
+	if err != nil {
+		t.Fatalf("executePG empty query failed: %v", err)
+	}
+	if result.RowCount != 0 {
+		t.Errorf("row_count = %d, want 0", result.RowCount)
 	}
 }
 
