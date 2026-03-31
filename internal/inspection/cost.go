@@ -30,9 +30,6 @@ func EstimateCost(cmd *Command) *CostEstimate {
 	for _, tok := range tokens {
 		if tok.Value == "(" {
 			depth++
-			if depth > 0 {
-				est.HasSubquery = true
-			}
 		}
 		if tok.Value == ")" && depth > 0 {
 			depth--
@@ -40,6 +37,12 @@ func EstimateCost(cmd *Command) *CostEstimate {
 
 		if tok.Type != TokenKeyword {
 			continue
+		}
+
+		// A SELECT keyword inside parentheses indicates a subquery.
+		// This avoids false positives from function calls like COUNT(*).
+		if depth > 0 && tok.Upper == "SELECT" {
+			est.HasSubquery = true
 		}
 
 		switch tok.Upper {
@@ -53,10 +56,6 @@ func EstimateCost(cmd *Command) *CostEstimate {
 			est.HasDistinct = true
 		case "UNION":
 			est.HasUnion = true
-		}
-
-		if tok.Type == TokenWildcard {
-			est.HasWildcard = true
 		}
 	}
 

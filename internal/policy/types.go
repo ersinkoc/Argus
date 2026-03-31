@@ -51,14 +51,11 @@ type Context struct {
 
 	// Where
 	Database string
-	Schema   string
 	Tables   []string
 	Columns  []string
 
 	// When
-	Timestamp   time.Time
-	DayOfWeek   time.Weekday
-	IsWorkHours bool
+	Timestamp time.Time
 
 	// What
 	CommandType inspection.CommandType

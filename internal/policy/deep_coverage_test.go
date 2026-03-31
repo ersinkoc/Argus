@@ -26,7 +26,7 @@ func TestMatchConditionRiskLevelGTE(t *testing.T) {
 func TestMatchConditionWorkDays(t *testing.T) {
 	// Monday — a work day → matchWorkDays returns false → condition fails
 	monday := time.Date(2026, 3, 16, 10, 0, 0, 0, time.UTC) // Monday
-	ctx := &Context{Timestamp: monday, DayOfWeek: monday.Weekday()}
+	ctx := &Context{Timestamp: monday}
 
 	cond := &ConditionConfig{WorkDays: []string{"Monday", "Tuesday", "Wednesday", "Thursday", "Friday"}}
 	// Monday IS a work day → matchWorkDays returns false → condition does NOT match (rule doesn't apply on work days)
@@ -37,7 +37,6 @@ func TestMatchConditionWorkDays(t *testing.T) {
 	// Sunday — not a work day → matchWorkDays returns true → condition matches
 	sunday := time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC) // Sunday
 	ctx.Timestamp = sunday
-	ctx.DayOfWeek = sunday.Weekday()
 	if !matchCondition(ctx, cond) {
 		t.Error("Sunday (non-work day) should trigger work_days condition")
 	}

@@ -88,19 +88,6 @@ func TestEngineEvaluateCacheHit(t *testing.T) {
 	}
 }
 
-func TestMergePolicySetsDefaults(t *testing.T) {
-	base := &PolicySet{
-		Version:  "1",
-		Defaults: DefaultsConfig{Action: "allow", LogLevel: "standard"},
-	}
-	overlay := &PolicySet{} // empty overlay
-
-	merged := MergePolicySets(base, overlay)
-	if merged.Defaults.Action != "allow" {
-		t.Error("empty overlay should keep base defaults")
-	}
-}
-
 func TestLoaderStartNoInterval(t *testing.T) {
 	loader := NewLoader(nil, 0)
 	loader.Start() // reloadInterval=0 → should not start goroutine

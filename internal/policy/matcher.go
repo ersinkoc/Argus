@@ -182,14 +182,17 @@ func matchCondition(ctx *Context, cond *ConditionConfig) bool {
 	// SQL not contains — matches when the SQL does NOT contain ALL specified strings
 	if len(cond.SQLNotContains) > 0 {
 		upper := strings.ToUpper(ctx.RawSQL)
+		allContained := true
 		for _, s := range cond.SQLNotContains {
 			if !strings.Contains(upper, strings.ToUpper(s)) {
-				// SQL does not contain this string → condition matches
-				return true
+				allContained = false
+				break
 			}
 		}
-		// SQL contains all strings → condition does not match
-		return false
+		if allContained {
+			// SQL contains all specified strings → condition does not match
+			return false
+		}
 	}
 
 	// Max query length

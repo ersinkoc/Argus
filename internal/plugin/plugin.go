@@ -10,10 +10,8 @@ import (
 type Type string
 
 const (
-	TypeTransformer    Type = "transformer"    // custom masking transformer
-	TypePolicyProvider Type = "policy_provider" // external policy source
-	TypeAuditWriter    Type = "audit_writer"    // custom audit output
-	TypeAuthProvider   Type = "auth_provider"   // custom identity provider
+	TypeTransformer Type = "transformer"  // custom masking transformer
+	TypeAuditWriter Type = "audit_writer" // custom audit output
 )
 
 // Plugin is the interface all plugins must implement.

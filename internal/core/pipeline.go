@@ -441,7 +441,6 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 			Tables:      cmd.Tables,
 			Columns:     cmd.Columns,
 			Timestamp:   time.Now(),
-			DayOfWeek:   time.Now().Weekday(),
 			CommandType: cmd.Type,
 			RiskLevel:   cmd.RiskLevel,
 			RawSQL:      cmd.Raw,

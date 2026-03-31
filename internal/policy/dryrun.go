@@ -52,7 +52,6 @@ func (e *Engine) DryRun(input DryRunInput) *DryRunResult {
 		Tables:     input.Tables,
 		RawSQL:     input.SQL,
 		Timestamp:  time.Now(),
-		DayOfWeek:  time.Now().Weekday(),
 		Confidence: 1.0,
 	}
 

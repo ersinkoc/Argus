@@ -5,21 +5,6 @@ import (
 	"strings"
 )
 
-// RewriteRule defines a query transformation rule.
-type RewriteRule struct {
-	Type  RewriteType
-	Value string
-}
-
-// RewriteType identifies the kind of rewrite.
-type RewriteType int
-
-const (
-	RewriteAddLimit    RewriteType = iota // add LIMIT if missing
-	RewriteAddWhere                       // inject WHERE condition
-	RewriteSetTimeout                     // add statement_timeout
-)
-
 // Rewriter applies transformations to SQL queries.
 type Rewriter struct {
 	maxLimit    int    // auto-add LIMIT N to SELECT without LIMIT
