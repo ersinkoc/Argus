@@ -893,9 +893,7 @@ func (s *Server) handleClassify(w http.ResponseWriter, r *http.Request) {
 	if len(columns) == 0 {
 		cols := r.URL.Query().Get("columns")
 		if cols != "" {
-			for _, c := range splitComma(cols) {
-				columns = append(columns, c)
-			}
+			columns = append(columns, splitComma(cols)...)
 		}
 	}
 	if len(columns) == 0 {

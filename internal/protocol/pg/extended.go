@@ -24,7 +24,7 @@ func DecodeParse(payload []byte) (*ParseMsg, error) {
 		nameEnd++
 	}
 	if nameEnd >= len(payload) {
-		return nil, fmt.Errorf("Parse: missing statement name terminator")
+		return nil, fmt.Errorf("parse: missing statement name terminator")
 	}
 	msg.StatementName = string(payload[i:nameEnd])
 	i = nameEnd + 1
@@ -35,7 +35,7 @@ func DecodeParse(payload []byte) (*ParseMsg, error) {
 		queryEnd++
 	}
 	if queryEnd >= len(payload) {
-		return nil, fmt.Errorf("Parse: missing query terminator")
+		return nil, fmt.Errorf("parse: missing query terminator")
 	}
 	msg.Query = string(payload[i:queryEnd])
 	i = queryEnd + 1
@@ -76,7 +76,7 @@ func DecodeBind(payload []byte) (*BindMsg, error) {
 		end++
 	}
 	if end >= len(payload) {
-		return nil, fmt.Errorf("Bind: missing portal name terminator")
+		return nil, fmt.Errorf("bind: missing portal name terminator")
 	}
 	msg.Portal = string(payload[i:end])
 	i = end + 1
@@ -87,7 +87,7 @@ func DecodeBind(payload []byte) (*BindMsg, error) {
 		end++
 	}
 	if end >= len(payload) {
-		return nil, fmt.Errorf("Bind: missing statement name terminator")
+		return nil, fmt.Errorf("bind: missing statement name terminator")
 	}
 	msg.StatementName = string(payload[i:end])
 

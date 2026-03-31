@@ -262,6 +262,9 @@ func detectSQLInjection(sql string) bool {
 }
 
 func detectSQLInjectionUpper(upper string) bool {
+	// Normalize: strip inline comments and collapse whitespace to defeat obfuscation.
+	// Catches OR/**/1=1, OR\t1=1, OR\n1=1, etc.
+	upper = normalizeSQL(upper)
 
 	// Tautology patterns: OR 1=1, OR 'a'='a', OR true
 	for _, pattern := range sqliTautologyPatterns {
@@ -326,6 +329,39 @@ func detectSQLInjectionUpper(upper string) bool {
 	}
 
 	return false
+}
+
+// normalizeSQL strips inline comments (/* ... */) and collapses all whitespace
+// to single spaces. This defeats obfuscation techniques like OR/**/1=1.
+func normalizeSQL(s string) string {
+	// Strip /* ... */ comments
+	for {
+		start := strings.Index(s, "/*")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(s[start+2:], "*/")
+		if end == -1 {
+			break
+		}
+		s = s[:start] + " " + s[start+2+end+2:]
+	}
+	// Collapse whitespace (tabs, newlines, multiple spaces → single space)
+	var b strings.Builder
+	b.Grow(len(s))
+	prevSpace := false
+	for _, c := range s {
+		if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+			if !prevSpace {
+				b.WriteByte(' ')
+				prevSpace = true
+			}
+		} else {
+			b.WriteRune(c)
+			prevSpace = false
+		}
+	}
+	return b.String()
 }
 
 // sqliTautologyPatterns are common tautology injection patterns.

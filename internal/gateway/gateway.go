@@ -23,7 +23,8 @@ type QueryRequest struct {
 	Username string   `json:"username"`
 	Database string   `json:"database"`
 	ClientIP string   `json:"client_ip,omitempty"`
-	Roles    []string `json:"-"` // injected by auth middleware, not from JSON
+	Roles        []string `json:"-"` // injected by auth middleware, not from JSON
+	APIKeyLimit  float64  `json:"-"` // per-key rate limit (queries/sec), 0 = unlimited
 }
 
 // QueryResponse is the HTTP response for a gateway query.
@@ -148,6 +149,25 @@ func (gw *Gateway) ExecuteQuery(ctx context.Context, req QueryRequest) QueryResp
 	cmd := inspection.Classify(req.SQL)
 	fingerprint := inspection.FingerprintHash(req.SQL)
 	costEstimate := inspection.EstimateCost(cmd)
+
+	// Per-API-key rate limit (before any processing)
+	if req.APIKeyLimit > 0 {
+		gw.rlMu.Lock()
+		keyLimiter, ok := gw.rateLimiters["apikey:"+req.Username]
+		if !ok {
+			keyLimiter = ratelimit.NewLimiter(req.APIKeyLimit, int(req.APIKeyLimit)+1)
+			gw.rateLimiters["apikey:"+req.Username] = keyLimiter
+		}
+		gw.rlMu.Unlock()
+		if !keyLimiter.Allow(req.Username) {
+			return QueryResponse{
+				Status:      "blocked",
+				Fingerprint: fingerprint,
+				Error:       "API key rate limit exceeded",
+				Policy:      PolicyInfo{Action: "block", Reason: "per-key rate limit"},
+			}
+		}
+	}
 
 	// Reject transactions
 	if cmd.Type == inspection.CommandTCL {

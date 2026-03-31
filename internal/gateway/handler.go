@@ -46,6 +46,9 @@ func (gw *Gateway) HandleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req.Roles = apiKeyRoles
+	if apiKey, ok := r.Context().Value(gatewayAPIKeyCtx).(*APIKey); ok && apiKey.RateLimit > 0 {
+		req.APIKeyLimit = apiKey.RateLimit
+	}
 
 	if req.ClientIP == "" {
 		req.ClientIP = r.RemoteAddr
