@@ -48,8 +48,9 @@ type Server struct {
 	validateFn     func() (any, error)
 	classifyFn     func([]string) any
 	pluginListFn   func() any
-	onSessionKill  func(sessionID string)
-	gatewayHandler GatewayHandler
+	onSessionKill      func(sessionID string)
+	gatewayHandler     GatewayHandler
+	gatewayMiddleware  func(http.Handler) http.Handler
 }
 
 // GatewayHandler is the interface for gateway HTTP handlers.
@@ -60,9 +61,10 @@ type GatewayHandler interface {
 	HandleQueryStatus(w http.ResponseWriter, r *http.Request)
 }
 
-// SetGateway sets the gateway handler for SQL gateway endpoints.
-func (s *Server) SetGateway(gw GatewayHandler) {
+// SetGateway sets the gateway handler and optional API key middleware.
+func (s *Server) SetGateway(gw GatewayHandler, middleware func(http.Handler) http.Handler) {
 	s.gatewayHandler = gw
+	s.gatewayMiddleware = middleware
 }
 
 // NewServer creates a new admin server.
@@ -117,12 +119,19 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/readyz", s.handleReady) // Kubernetes readiness probe alias
 	mux.HandleFunc("/livez", s.handleLive)
 
-	// Gateway endpoints
+	// Gateway endpoints (with optional API key middleware)
 	if s.gatewayHandler != nil {
-		mux.HandleFunc("/api/gateway/query", s.gatewayHandler.HandleQuery)
-		mux.HandleFunc("/api/gateway/approve", s.gatewayHandler.HandleApprove)
-		mux.HandleFunc("/api/gateway/allowlist", s.gatewayHandler.HandleAllowlist)
-		mux.HandleFunc("/api/gateway/status", s.gatewayHandler.HandleQueryStatus)
+		wrapGW := func(h http.HandlerFunc) http.Handler {
+			var handler http.Handler = h
+			if s.gatewayMiddleware != nil {
+				handler = s.gatewayMiddleware(handler)
+			}
+			return handler
+		}
+		mux.Handle("/api/gateway/query", wrapGW(s.gatewayHandler.HandleQuery))
+		mux.Handle("/api/gateway/approve", wrapGW(s.gatewayHandler.HandleApprove))
+		mux.Handle("/api/gateway/allowlist", wrapGW(s.gatewayHandler.HandleAllowlist))
+		mux.Handle("/api/gateway/status", wrapGW(s.gatewayHandler.HandleQueryStatus))
 	}
 
 	var handler http.Handler = mux

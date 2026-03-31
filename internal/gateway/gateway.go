@@ -19,10 +19,11 @@ import (
 
 // QueryRequest is the inbound HTTP request body for gateway queries.
 type QueryRequest struct {
-	SQL      string `json:"sql"`
-	Username string `json:"username"`
-	Database string `json:"database"`
-	ClientIP string `json:"client_ip,omitempty"`
+	SQL      string   `json:"sql"`
+	Username string   `json:"username"`
+	Database string   `json:"database"`
+	ClientIP string   `json:"client_ip,omitempty"`
+	Roles    []string `json:"-"` // injected by auth middleware, not from JSON
 }
 
 // QueryResponse is the HTTP response for a gateway query.
@@ -60,8 +61,9 @@ type Gateway struct {
 	rateLimiters    map[string]*ratelimit.Limiter
 	rlMu            sync.Mutex
 	onEvent         func(any)
-	webhookNotifier *WebhookNotifier
-	piiDetector     *masking.PIIDetector
+	webhookNotifier  *WebhookNotifier
+	piiDetector      *masking.PIIDetector
+	cleanupStop      chan struct{}
 }
 
 // GatewayDeps holds the shared infrastructure dependencies.
@@ -91,6 +93,21 @@ func New(deps GatewayDeps) *Gateway {
 		apiKeyStore:     NewAPIKeyStore(),
 		rateLimiters:    make(map[string]*ratelimit.Limiter),
 	}
+	// Start allowlist cleanup goroutine
+	gw.cleanupStop = make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				gw.allowlist.Cleanup()
+			case <-gw.cleanupStop:
+				return
+			}
+		}
+	}()
+
 	for _, keyCfg := range deps.Cfg.Gateway.APIKeys {
 		gw.apiKeyStore.Add(&APIKey{
 			Key:       keyCfg.Key,
@@ -102,6 +119,13 @@ func New(deps GatewayDeps) *Gateway {
 		})
 	}
 	return gw
+}
+
+// Close stops the gateway's background goroutines.
+func (gw *Gateway) Close() {
+	if gw.cleanupStop != nil {
+		close(gw.cleanupStop)
+	}
 }
 
 // SetWebhookNotifier configures the approval webhook notifier.
@@ -161,9 +185,15 @@ func (gw *Gateway) ExecuteQuery(ctx context.Context, req QueryRequest) QueryResp
 	if req.ClientIP != "" {
 		clientIP = net.ParseIP(req.ClientIP)
 	}
+	// Resolve roles: prefer API key roles, fall back to policy file roles
+	roles := req.Roles
+	if len(roles) == 0 {
+		roles = policy.ResolveUserRoles(req.Username, gw.policyEngine.Loader().Current().Roles)
+	}
+
 	policyCtx := &policy.Context{
 		Username:    req.Username,
-		Roles:       policy.ResolveUserRoles(req.Username, gw.policyEngine.Loader().Current().Roles),
+		Roles:       roles,
 		ClientIP:    clientIP,
 		Database:    req.Database,
 		Tables:      cmd.Tables,

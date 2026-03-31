@@ -18,6 +18,7 @@ import (
 	"github.com/ersinkoc/argus/internal/core"
 	"github.com/ersinkoc/argus/internal/gateway"
 	"github.com/ersinkoc/argus/internal/inspection"
+	"github.com/ersinkoc/argus/internal/masking"
 	"github.com/ersinkoc/argus/internal/plugin"
 	"github.com/ersinkoc/argus/internal/policy"
 	"github.com/ersinkoc/argus/internal/session"
@@ -275,6 +276,10 @@ func main() {
 
 		// SQL Gateway
 		if cfg.Gateway.Enabled {
+			var piiDetector *masking.PIIDetector
+			if cfg.Audit.PIIAutoDetect {
+				piiDetector = masking.NewPIIDetector()
+			}
 			gw := gateway.New(gateway.GatewayDeps{
 				Cfg:             cfg,
 				PolicyEngine:    policyEngine,
@@ -282,6 +287,7 @@ func main() {
 				ApprovalManager: proxy.ApprovalManager(),
 				Pools:           proxy.Pools(),
 				AnomalyDetector: proxy.AnomalyDetector(),
+				PIIDetector:     piiDetector,
 			})
 			if cfg.Gateway.WebhookURL != "" {
 				gw.SetWebhookNotifier(gateway.NewWebhookNotifier(
@@ -289,7 +295,7 @@ func main() {
 					cfg.Gateway.WebhookHeaders,
 				))
 			}
-			adminServer.SetGateway(gw)
+			adminServer.SetGateway(gw, gw.APIKeyStore().Middleware)
 			log.Printf("SQL Gateway enabled with %d API key(s)", gw.APIKeyStore().Count())
 		}
 

@@ -27,12 +27,9 @@ func (gw *Gateway) HandleQuery(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"sql is required"}`, http.StatusBadRequest)
 		return
 	}
-	if req.Username == "" {
-		http.Error(w, `{"error":"username is required"}`, http.StatusBadRequest)
-		return
-	}
 
-	// Resolve username/database from API key context if not provided
+	// Resolve username/database/roles from API key context
+	var apiKeyRoles []string
 	if apiKey, ok := r.Context().Value(gatewayAPIKeyCtx).(*APIKey); ok {
 		if req.Username == "" {
 			req.Username = apiKey.Username
@@ -40,7 +37,15 @@ func (gw *Gateway) HandleQuery(w http.ResponseWriter, r *http.Request) {
 		if req.Database == "" && apiKey.Database != "" {
 			req.Database = apiKey.Database
 		}
+		apiKeyRoles = apiKey.Roles
 	}
+
+	if req.Username == "" {
+		http.Error(w, `{"error":"username is required"}`, http.StatusBadRequest)
+		return
+	}
+
+	req.Roles = apiKeyRoles
 
 	if req.ClientIP == "" {
 		req.ClientIP = r.RemoteAddr

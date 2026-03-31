@@ -23,10 +23,11 @@ make cross-all                          # cross-compile linux/darwin/windows
 - 4 database protocols: PostgreSQL, MySQL, MSSQL, MongoDB
 - Database WAF: SQLi detection, schema enumeration blocking, system command blocking
 - 15 policy condition types including sql_injection, plan_cost_gte, require_where, max_joins, max_tables
-- 1304 unit tests, 92.2% coverage (21 packages, 4 at 100%)
+- SQL Gateway: HTTP API for query submission with approval workflow and allowlist
+- 1311+ unit tests, 92%+ coverage (22 packages)
 - 171 E2E tests across 4 scripts: PG + MySQL CRUD, transactions, bulk data, error resilience, admin API, concurrent burst
 
-### Key Packages (21 packages)
+### Key Packages (22 packages)
 | Package | Purpose |
 |---------|---------|
 | `cmd/argus/` | Binary entry point, signal handling, component wiring |
@@ -47,6 +48,7 @@ make cross-all                          # cross-compile linux/darwin/windows
 | `internal/cluster/` | Multi-instance shared session store |
 | `internal/plugin/` | Plugin registry (TransformerPlugin, AuditWriterPlugin) |
 | `internal/classify/` | Data classification engine (5 levels, 17 rules) |
+| `internal/gateway/` | SQL Gateway HTTP API, query executor, allowlist, API key auth, webhook |
 | `internal/config/` | Loading, validation, `$ENV{VAR}` expansion, env overrides, cross-reference |
 | `internal/metrics/` | Counters, query latency histogram, per-protocol stats |
 | `internal/plan/` | EXPLAIN-based query plan cost analysis (PostgreSQL + MySQL) |

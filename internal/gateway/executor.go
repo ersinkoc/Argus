@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/ersinkoc/argus/internal/masking"
 	"github.com/ersinkoc/argus/internal/policy"
@@ -32,9 +33,27 @@ func executePG(ctx context.Context, pl *pool.Pool, sql string, maxRows int64, ma
 	if err != nil {
 		return nil, fmt.Errorf("pool acquire: %w", err)
 	}
-	defer pl.Release(conn)
+
+	// Track success — Release on success, Remove (close) on error
+	var success bool
+	defer func() {
+		if success {
+			pl.Release(conn)
+		} else {
+			pl.Remove(conn)
+		}
+	}()
 
 	nc := conn.NetConn()
+
+	// Set deadline from context or default 30s for query execution
+	if deadline, ok := ctx.Deadline(); ok {
+		nc.SetDeadline(deadline)
+	} else {
+		nc.SetDeadline(time.Now().Add(30 * time.Second))
+	}
+	defer nc.SetDeadline(time.Time{}) // clear deadline on return
+
 	result := &RawResult{}
 
 	// Send Simple Query
@@ -139,6 +158,7 @@ func executePG(ctx context.Context, pl *pool.Pool, sql string, maxRows int64, ma
 			// Query completed
 
 		case pg.MsgReadyForQuery:
+			success = true
 			return result, nil
 
 		case pg.MsgErrorResponse:
