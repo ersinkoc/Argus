@@ -291,7 +291,7 @@ func (gw *Gateway) HandleDryRun(w http.ResponseWriter, r *http.Request) {
 	needsApproval := gw.needsApproval(cmd)
 
 	// Check if allowlist would match
-	allowlistHit := gw.allowlist.Check(fingerprint, req.Username, req.Database) != nil
+	allowlistHit := gw.allowlist.Peek(fingerprint, req.Username, req.Database) != nil
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{

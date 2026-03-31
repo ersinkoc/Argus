@@ -64,6 +64,39 @@ func TestAllowlistOneTime(t *testing.T) {
 	}
 }
 
+func TestAllowlistPeekDoesNotConsume(t *testing.T) {
+	al := NewAllowlist()
+
+	al.Add(&AllowlistEntry{
+		Fingerprint: "fp1",
+		Username:    "alice",
+		Database:    "db",
+		Type:        AllowlistOneTime,
+		ExpiresAt:   time.Now().Add(1 * time.Hour),
+		CreatedBy:   "admin",
+	})
+
+	// Peek should return entry without consuming
+	if al.Peek("fp1", "alice", "db") == nil {
+		t.Fatal("peek should return entry")
+	}
+
+	// Peek again — still there (not consumed)
+	if al.Peek("fp1", "alice", "db") == nil {
+		t.Fatal("second peek should still return entry")
+	}
+
+	// Check should consume it
+	if al.Check("fp1", "alice", "db") == nil {
+		t.Fatal("check should return entry")
+	}
+
+	// Now it's consumed
+	if al.Peek("fp1", "alice", "db") != nil {
+		t.Error("peek after check should return nil (consumed)")
+	}
+}
+
 func TestAllowlistExpiry(t *testing.T) {
 	al := NewAllowlist()
 

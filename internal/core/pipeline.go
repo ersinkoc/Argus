@@ -360,13 +360,11 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 
 	sessionInfo.ClientIP = remoteAddr.IP
 
-	// Re-resolve target based on database name
+	// Re-resolve target based on database name (logged for future reconnect support)
 	if sessionInfo.Database != "" {
-		newTarget := p.cfg.ResolveTarget(sessionInfo.Database)
-		if newTarget != nil && newTarget.Name != target.Name {
-			// Need to switch backend - for MVP, we'll keep the initial connection
-			// Full implementation would reconnect here
-			target = newTarget
+		if newTarget := p.cfg.ResolveTarget(sessionInfo.Database); newTarget != nil && newTarget.Name != target.Name {
+			log.Printf("[argus] session %s: database %q routes to target %q (connected to %q)",
+				"pending", sessionInfo.Database, newTarget.Name, target.Name)
 		}
 	}
 

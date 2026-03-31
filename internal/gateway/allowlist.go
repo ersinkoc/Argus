@@ -89,6 +89,27 @@ func (a *Allowlist) Check(fingerprint, username, database string) *AllowlistEntr
 	return entry
 }
 
+// Peek checks if a valid entry exists without consuming it.
+// Unlike Check(), this never modifies state — safe for dry-run previews.
+func (a *Allowlist) Peek(fingerprint, username, database string) *AllowlistEntry {
+	key := compositeKey(fingerprint, username, database)
+
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	entry, ok := a.entries[key]
+	if !ok {
+		return nil
+	}
+	if !entry.ExpiresAt.IsZero() && time.Now().After(entry.ExpiresAt) {
+		return nil
+	}
+	if entry.Type == AllowlistOneTime && entry.Used {
+		return nil
+	}
+	return entry
+}
+
 // Add creates a new allowlist entry. Returns the generated ID.
 func (a *Allowlist) Add(entry *AllowlistEntry) string {
 	if entry.ID == "" {
