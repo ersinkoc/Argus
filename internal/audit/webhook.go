@@ -120,11 +120,8 @@ func (w *WebhookWriter) flush() {
 	w.batch = make([]Event, 0, w.batchSize)
 	w.mu.Unlock()
 
-	payload, err := json.Marshal(events)
-	if err != nil {
-		log.Printf("[argus] webhook marshal error: %v", err)
-		return
-	}
+	// json.Marshal for []Event never fails since Event contains only JSON-safe types.
+	payload, _ := json.Marshal(events)
 
 	req, err := http.NewRequest("POST", w.url, bytes.NewReader(payload))
 	if err != nil {

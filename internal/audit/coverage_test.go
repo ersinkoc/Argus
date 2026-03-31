@@ -64,7 +64,7 @@ func TestLoggerAddFileWriter(t *testing.T) {
 
 func TestLoggerAddFileWriterInvalidPath(t *testing.T) {
 	logger := NewLogger(10, LevelStandard, 4096)
-	err := logger.AddFileWriter("/nonexistent/dir/file.jsonl")
+	err := logger.AddFileWriter("Z:\\nonexistent_drive_xyz\\dir\\file.jsonl")
 	if err == nil {
 		t.Error("should fail for invalid path")
 	}
@@ -109,7 +109,7 @@ func TestQueryRecorder(t *testing.T) {
 }
 
 func TestQueryRecorderInvalidPath(t *testing.T) {
-	_, err := NewQueryRecorder("/nonexistent/dir/queries.jsonl")
+	_, err := NewQueryRecorder("Z:\\nonexistent_drive_xyz\\dir\\queries.jsonl")
 	if err == nil {
 		t.Error("should fail for invalid path")
 	}

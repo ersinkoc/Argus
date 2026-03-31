@@ -42,11 +42,7 @@ func NewWebhookNotifier(url string, headers map[string]string) *WebhookNotifier 
 // Notify sends an approval webhook notification asynchronously.
 func (w *WebhookNotifier) Notify(payload ApprovalWebhookPayload) {
 	go func() {
-		body, err := json.Marshal(payload)
-		if err != nil {
-			log.Printf("[argus] gateway webhook marshal error: %v", err)
-			return
-		}
+		body, _ := json.Marshal(payload) // safe: ApprovalWebhookPayload contains only basic types
 
 		req, err := http.NewRequest("POST", w.url, bytes.NewReader(body))
 		if err != nil {

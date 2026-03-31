@@ -69,3 +69,48 @@ func TestDatabaseCountersConcurrentAccess(t *testing.T) {
 		t.Errorf("queries = %d, want 10", snap["test"]["queries"])
 	}
 }
+
+// TestGetOrCreateDoubleCheckPath deterministically exercises the write-lock
+// double-check path in getOrCreate by using channel-based choreography.
+// Goroutine A holds the write lock and inserts the key; goroutine B has
+// already passed the RLock miss and is waiting for the write lock. When A
+// releases, B acquires the lock and finds the key via the double-check.
+// TestGetOrCreateDoubleCheckPath exercises the write-lock double-check path
+// in getOrCreate by running many goroutines calling getOrCreate simultaneously
+// on the same fresh key. With enough contention, some goroutines will pass
+// the RLock miss and find the key on the write-lock double-check.
+func TestGetOrCreateDoubleCheckPath(t *testing.T) {
+	// Use -count=N or run many internal rounds to reliably hit the path.
+	for round := 0; round < 500; round++ {
+		d := &DatabaseCounters{counters: make(map[string]*dbCounter)}
+		const g = 8
+		barrier := make(chan struct{})
+		done := make(chan struct{}, g)
+		for range g {
+			go func() {
+				<-barrier
+				d.getOrCreate("k")
+				done <- struct{}{}
+			}()
+		}
+		close(barrier)
+		for range g {
+			<-done
+		}
+	}
+}
+
+// TestLatencyPercentileFallthrough exercises the final return in Percentile
+// when cumulative count never reaches the threshold (p > 100).
+func TestLatencyPercentileFallthrough(t *testing.T) {
+	h := &LatencyHistogram{}
+	h.Observe(500) // one value in bucket
+
+	// With p>100, threshold exceeds total count, so the loop
+	// completes without returning and we hit the final return.
+	result := h.Percentile(200)
+	want := latencyBounds[len(latencyBounds)-1]
+	if result != want {
+		t.Errorf("Percentile(200) = %v, want %v", result, want)
+	}
+}

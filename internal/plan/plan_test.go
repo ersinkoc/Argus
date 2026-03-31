@@ -848,12 +848,236 @@ func TestReadMessage_ShortPayload(t *testing.T) {
 func TestExtractDataRowText_TruncatedField(t *testing.T) {
 	// fieldCount=1, but field length says 100 bytes, only 0 bytes follow
 	payload := make([]byte, 6)
-	binary.BigEndian.PutUint16(payload[:2], 1) // 1 field
+	binary.BigEndian.PutUint16(payload[:2], 1)   // 1 field
 	binary.BigEndian.PutUint32(payload[2:], 100) // length=100, but no data
 	result := extractDataRowText(payload)
 	// Should return empty (out of bounds guard)
 	if result != "" {
 		t.Errorf("expected empty for truncated field, got %q", result)
+	}
+}
+
+// TestExtractDataRowText_TooShort exercises the len(payload) < 2 guard.
+func TestExtractDataRowText_TooShort(t *testing.T) {
+	result := extractDataRowText([]byte{})
+	if result != "" {
+		t.Errorf("expected empty for empty payload, got %q", result)
+	}
+	result = extractDataRowText([]byte{0x01})
+	if result != "" {
+		t.Errorf("expected empty for 1-byte payload, got %q", result)
+	}
+}
+
+// TestExplainPG_DefaultTimeout exercises the timeout <= 0 default path.
+func TestExplainPG_DefaultTimeout(t *testing.T) {
+	srv := newPGServer(t, 42.0)
+	defer srv.ln.Close()
+
+	conn, err := net.Dial("tcp", srv.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	// Pass timeout=0, which should use DefaultTimeout
+	result, err := ExplainPG(context.Background(), conn, "SELECT 1", 0)
+	if err != nil {
+		t.Fatalf("ExplainPG error: %v", err)
+	}
+	if result.TotalCost != 42.0 {
+		t.Errorf("TotalCost = %v, want 42.0", result.TotalCost)
+	}
+}
+
+// TestExplainMySQL_DefaultTimeout exercises the timeout <= 0 default path.
+func TestExplainMySQL_DefaultTimeout(t *testing.T) {
+	srv := newMySQLServer(t, "99.0")
+	defer srv.ln.Close()
+
+	conn, err := net.Dial("tcp", srv.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	// Pass timeout=0, which should use DefaultTimeout
+	result, err := ExplainMySQL(context.Background(), conn, "SELECT 1", 0)
+	if err != nil {
+		t.Fatalf("ExplainMySQL error: %v", err)
+	}
+	if result.TotalCost != 99.0 {
+		t.Errorf("TotalCost = %v, want 99.0", result.TotalCost)
+	}
+}
+
+// deadlineErrorConn wraps a net.Conn and makes SetWriteDeadline or
+// SetReadDeadline return an error.
+type deadlineErrorConn struct {
+	net.Conn
+	failWrite bool
+	failRead  bool
+}
+
+func (c *deadlineErrorConn) SetWriteDeadline(t time.Time) error {
+	if c.failWrite && !t.IsZero() {
+		return net.ErrClosed
+	}
+	return c.Conn.SetWriteDeadline(t)
+}
+
+func (c *deadlineErrorConn) SetReadDeadline(t time.Time) error {
+	if c.failRead && !t.IsZero() {
+		return net.ErrClosed
+	}
+	return c.Conn.SetReadDeadline(t)
+}
+
+// TestExplainPG_SetWriteDeadlineError exercises the SetWriteDeadline error path.
+func TestExplainPG_SetWriteDeadlineError(t *testing.T) {
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+
+	wrapped := &deadlineErrorConn{Conn: client, failWrite: true}
+	_, err := ExplainPG(context.Background(), wrapped, "SELECT 1", time.Second)
+	if err == nil {
+		t.Fatal("expected error from SetWriteDeadline failure")
+	}
+}
+
+// TestExplainPG_SetReadDeadlineError exercises the SetReadDeadline error path.
+func TestExplainPG_SetReadDeadlineError(t *testing.T) {
+	// We need Write to succeed but SetReadDeadline to fail.
+	// Use a real TCP connection with a server that accepts but doesn't respond.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		conn, _ := ln.Accept()
+		if conn != nil {
+			buf := make([]byte, 4096)
+			conn.Read(buf)
+			time.Sleep(2 * time.Second)
+			conn.Close()
+		}
+	}()
+
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	wrapped := &deadlineErrorConn{Conn: conn, failRead: true}
+	_, err = ExplainPG(context.Background(), wrapped, "SELECT 1", time.Second)
+	if err == nil {
+		t.Fatal("expected error from SetReadDeadline failure")
+	}
+}
+
+// TestExplainMySQL_SetWriteDeadlineError exercises the SetWriteDeadline error path.
+func TestExplainMySQL_SetWriteDeadlineError(t *testing.T) {
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+
+	wrapped := &deadlineErrorConn{Conn: client, failWrite: true}
+	_, err := ExplainMySQL(context.Background(), wrapped, "SELECT 1", time.Second)
+	if err == nil {
+		t.Fatal("expected error from SetWriteDeadline failure")
+	}
+}
+
+// TestExplainMySQL_SetReadDeadlineError exercises the SetReadDeadline error path.
+func TestExplainMySQL_SetReadDeadlineError(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		conn, _ := ln.Accept()
+		if conn != nil {
+			buf := make([]byte, 4096)
+			conn.Read(buf)
+			time.Sleep(2 * time.Second)
+			conn.Close()
+		}
+	}()
+
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	wrapped := &deadlineErrorConn{Conn: conn, failRead: true}
+	_, err = ExplainMySQL(context.Background(), wrapped, "SELECT 1", time.Second)
+	if err == nil {
+		t.Fatal("expected error from SetReadDeadline failure")
+	}
+}
+
+// TestReadLenEnc_DefaultCase exercises the default/0xff branch in readLenEnc.
+func TestReadLenEnc_DefaultCase(t *testing.T) {
+	// 0xff is the NULL marker in MySQL length-encoded integers
+	_, _, err := readLenEnc([]byte{0xff}, 0)
+	if err == nil {
+		t.Fatal("expected error for 0xff (NULL) length-encoded int")
+	}
+}
+
+// TestReadMySQLExplainResult_ZeroColumnCount exercises colCount == 0 path.
+func TestReadMySQLExplainResult_ZeroColumnCount(t *testing.T) {
+	client, server := net.Pipe()
+	go func() {
+		// Send a column count packet with value 0
+		writeMySQLPacket(server, 1, []byte{0x00})
+		server.Close()
+	}()
+	defer client.Close()
+
+	_, err := readMySQLExplainResult(client)
+	if err == nil {
+		t.Fatal("expected error for zero column count")
+	}
+}
+
+// TestReadMySQLExplainResult_EmptyRowPacket exercises the len(row)==0 continue path.
+func TestReadMySQLExplainResult_EmptyRowPacket(t *testing.T) {
+	client, server := net.Pipe()
+
+	queryCost := `{"query_block":{"cost_info":{"query_cost":"10.0"}}}`
+
+	go func() {
+		// Column count = 1
+		writeMySQLPacket(server, 1, []byte{0x01})
+		// Column def
+		writeMySQLPacket(server, 2, []byte{'d', 'e', 'f'})
+		// EOF
+		writeMySQLPacket(server, 3, []byte{0xfe, 0x00, 0x00, 0x02, 0x00})
+		// Empty row packet (length=0 payload)
+		writeMySQLPacket(server, 4, []byte{})
+		// Real data row
+		row := make([]byte, 0, 1+len(queryCost))
+		row = append(row, byte(len(queryCost)))
+		row = append(row, []byte(queryCost)...)
+		writeMySQLPacket(server, 5, row)
+		// EOF
+		writeMySQLPacket(server, 6, []byte{0xfe, 0x00, 0x00, 0x02, 0x00})
+		server.Close()
+	}()
+	defer client.Close()
+
+	result, err := readMySQLExplainResult(client)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.TotalCost != 10.0 {
+		t.Errorf("TotalCost = %v, want 10.0", result.TotalCost)
 	}
 }
 

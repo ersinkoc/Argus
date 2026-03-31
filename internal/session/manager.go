@@ -76,20 +76,22 @@ func (s *Session) IdleDuration() time.Duration {
 
 // Manager manages active sessions.
 type Manager struct {
-	sessions    sync.Map // sessionID → *Session
-	idleTimeout time.Duration
-	maxDuration time.Duration
-	onTimeout   func(*Session, string)
-	stopCh      chan struct{}
-	wg          sync.WaitGroup
+	sessions      sync.Map // sessionID → *Session
+	idleTimeout   time.Duration
+	maxDuration   time.Duration
+	checkInterval time.Duration
+	onTimeout     func(*Session, string)
+	stopCh        chan struct{}
+	wg            sync.WaitGroup
 }
 
 // NewManager creates a new session manager.
 func NewManager(idleTimeout, maxDuration time.Duration) *Manager {
 	return &Manager{
-		idleTimeout: idleTimeout,
-		maxDuration: maxDuration,
-		stopCh:      make(chan struct{}),
+		idleTimeout:   idleTimeout,
+		maxDuration:   maxDuration,
+		checkInterval: 30 * time.Second,
+		stopCh:        make(chan struct{}),
 	}
 }
 
@@ -181,7 +183,7 @@ func (m *Manager) Count() int {
 
 func (m *Manager) timeoutLoop() {
 	defer m.wg.Done()
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(m.checkInterval)
 	defer ticker.Stop()
 
 	for {

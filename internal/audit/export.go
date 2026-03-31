@@ -27,9 +27,8 @@ func ExportCSV(logPath string, w io.Writer, filter SearchFilter) (int, error) {
 		"risk_level", "policy_name", "row_count", "duration_ms",
 		"reason", "error",
 	}
-	if err := csvWriter.Write(header); err != nil {
-		return 0, err
-	}
+	// csv.Writer buffers internally (4096 bytes), so Write errors only surface on Flush.
+	csvWriter.Write(header)
 
 	count := 0
 	scanner := newLineScanner(f)

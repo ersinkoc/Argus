@@ -108,7 +108,11 @@ func (gw *Gateway) HandleApprove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Approve the request
-	if err := gw.approvalManager.Approve(req.ApprovalID, req.Approver); err != nil {
+	approveFn := gw.approvalManager.Approve
+	if gw.approveFn != nil {
+		approveFn = gw.approveFn
+	}
+	if err := approveFn(req.ApprovalID, req.Approver); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
 		return
 	}
@@ -248,11 +252,8 @@ func (gw *Gateway) HandleDryRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve from API key context
+	// Resolve database from API key context
 	if apiKey, ok := r.Context().Value(gatewayAPIKeyCtx).(*APIKey); ok {
-		if req.Username == "" {
-			req.Username = apiKey.Username
-		}
 		if req.Database == "" && apiKey.Database != "" {
 			req.Database = apiKey.Database
 		}

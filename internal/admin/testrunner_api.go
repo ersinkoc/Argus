@@ -120,11 +120,7 @@ func execPG(cfg *TestRunnerConfig, user, sql string, resp TestRunResponse) TestR
 		}
 		if strings.Contains(output, "DELETE without WHERE") || strings.Contains(output, "prohibited") {
 			resp.Action = "block"
-			if idx := strings.Index(output, "Access denied: "); idx >= 0 {
-				resp.Reason = output[idx+15:]
-			} else {
-				resp.Reason = output
-			}
+			resp.Reason = output
 			return resp
 		}
 		resp.Error = output

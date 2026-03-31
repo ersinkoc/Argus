@@ -156,7 +156,7 @@ func TestCompactLogsBasic(t *testing.T) {
 }
 
 func TestCompactLogsBadDir(t *testing.T) {
-	_, err := CompactLogs("/nonexistent/dir", CompactionConfig{})
+	_, err := CompactLogs("Z:\\nonexistent_drive_xyz\\dir", CompactionConfig{})
 	if err == nil {
 		t.Error("bad dir should fail")
 	}

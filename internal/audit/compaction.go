@@ -53,14 +53,15 @@ func CompactLogs(dir string, cfg CompactionConfig) (*CompactionResult, error) {
 			continue
 		}
 
-		info, err := entry.Info()
+		fullPath := filepath.Join(dir, name)
+		info, err := os.Stat(fullPath)
 		if err != nil {
-			continue
+			continue // file may have been deleted since ReadDir
 		}
 
 		logFiles = append(logFiles, logFile{
 			name:    name,
-			path:    filepath.Join(dir, name),
+			path:    fullPath,
 			modTime: info.ModTime(),
 			size:    info.Size(),
 		})

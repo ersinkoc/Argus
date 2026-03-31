@@ -99,10 +99,6 @@ func ParseOpMsg(payload []byte) (flagBits uint32, sections []OpMsgSection, err e
 	offset := 4
 
 	for offset < len(payload) {
-		if offset >= len(payload) {
-			break
-		}
-
 		kind := payload[offset]
 		offset++
 

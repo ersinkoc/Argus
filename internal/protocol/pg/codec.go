@@ -187,9 +187,6 @@ func ParseStartupMessage(data []byte) (*StartupMessage, error) {
 		for valEnd < len(payload) && payload[valEnd] != 0 {
 			valEnd++
 		}
-		if valEnd > len(payload) {
-			break
-		}
 		value := string(payload[:valEnd])
 		if valEnd < len(payload) {
 			payload = payload[valEnd+1:]

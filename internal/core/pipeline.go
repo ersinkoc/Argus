@@ -39,8 +39,9 @@ type Proxy struct {
 	slowQueryLogger *audit.SlowQueryLogger
 	rewriter        *inspection.Rewriter
 	sessionLimiter  *session.ConcurrencyLimiter
-	onEvent         func(any) // broadcast callback (e.g. WebSocket)
-	rlCleanupStop   chan struct{}
+	onEvent           func(any) // broadcast callback (e.g. WebSocket)
+	rlCleanupStop     chan struct{}
+	rlCleanupInterval time.Duration // default 5 min; override in tests
 }
 
 // NewProxy creates a new proxy engine.
@@ -152,8 +153,12 @@ func (p *Proxy) Start() error {
 
 	// Start periodic rate limiter cleanup to prevent memory leaks
 	p.rlCleanupStop = make(chan struct{})
+	interval := p.rlCleanupInterval
+	if interval <= 0 {
+		interval = 5 * time.Minute
+	}
 	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			select {

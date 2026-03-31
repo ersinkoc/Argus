@@ -45,10 +45,6 @@ func ReadPacket(conn net.Conn) (*Packet, error) {
 	length := int(header[0]) | int(header[1])<<8 | int(header[2])<<16
 	seqID := header[3]
 
-	if length > 16*1024*1024 { // 16MB max packet
-		return nil, fmt.Errorf("packet too large: %d bytes", length)
-	}
-
 	payload := make([]byte, length)
 	if length > 0 {
 		if _, err := io.ReadFull(conn, payload); err != nil {

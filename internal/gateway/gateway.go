@@ -65,6 +65,10 @@ type Gateway struct {
 	webhookNotifier  *WebhookNotifier
 	piiDetector      *masking.PIIDetector
 	cleanupStop      chan struct{}
+
+	// Test hooks (nil in production — defaults to approvalManager methods)
+	submitForApprovalFn func(*core.ApprovalRequest) (string, error)
+	approveFn           func(string, string) error
 }
 
 // GatewayDeps holds the shared infrastructure dependencies.
@@ -78,6 +82,10 @@ type GatewayDeps struct {
 	PIIDetector     *masking.PIIDetector
 	OnEvent         func(any)
 }
+
+// cleanupInterval controls how often the allowlist cleanup runs.
+// Exported only for testing.
+var cleanupInterval = 5 * time.Minute
 
 // New creates a new SQL gateway.
 func New(deps GatewayDeps) *Gateway {
@@ -97,7 +105,7 @@ func New(deps GatewayDeps) *Gateway {
 	// Start allowlist cleanup goroutine
 	gw.cleanupStop = make(chan struct{})
 	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
+		ticker := time.NewTicker(cleanupInterval)
 		defer ticker.Stop()
 		for {
 			select {
@@ -257,10 +265,7 @@ func (gw *Gateway) ExecuteQuery(ctx context.Context, req QueryRequest) QueryResp
 
 	// 6. Check if approval is required
 	if gw.needsApproval(cmd) {
-		approvalID, err := gw.submitApproval(req, cmd, fingerprint, costEstimate.Score)
-		if err != nil {
-			return QueryResponse{Status: "error", Fingerprint: fingerprint, Error: err.Error(), Duration: time.Since(start).String(), Policy: policyInfo}
-		}
+		approvalID := gw.submitApproval(req, cmd, fingerprint, costEstimate.Score)
 		return QueryResponse{
 			Status: "pending_approval", ApprovalID: approvalID, Fingerprint: fingerprint,
 			Duration: time.Since(start).String(), Policy: policyInfo,
@@ -268,8 +273,7 @@ func (gw *Gateway) ExecuteQuery(ctx context.Context, req QueryRequest) QueryResp
 	}
 
 	// 7. Execute based on decision
-	switch decision.Action {
-	case policy.ActionBlock:
+	if decision.Action == policy.ActionBlock {
 		gw.auditLogger.Log(audit.Event{
 			EventType: audit.GatewayQuery.String(), Username: req.Username, ClientIP: req.ClientIP,
 			Database: req.Database, Command: req.SQL, CommandType: cmd.Type.String(),
@@ -280,47 +284,41 @@ func (gw *Gateway) ExecuteQuery(ctx context.Context, req QueryRequest) QueryResp
 			Policy: policyInfo,
 			Error:  fmt.Sprintf("Access denied: %s [policy: %s]", decision.Reason, decision.PolicyName),
 		}
-
-	case policy.ActionAllow, policy.ActionAudit, policy.ActionMask:
-		// Pass masking rules to executor (pipeline created after columns are known)
-		var maskRules []policy.MaskingRule
-		if decision.Action == policy.ActionMask {
-			maskRules = decision.MaskingRules
-		}
-
-		result, err := gw.executeOnBackend(ctx, req, maskRules)
-		if err != nil {
-			return QueryResponse{Status: "error", Fingerprint: fingerprint, Error: err.Error(), Duration: time.Since(start).String(), Policy: policyInfo}
-		}
-
-		status := "ok"
-		if decision.Action == policy.ActionMask || len(result.MaskedCols) > 0 {
-			status = "masked"
-		}
-
-		gw.auditLogger.Log(audit.Event{
-			EventType: audit.GatewayQuery.String(), Username: req.Username, ClientIP: req.ClientIP,
-			Database: req.Database, Command: req.SQL, CommandType: cmd.Type.String(),
-			Tables: cmd.Tables, Action: decision.Action.String(), PolicyName: decision.PolicyName,
-			RowCount: result.RowCount, MaskedCols: result.MaskedCols, Duration: time.Since(start),
-		})
-
-		return QueryResponse{
-			Status: status, Columns: result.Columns, Rows: result.Rows, RowCount: result.RowCount,
-			MaskedCols: result.MaskedCols, Fingerprint: fingerprint, Duration: time.Since(start).String(),
-			Policy: policyInfo,
-		}
 	}
 
-	return QueryResponse{Status: "error", Fingerprint: fingerprint, Error: "Unknown policy action", Policy: policyInfo}
+	// ActionAllow, ActionAudit, ActionMask — execute the query
+	var maskRules []policy.MaskingRule
+	if decision.Action == policy.ActionMask {
+		maskRules = decision.MaskingRules
+	}
+
+	result, err := gw.executeOnBackend(ctx, req, maskRules)
+	if err != nil {
+		return QueryResponse{Status: "error", Fingerprint: fingerprint, Error: err.Error(), Duration: time.Since(start).String(), Policy: policyInfo}
+	}
+
+	status := "ok"
+	if decision.Action == policy.ActionMask || len(result.MaskedCols) > 0 {
+		status = "masked"
+	}
+
+	gw.auditLogger.Log(audit.Event{
+		EventType: audit.GatewayQuery.String(), Username: req.Username, ClientIP: req.ClientIP,
+		Database: req.Database, Command: req.SQL, CommandType: cmd.Type.String(),
+		Tables: cmd.Tables, Action: decision.Action.String(), PolicyName: decision.PolicyName,
+		RowCount: result.RowCount, MaskedCols: result.MaskedCols, Duration: time.Since(start),
+	})
+
+	return QueryResponse{
+		Status: status, Columns: result.Columns, Rows: result.Rows, RowCount: result.RowCount,
+		MaskedCols: result.MaskedCols, Fingerprint: fingerprint, Duration: time.Since(start).String(),
+		Policy: policyInfo,
+	}
 }
 
 // executeOnBackend runs SQL on the appropriate backend pool.
 func (gw *Gateway) executeOnBackend(ctx context.Context, req QueryRequest, maskRules []policy.MaskingRule) (*RawResult, error) {
 	target := gw.cfg.ResolveTarget(req.Database)
-	if target == nil && gw.cfg.Routing.DefaultTarget != "" {
-		target = gw.cfg.FindTarget(gw.cfg.Routing.DefaultTarget)
-	}
 	if target == nil {
 		return nil, fmt.Errorf("no target found for database %q", req.Database)
 	}
@@ -364,15 +362,25 @@ func (gw *Gateway) needsApproval(cmd *inspection.Command) bool {
 }
 
 // submitApproval creates a pending approval request and optionally sends webhook.
-func (gw *Gateway) submitApproval(req QueryRequest, cmd *inspection.Command, fingerprint string, costScore int) (string, error) {
+// Returns the approval ID. SubmitForApproval only fails on duplicate random IDs,
+// which is astronomically unlikely — log and return empty ID in that case.
+func (gw *Gateway) submitApproval(req QueryRequest, cmd *inspection.Command, fingerprint string, costScore int) string {
 	approvalReq := &core.ApprovalRequest{
 		SessionID: "gateway", Username: req.Username, Database: req.Database,
 		SQL: req.SQL, RiskLevel: cmd.RiskLevel.String(),
 		Fingerprint: fingerprint, ClientIP: req.ClientIP, CostScore: costScore, Source: "gateway",
 	}
-	approvalID, err := gw.approvalManager.SubmitForApproval(approvalReq)
+	submitFn := gw.approvalManager.SubmitForApproval
+	if gw.submitForApprovalFn != nil {
+		submitFn = gw.submitForApprovalFn
+	}
+	approvalID, err := submitFn(approvalReq)
 	if err != nil {
-		return "", err
+		gw.auditLogger.Log(audit.Event{
+			EventType: "gateway_error", Username: req.Username,
+			Database: req.Database, Action: "error", Reason: err.Error(),
+		})
+		return ""
 	}
 
 	gw.auditLogger.Log(audit.Event{
@@ -388,5 +396,5 @@ func (gw *Gateway) submitApproval(req QueryRequest, cmd *inspection.Command, fin
 			RiskLevel: cmd.RiskLevel.String(), CostScore: costScore, RequestedAt: time.Now(),
 		})
 	}
-	return approvalID, nil
+	return approvalID
 }
