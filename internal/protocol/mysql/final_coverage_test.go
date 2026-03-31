@@ -391,12 +391,12 @@ func TestReadCommandReadError(t *testing.T) {
 	}
 }
 
-// --- extractColumnName: all early return paths ---
+// --- ExtractColumnName: all early return paths ---
 
 func TestExtractColumnNameMidSkip(t *testing.T) {
 	// Truncated during 2nd skip field
 	payload := []byte{3, 'd', 'e', 'f', 2, 'd', 'b'}
-	name := extractColumnName(payload)
+	name := ExtractColumnName(payload)
 	if name != "" {
 		t.Errorf("truncated mid-skip should return empty, got %q", name)
 	}
@@ -411,7 +411,7 @@ func TestExtractColumnNameNameTruncated(t *testing.T) {
 	}
 	payload = append(payload, 10) // name length = 10 but no data follows
 
-	name := extractColumnName(payload)
+	name := ExtractColumnName(payload)
 	if name != "" {
 		t.Errorf("truncated name should return empty, got %q", name)
 	}

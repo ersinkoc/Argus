@@ -397,31 +397,31 @@ func TestReadCommandUnknownCmd(t *testing.T) {
 	}
 }
 
-// --- extractColumnName edge cases ---
+// --- ExtractColumnName edge cases ---
 
 func TestExtractColumnNameTruncated(t *testing.T) {
 	// Too short to reach name field
-	got := extractColumnName([]byte{3, 'd', 'e', 'f'})
+	got := ExtractColumnName([]byte{3, 'd', 'e', 'f'})
 	if got != "" {
 		t.Errorf("truncated payload should return empty, got %q", got)
 	}
 }
 
 func TestExtractColumnNameEmpty(t *testing.T) {
-	got := extractColumnName(nil)
+	got := ExtractColumnName(nil)
 	if got != "" {
 		t.Errorf("nil payload should return empty, got %q", got)
 	}
-	got = extractColumnName([]byte{})
+	got = ExtractColumnName([]byte{})
 	if got != "" {
 		t.Errorf("empty payload should return empty, got %q", got)
 	}
 }
 
-// --- parseMySQLTextRow edge cases ---
+// --- ParseMySQLTextRow edge cases ---
 
 func TestParseMySQLTextRowAllNull(t *testing.T) {
-	fields := parseMySQLTextRow([]byte{0xFB, 0xFB, 0xFB}, 3)
+	fields := ParseMySQLTextRow([]byte{0xFB, 0xFB, 0xFB}, 3)
 	if len(fields) != 3 {
 		t.Fatalf("fields = %d", len(fields))
 	}
@@ -435,7 +435,7 @@ func TestParseMySQLTextRowAllNull(t *testing.T) {
 func TestParseMySQLTextRowMixed(t *testing.T) {
 	// "hi" + NULL + "ok"
 	data := []byte{2, 'h', 'i', 0xFB, 2, 'o', 'k'}
-	fields := parseMySQLTextRow(data, 3)
+	fields := ParseMySQLTextRow(data, 3)
 	if len(fields) != 3 {
 		t.Fatalf("fields = %d", len(fields))
 	}
@@ -463,7 +463,7 @@ func TestBuildMySQLTextRowWithNull(t *testing.T) {
 		t.Fatal("empty output")
 	}
 	// Parse it back
-	parsed := parseMySQLTextRow(data, 3)
+	parsed := ParseMySQLTextRow(data, 3)
 	if string(parsed[0]) != "hello" {
 		t.Errorf("field 0 = %q", parsed[0])
 	}

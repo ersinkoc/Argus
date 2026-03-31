@@ -129,7 +129,7 @@ func TestReadPacketZeroLength(t *testing.T) {
 	}
 }
 
-// --- extractColumnName edge cases ---
+// --- ExtractColumnName edge cases ---
 
 func TestExtractColumnNameValidMultiSkip(t *testing.T) {
 	// Build a proper column def: catalog(3)+schema(4)+table(5)+org_table(5)+name(4)+org_name(4)
@@ -143,7 +143,7 @@ func TestExtractColumnNameValidMultiSkip(t *testing.T) {
 	payload = append(payload, 2) // org_name len
 	payload = append(payload, []byte("id")...)
 
-	name := extractColumnName(payload)
+	name := ExtractColumnName(payload)
 	if name != "id" {
 		t.Errorf("name = %q, want 'id'", name)
 	}
@@ -159,7 +159,7 @@ func TestExtractColumnNameLongName(t *testing.T) {
 	payload = append(payload, byte(len(longName)))
 	payload = append(payload, []byte(longName)...)
 
-	name := extractColumnName(payload)
+	name := ExtractColumnName(payload)
 	if name != longName {
 		t.Errorf("name = %q", name)
 	}

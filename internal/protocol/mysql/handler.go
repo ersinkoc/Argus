@@ -274,7 +274,7 @@ func (h *Handler) ReadAndForwardResult(ctx context.Context, backend, client net.
 		if err != nil {
 			return stats, fmt.Errorf("reading column def %d: %w", i, err)
 		}
-		colNames = append(colNames, extractColumnName(colPkt.Payload))
+		colNames = append(colNames, ExtractColumnName(colPkt.Payload))
 		if err := WritePacket(client, colPkt); err != nil {
 			return stats, err
 		}
@@ -317,7 +317,7 @@ func (h *Handler) ReadAndForwardResult(ctx context.Context, backend, client net.
 
 		// Apply masking if pipeline is set up
 		if pipeline != nil && pipeline.HasMasking() {
-			fields := parseMySQLTextRow(rowPkt.Payload, columnCount)
+			fields := ParseMySQLTextRow(rowPkt.Payload, columnCount)
 			maskFields := make([]masking.FieldValue, len(fields))
 			for i, f := range fields {
 				if f == nil {
@@ -438,7 +438,8 @@ func (h *Handler) Close() error {
 // extractColumnName extracts the column name from a column definition packet.
 // MySQL column definition format (COM_QUERY response):
 // catalog, schema, table, org_table, name, org_name, ...
-func extractColumnName(payload []byte) string {
+// ExtractColumnName extracts the column name from a MySQL column definition packet.
+func ExtractColumnName(payload []byte) string {
 	i := 0
 	// Skip 4 length-encoded strings: catalog, schema, table, org_table
 	for skip := 0; skip < 4; skip++ {
@@ -460,9 +461,9 @@ func extractColumnName(payload []byte) string {
 	return string(payload[i : i+nameLen])
 }
 
-// parseMySQLTextRow parses a text protocol result row.
+// ParseMySQLTextRow parses a text protocol result row.
 // Each field is a length-encoded string or 0xFB for NULL.
-func parseMySQLTextRow(payload []byte, numCols int) [][]byte {
+func ParseMySQLTextRow(payload []byte, numCols int) [][]byte {
 	fields := make([][]byte, numCols)
 	i := 0
 	for col := 0; col < numCols && i < len(payload); col++ {

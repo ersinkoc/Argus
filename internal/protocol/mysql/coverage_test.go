@@ -74,13 +74,13 @@ func TestEncodeLenEnc(t *testing.T) {
 
 func TestExtractColumnNameEdge(t *testing.T) {
 	// Test with empty payload
-	name := extractColumnName(nil)
+	name := ExtractColumnName(nil)
 	if name != "" {
 		t.Errorf("nil should be empty, got %q", name)
 	}
 
 	// Short payload
-	name = extractColumnName([]byte{1, 'x'})
+	name = ExtractColumnName([]byte{1, 'x'})
 	if name != "" {
 		t.Errorf("short should be empty, got %q", name)
 	}
@@ -89,7 +89,7 @@ func TestExtractColumnNameEdge(t *testing.T) {
 func TestParseMySQLTextRowNULL(t *testing.T) {
 	// Row with NULLs
 	payload := []byte{0xFB, 0xFB}
-	fields := parseMySQLTextRow(payload, 2)
+	fields := ParseMySQLTextRow(payload, 2)
 
 	if fields[0] != nil {
 		t.Error("field 0 should be nil")

@@ -128,7 +128,7 @@ func TestExtractColumnName(t *testing.T) {
 	payload = append(payload, 5)
 	payload = append(payload, []byte("email")...)
 
-	name := extractColumnName(payload)
+	name := ExtractColumnName(payload)
 	if name != "email" {
 		t.Errorf("column name = %q, want %q", name, "email")
 	}
@@ -143,7 +143,7 @@ func TestParseMySQLTextRow(t *testing.T) {
 	payload = append(payload, 5)    // length
 	payload = append(payload, []byte("world")...)
 
-	fields := parseMySQLTextRow(payload, 3)
+	fields := ParseMySQLTextRow(payload, 3)
 
 	if string(fields[0]) != "hello" {
 		t.Errorf("field 0 = %q, want %q", fields[0], "hello")

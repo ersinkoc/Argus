@@ -316,6 +316,8 @@ func (gw *Gateway) executeOnBackend(ctx context.Context, req QueryRequest, maskR
 	switch target.Protocol {
 	case "postgresql":
 		return executePG(ctx, pl, req.SQL, maxRows, maskRules, gw.piiDetector, gw.cfg.Audit.PIIAutoDetect)
+	case "mysql":
+		return executeMySQL(ctx, pl, req.SQL, maxRows, maskRules, gw.piiDetector, gw.cfg.Audit.PIIAutoDetect)
 	default:
 		return nil, fmt.Errorf("gateway execution not yet supported for protocol %q", target.Protocol)
 	}

@@ -57,5 +57,11 @@
   "metrics": {
     "enabled": true,
     "address": ":9091"
+  },
+  "gateway": {
+    "enabled": false,
+    "api_keys": [],
+    "max_result_rows": 10000,
+    "approval_timeout": "10m"
   }
 }

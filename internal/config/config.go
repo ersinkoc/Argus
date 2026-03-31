@@ -545,6 +545,26 @@ func Validate(cfg *Config) error {
 		}
 	}
 
+	// Gateway validation
+	if cfg.Gateway.Enabled {
+		if len(cfg.Targets) == 0 {
+			return fmt.Errorf("gateway: enabled but no targets configured")
+		}
+		seenKeys := make(map[string]int)
+		for i, key := range cfg.Gateway.APIKeys {
+			if key.Key == "" {
+				return fmt.Errorf("gateway.api_keys[%d]: key is required", i)
+			}
+			if key.Username == "" {
+				return fmt.Errorf("gateway.api_keys[%d]: username is required", i)
+			}
+			if prev, exists := seenKeys[key.Key]; exists {
+				return fmt.Errorf("gateway.api_keys[%d]: duplicate key (same as api_keys[%d])", i, prev)
+			}
+			seenKeys[key.Key] = i
+		}
+	}
+
 	return nil
 }
 
