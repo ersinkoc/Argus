@@ -20,10 +20,11 @@
 12. [Rate Limiting](#12-rate-limiting)
 13. [Metrics & Observability](#13-metrics--observability)
 14. [Admin API](#14-admin-api)
-15. [Authentication Providers](#15-authentication-providers)
-16. [Configuration System](#16-configuration-system)
-17. [Kubernetes Deployment](#17-kubernetes-deployment)
-18. [Package Dependency Graph](#18-package-dependency-graph)
+15. [SQL Gateway](#15-sql-gateway)
+16. [Authentication Providers](#16-authentication-providers-planned)
+17. [Configuration System](#17-configuration-system)
+18. [Kubernetes Deployment](#18-kubernetes-deployment)
+19. [Package Dependency Graph](#19-package-dependency-graph)
 
 ---
 
@@ -975,7 +976,7 @@ argus_go_gc_runs_total
 
 ```
 internal/admin/
-├── server.go           29 HTTP endpoints + server lifecycle
+├── server.go           34 HTTP endpoints + server lifecycle
 ├── auth.go             Bearer token middleware + public paths
 ├── websocket.go        WebSocket event stream (RFC 6455)
 ├── dashboard_ui.go     HTML/CSS/JS dashboard (embedded)
@@ -1033,11 +1034,130 @@ Classification:
   GET  /api/classify               Data classification
   GET  /api/plugins                Plugin registry
   POST /api/test/run               Execute test query
+
+SQL Gateway:
+  POST /api/gateway/query          Submit SQL query via HTTP
+  POST /api/gateway/approve        Approve pending query (one-time/time-window)
+  POST /api/gateway/dryrun         Preview pipeline result without executing
+  GET  /api/gateway/allowlist      List pre-approved entries
+  DELETE /api/gateway/allowlist    Remove allowlist entry
+  GET  /api/gateway/status         Poll approval status
 ```
 
 ---
 
-## 15. Authentication Providers
+## 15. SQL Gateway
+
+### Package: `internal/gateway/`
+
+```
+internal/gateway/
+├── gateway.go           Core engine — pipeline, policy, execute, audit
+├── executor.go          PostgreSQL Simple Query executor
+├── executor_mysql.go    MySQL COM_QUERY executor
+├── handler.go           6 HTTP endpoint handlers + dryrun
+├── allowlist.go         Pre-approved query authorizations (ONE_TIME/TIME_WINDOW)
+├── auth.go              API key store + X-API-Key middleware
+├── webhook.go           Approval notification webhook
+└── allowlist_test.go    Allowlist + auth + handler tests
+```
+
+### Gateway Pipeline
+
+```
+Web Panel / External App
+       │
+       ▼
+POST /api/gateway/query
+  {sql, username, database, client_ip}
+       │
+       ├── X-API-Key → Resolve username/roles/database
+       │
+       ▼
+┌─────────────────────────────────────────┐
+│  1. Classify (type, tables, risk)       │
+│  2. Fingerprint (SHA256 normalized)     │
+│  3. Cost estimate (heuristic 0-100)     │
+│  4. Per-API-key rate limit              │
+│  5. Allowlist check (fast path)         │
+│     └── HIT → Execute → Return JSON    │
+│  6. Policy evaluate (15 conditions)     │
+│  7. Policy rate limit                   │
+│  8. Anomaly detection                   │
+│  9. Approval check (risk/command)       │
+│     └── NEEDED → Webhook + 202 Pending  │
+│ 10. Decision:                           │
+│     ├── BLOCK → 403 + reason            │
+│     ├── ALLOW → Execute → JSON          │
+│     └── MASK  → Execute → Mask → JSON   │
+│ 11. Audit log (gateway_query event)     │
+└─────────────────────────────────────────┘
+```
+
+### Approval Workflow
+
+```
+Client                  Gateway                    Admin
+  │ POST /query           │                          │
+  │ (DROP TABLE)          │                          │
+  ├──────────────────────►│                          │
+  │                       │ needs_approval: true     │
+  │                       │ → SubmitForApproval()    │
+  │                       │ → Webhook notify ───────►│
+  │ 202 {pending,         │                          │
+  │  approval_id}         │  Dashboard shows it      │
+  │◄──────────────────────│  with Approve/Deny btns  │
+  │                       │                          │
+  │ GET /status?id=xxx    │  POST /approve           │
+  ├──────────────────────►│◄─────────────────────────│
+  │ {pending}             │  {type: time_window,     │
+  │◄──────────────────────│   duration: 30m}         │
+  │                       │                          │
+  │                       │ → Allowlist entry created │
+  │                       │   (fingerprint+user+db)  │
+  │                       │   expires in 30 min      │
+  │                       │                          │
+  │ POST /query (retry)   │                          │
+  ├──────────────────────►│                          │
+  │                       │ Allowlist HIT            │
+  │                       │ → Execute on backend     │
+  │ 200 {ok, rows:[...]}  │ → Audit: allowlist_used  │
+  │◄──────────────────────│                          │
+```
+
+### Allowlist Entry Types
+
+| Type | Behavior | Expiry |
+|------|----------|--------|
+| ONE_TIME | Consumed on first use, then deleted | Safety expiry: 1 hour |
+| TIME_WINDOW | Valid for configured duration | Admin-defined (min 30s) |
+
+### API Key Authentication
+
+```
+X-API-Key: <key> → APIKeyStore.Validate()
+                       │
+                  ┌─────▼─────┐
+                  │  APIKey    │
+                  │  Username  │ → Policy evaluation identity
+                  │  Roles     │ → Role-based policy matching
+                  │  Database  │ → Default database
+                  │  RateLimit │ → Per-key throttle
+                  └───────────┘
+```
+
+### Dryrun Preview
+
+`POST /api/gateway/dryrun` returns the full pipeline analysis without executing:
+- Command type, tables, risk level, cost score, cost factors
+- Policy decision (action, policy name, reason, risk score)
+- Whether approval would be needed
+- Whether an allowlist entry exists
+- Masking rules that would apply
+
+---
+
+## 16. Authentication Providers (planned)
 
 ### Package: `internal/auth/` (implemented, not yet wired)
 
@@ -1069,7 +1189,7 @@ type IdentityResult struct {
 
 ---
 
-## 16. Configuration System
+## 17. Configuration System
 
 ### Package: `internal/config/`
 
@@ -1114,7 +1234,7 @@ Two mechanisms:
 
 ---
 
-## 17. Kubernetes Deployment
+## 18. Kubernetes Deployment
 
 ### Manifest Structure
 
@@ -1174,7 +1294,7 @@ k8s/
 
 ---
 
-## 18. Package Dependency Graph
+## 19. Package Dependency Graph
 
 ```
 cmd/argus/main.go
@@ -1238,9 +1358,9 @@ Standalone packages (not imported by main binary):
 │ internal/auth          │   3   │  ~60     │  ~91%    │
 │ internal/cluster       │   1   │  ~15     │  ~95%    │
 │ internal/plugin        │   1   │  ~20     │  ~92%    │
-│ internal/gateway       │   8   │  ~7      │  ~15%    │
+│ internal/gateway       │   8   │  ~19     │  ~40%    │
 ├────────────────────────┼───────┼──────────┼──────────┤
-│ TOTAL                  │  ~80  │  ~1307   │  ~84%    │
+│ TOTAL                  │  ~80  │  ~1319   │  ~86%    │
 └────────────────────────┴───────┴──────────┴──────────┘
 ```
 

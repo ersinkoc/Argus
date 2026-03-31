@@ -24,7 +24,7 @@ make cross-all                          # cross-compile linux/darwin/windows
 - Database WAF: SQLi detection, schema enumeration blocking, system command blocking
 - 15 policy condition types including sql_injection, plan_cost_gte, require_where, max_joins, max_tables
 - SQL Gateway: HTTP API for query submission with approval workflow and allowlist
-- 1311+ unit tests, 92%+ coverage (22 packages)
+- 1319 unit tests, 86% coverage (22 packages)
 - 171 E2E tests across 4 scripts: PG + MySQL CRUD, transactions, bulk data, error resilience, admin API, concurrent burst
 
 ### Key Packages (22 packages)
@@ -37,13 +37,13 @@ make cross-all                          # cross-compile linux/darwin/windows
 | `internal/protocol/mssql/` | MSSQL TDS (Pre-Login, Login7, SQL Batch, result masking) |
 | `internal/protocol/mongodb/` | MongoDB (OP_MSG + BSON extraction + error response) |
 | `internal/inspection/` | Tokenizer, classifier, extractor, fingerprint, anomaly, splitter, cost |
-| `internal/policy/` | Engine, matcher (14 conditions), WAF rules, cache, dry-run, validator |
+| `internal/policy/` | Engine, matcher (15 conditions), WAF rules, cache, dry-run, validator |
 | `internal/masking/` | Streaming pipeline, 8 transformers, PII auto-detection |
 | `internal/ratelimit/` | Token bucket rate limiter |
 | `internal/session/` | Lifecycle, identity, timeout, concurrency |
 | `internal/pool/` | Dedicated + shared pool, circuit breaker, histogram, health |
 | `internal/audit/` | Logger, rotation, webhook, recorder, search, replay, compaction, slow query |
-| `internal/admin/` | 26 REST endpoints + WebSocket, auth middleware, dashboard UI, test runner |
+| `internal/admin/` | 34 REST endpoints + WebSocket, auth middleware, dashboard UI, test runner |
 | `internal/auth/` | LDAP (BER encoding, group resolution) + SSO (JWT/HMAC-SHA256) |
 | `internal/cluster/` | Multi-instance shared session store |
 | `internal/plugin/` | Plugin registry (TransformerPlugin, AuditWriterPlugin) |

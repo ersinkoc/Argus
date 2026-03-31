@@ -62,7 +62,7 @@ Argus answers all three — and blocks what shouldn't happen:
 - **Protocol-native proxy** — speaks each database's wire protocol natively, not JDBC/ODBC wrapping
 - **Zero external dependencies** — standard library only, no CGO, single binary (~7.8MB)
 
-### Policy Engine (14 Condition Types)
+### Policy Engine (15 Condition Types)
 
 | Condition | Purpose | Example |
 |-----------|---------|---------|
@@ -454,6 +454,7 @@ Three built-in policy profiles:
 | `/api/gateway/approve` | POST | Approve pending query (one-time or time-window) |
 | `/api/gateway/allowlist` | GET/DELETE | Manage pre-approved query allowlist |
 | `/api/gateway/status` | GET | Poll approval status |
+| `/api/gateway/dryrun` | POST | Preview query pipeline result without executing |
 | `/ready` | GET | Kubernetes readiness probe |
 | `/livez` | GET | Kubernetes liveness probe |
 | `/api/events/ws` | WebSocket | Live event stream |
@@ -476,7 +477,7 @@ argus/
 │   │   ├── mssql/          # MSSQL TDS (Pre-Login, Login7, SQL Batch, masking)
 │   │   └── mongodb/        # MongoDB (OP_MSG, BSON command extraction)
 │   ├── inspection/         # Tokenizer, classifier, fingerprint, anomaly, cost, splitter
-│   ├── policy/             # Engine, matcher (14 conditions), WAF rules, decision cache
+│   ├── policy/             # Engine, matcher (15 conditions), WAF rules, decision cache
 │   ├── masking/            # Streaming pipeline, 8 transformers, PII auto-detection
 │   ├── ratelimit/          # Token bucket rate limiter
 │   ├── session/            # Lifecycle, identity, timeout, tagging, concurrency
@@ -506,7 +507,7 @@ Client Request
   → Protocol Decode (PG/MySQL/MSSQL/MongoDB)
   → SQL Inspection (tokenize, classify, risk score, fingerprint)
   → Cost Estimation (0-100 heuristic)
-  → Policy Evaluation (14 conditions, role/command/table match, cache)
+  → Policy Evaluation (15 conditions, role/command/table match, cache)
     → SQLi Detection (tautology, UNION, stacked, blind, encoding)
     → Rate Limit Check (token bucket per policy)
     → Anomaly Detection (baseline + frequency spike)
@@ -613,7 +614,7 @@ bash scripts/e2e-realworld.sh   # Real-world E2E (45 tests)
 bash scripts/e2e-extra-scenarios.sh  # Extra scenarios (63 tests)
 ```
 
-Current: **1307 unit tests + 171 E2E**, **84%+ coverage** (22 packages).
+Current: **1319 unit tests + 171 E2E**, **86% coverage** (22 packages).
 
 ---
 

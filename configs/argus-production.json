@@ -94,5 +94,25 @@
   "metrics": {
     "enabled": true,
     "address": ":9091"
+  },
+  "gateway": {
+    "enabled": true,
+    "api_keys": [
+      {
+        "key": "$ENV{GATEWAY_API_KEY}",
+        "username": "web_dashboard",
+        "roles": ["analyst"],
+        "database": "production",
+        "rate_limit": 10,
+        "enabled": true
+      }
+    ],
+    "max_result_rows": 10000,
+    "approval_timeout": "10m",
+    "webhook_url": "$ENV{GATEWAY_APPROVAL_WEBHOOK}",
+    "require_approval": {
+      "risk_level_gte": "high",
+      "commands": ["DDL", "DCL"]
+    }
   }
 }
