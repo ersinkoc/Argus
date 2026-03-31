@@ -99,7 +99,7 @@ func injectWhere(sql string, condition string) string {
 
 func injectWhereAnd(sql string, condition string) string {
 	upper := strings.ToUpper(sql)
-	idx := strings.Index(upper, "WHERE")
+	idx := indexKeywordOutsideQuotes(upper, "WHERE")
 	if idx < 0 {
 		return injectWhere(sql, condition)
 	}

@@ -292,8 +292,14 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 
 	if protocolName == "mysql" || protocolName == "mssql" {
 		// Fresh connection for server-speaks-first protocols
+		dialTimeout := p.cfg.Pool.ConnectionTimeout
+		if dialTimeout <= 0 {
+			dialTimeout = 10 * time.Second
+		}
+		dialCtx, dialCancel := context.WithTimeout(context.Background(), dialTimeout)
+		defer dialCancel()
 		var d net.Dialer
-		conn, err := d.DialContext(context.Background(), "tcp", target.Address())
+		conn, err := d.DialContext(dialCtx, "tcp", target.Address())
 		if err != nil {
 			log.Printf("[argus] failed to connect to backend %s: %v", target.Name, err)
 			metrics.Global.ConnectionsFailed.Add(1)
