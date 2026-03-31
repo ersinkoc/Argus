@@ -122,13 +122,14 @@ func main() {
 	}
 
 	// SIEM webhook
+	var webhookWriter *audit.WebhookWriter
 	if cfg.Audit.WebhookURL != "" {
-		wh := audit.NewWebhookWriter(audit.WebhookConfig{
+		webhookWriter = audit.NewWebhookWriter(audit.WebhookConfig{
 			URL:       cfg.Audit.WebhookURL,
 			BatchSize: 100,
 		})
-		auditLogger.AddWriter(wh)
-		wh.Start()
+		auditLogger.AddWriter(webhookWriter)
+		webhookWriter.Start()
 		log.Printf("SIEM webhook enabled: %s", cfg.Audit.WebhookURL)
 	}
 
@@ -324,6 +325,11 @@ func main() {
 
 		// Stop policy watcher
 		policyLoader.Stop()
+
+		// Flush pending webhook events before closing audit logger
+		if webhookWriter != nil {
+			webhookWriter.Stop()
+		}
 
 		// Flush audit logs
 		auditLogger.Close()

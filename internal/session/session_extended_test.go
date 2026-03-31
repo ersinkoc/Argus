@@ -75,7 +75,7 @@ func TestSessionTimeoutCheck(t *testing.T) {
 	mgr := NewManager(50*time.Millisecond, 0)
 
 	timedOut := make(chan string, 1)
-	mgr.OnTimeout(func(s *Session) {
+	mgr.OnTimeout(func(s *Session, _ string) {
 		timedOut <- s.ID
 	})
 

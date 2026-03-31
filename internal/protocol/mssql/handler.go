@@ -8,6 +8,7 @@ import (
 
 	"github.com/ersinkoc/argus/internal/inspection"
 	"github.com/ersinkoc/argus/internal/masking"
+	"github.com/ersinkoc/argus/internal/metrics"
 	"github.com/ersinkoc/argus/internal/protocol"
 	"github.com/ersinkoc/argus/internal/session"
 )
@@ -135,6 +136,7 @@ func (h *Handler) ReadCommand(ctx context.Context, client net.Conn) (*inspection
 		// SQL Batch: skip ALL_HEADERS, then UTF-16LE SQL text
 		sql := extractSQLBatch(data)
 		cmd := inspection.Classify(sql)
+		metrics.ProtocolStats.MSSQLBatches.Add(1)
 		return cmd, rawBytes, nil
 
 	case PacketAttention:

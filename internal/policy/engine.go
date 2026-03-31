@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ersinkoc/argus/internal/metrics"
 )
 
 // Engine is the policy evaluation engine.
@@ -44,6 +46,7 @@ func (e *Engine) Evaluate(ctx *Context) *Decision {
 	// Check cache
 	cacheKey := e.cacheKey(ctx)
 	if d, ok := e.cache.get(cacheKey); ok {
+		metrics.Global.PolicyCacheHits.Add(1)
 		return d
 	}
 
@@ -51,6 +54,7 @@ func (e *Engine) Evaluate(ctx *Context) *Decision {
 
 	// Cache the decision
 	e.cache.set(cacheKey, decision)
+	metrics.Global.PolicyCacheMisses.Add(1)
 
 	return decision
 }

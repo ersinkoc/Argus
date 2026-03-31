@@ -40,6 +40,7 @@ type Proxy struct {
 	rewriter        *inspection.Rewriter
 	sessionLimiter  *session.ConcurrencyLimiter
 	onEvent         func(any) // broadcast callback (e.g. WebSocket)
+	rlCleanupStop   chan struct{}
 }
 
 // NewProxy creates a new proxy engine.
@@ -136,7 +137,7 @@ func (p *Proxy) Start() error {
 	}
 
 	// Start session manager
-	p.sessionManager.OnTimeout(func(s *session.Session) {
+	p.sessionManager.OnTimeout(func(s *session.Session, reason string) {
 		p.auditLogger.Log(audit.Event{
 			EventType: audit.SessionTimeout.String(),
 			SessionID: s.ID,
@@ -144,9 +145,27 @@ func (p *Proxy) Start() error {
 			ClientIP:  s.ClientIP.String(),
 			Database:  s.Database,
 			Action:    "timeout",
+			Reason:    reason,
 		})
 	})
 	p.sessionManager.Start()
+
+	// Start periodic rate limiter cleanup to prevent memory leaks
+	p.rlCleanupStop = make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				for _, l := range p.rateLimiters {
+					l.Cleanup()
+				}
+			case <-p.rlCleanupStop:
+				return
+			}
+		}
+	}()
 
 	// Start listeners
 	for _, listenerCfg := range p.cfg.Server.Listeners {
@@ -167,6 +186,11 @@ func (p *Proxy) Start() error {
 // Stop gracefully stops the proxy with connection draining.
 func (p *Proxy) Stop() {
 	log.Println("[argus] shutting down...")
+
+	// Stop rate limiter cleanup goroutine
+	if p.rlCleanupStop != nil {
+		close(p.rlCleanupStop)
+	}
 
 	// Stop accepting new connections
 	for _, l := range p.listeners {
@@ -268,6 +292,7 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 		conn, err := d.DialContext(context.Background(), "tcp", target.Address())
 		if err != nil {
 			log.Printf("[argus] failed to connect to backend: %v", err)
+			metrics.Global.ConnectionsFailed.Add(1)
 			handler.WriteError(context.Background(), clientConn, "08001", fmt.Sprintf("Cannot connect to database: %v", err))
 			return
 		}
@@ -284,6 +309,7 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 		poolConn, err = pl.Acquire(context.Background())
 		if err != nil {
 			log.Printf("[argus] failed to acquire backend connection: %v", err)
+			metrics.Global.ConnectionsFailed.Add(1)
 			handler.WriteError(context.Background(), clientConn, "08001", fmt.Sprintf("Cannot connect to database: %v", err))
 			return
 		}
@@ -452,6 +478,7 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 
 		// Evaluate policy
 		decision := p.policyEngine.Evaluate(policyCtx)
+		metrics.Global.PolicyEvals.Add(1)
 
 		// Rate limit check
 		if decision.RateLimit != nil && decision.Action != policy.ActionBlock {

@@ -10,7 +10,7 @@ func TestCheckTimeoutsMaxDuration(t *testing.T) {
 	mgr := NewManager(0, 50*time.Millisecond) // no idle timeout, 50ms max duration
 
 	timedOut := make(chan string, 1)
-	mgr.OnTimeout(func(s *Session) {
+	mgr.OnTimeout(func(s *Session, _ string) {
 		timedOut <- s.ID
 	})
 

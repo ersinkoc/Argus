@@ -8,6 +8,7 @@ import (
 
 	"github.com/ersinkoc/argus/internal/inspection"
 	"github.com/ersinkoc/argus/internal/masking"
+	"github.com/ersinkoc/argus/internal/metrics"
 	"github.com/ersinkoc/argus/internal/protocol"
 	"github.com/ersinkoc/argus/internal/session"
 )
@@ -144,6 +145,7 @@ func (h *Handler) ReadCommand(ctx context.Context, client net.Conn) (*inspection
 	case ComQuery:
 		sql := string(pkt.Payload[1:])
 		cmd := inspection.Classify(sql)
+		metrics.ProtocolStats.MySQLQueries.Add(1)
 		return cmd, EncodePacket(pkt), nil
 
 	case ComQuit:
@@ -172,6 +174,7 @@ func (h *Handler) ReadCommand(ctx context.Context, client net.Conn) (*inspection
 		sql := string(pkt.Payload[1:])
 		cmd := inspection.Classify(sql)
 		cmd.Confidence = 0.8 // prepared statement, no param values yet
+		metrics.ProtocolStats.MySQLPrepared.Add(1)
 		return cmd, EncodePacket(pkt), nil
 
 	case ComStmtExecute:

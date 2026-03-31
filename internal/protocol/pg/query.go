@@ -6,6 +6,7 @@ import (
 	"net"
 
 	"github.com/ersinkoc/argus/internal/inspection"
+	"github.com/ersinkoc/argus/internal/metrics"
 )
 
 // ExtendedQueryBatch holds a batch of Extended Query messages read until Sync.
@@ -29,6 +30,7 @@ func ReadQueryCommand(ctx context.Context, client net.Conn) (*inspection.Command
 		// Simple Query: payload is null-terminated SQL string
 		sql := extractSQL(msg.Payload)
 		cmd := inspection.Classify(sql)
+		metrics.ProtocolStats.PGQueries.Add(1)
 		return cmd, EncodeMessage(msg), nil
 
 	case MsgTerminate:
@@ -40,6 +42,7 @@ func ReadQueryCommand(ctx context.Context, client net.Conn) (*inspection.Command
 		if err != nil {
 			return nil, nil, err
 		}
+		metrics.ProtocolStats.PGExtended.Add(1)
 
 		// Inspect the SQL from Parse
 		cmd := &inspection.Command{

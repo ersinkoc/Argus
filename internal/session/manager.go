@@ -69,7 +69,7 @@ type Manager struct {
 	sessions    sync.Map // sessionID → *Session
 	idleTimeout time.Duration
 	maxDuration time.Duration
-	onTimeout   func(*Session)
+	onTimeout   func(*Session, string)
 	stopCh      chan struct{}
 	wg          sync.WaitGroup
 }
@@ -84,7 +84,8 @@ func NewManager(idleTimeout, maxDuration time.Duration) *Manager {
 }
 
 // OnTimeout sets a callback for session timeout events.
-func (m *Manager) OnTimeout(fn func(*Session)) {
+// The string argument is the reason: "idle_timeout" or "max_duration".
+func (m *Manager) OnTimeout(fn func(*Session, string)) {
 	m.onTimeout = fn
 }
 
@@ -200,9 +201,8 @@ func (m *Manager) checkTimeouts() {
 		}
 
 		if timedOut {
-			_ = reason
 			if m.onTimeout != nil {
-				m.onTimeout(s)
+				m.onTimeout(s, reason)
 			}
 			if s.ClientConn != nil {
 				s.ClientConn.Close()

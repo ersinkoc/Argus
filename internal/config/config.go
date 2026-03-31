@@ -282,6 +282,7 @@ func Load(path string) (*Config, error) {
 		}
 	}
 
+	expandEnvInConfig(cfg)
 	applyEnvOverrides(cfg)
 
 	if err := Validate(cfg); err != nil {
@@ -368,7 +369,45 @@ func applyEnvOverrides(cfg *Config) {
 	}
 }
 
-// expandEnvValue replaces $ENV{VAR} patterns with environment variable values.
+// expandEnvInConfig expands $ENV{VAR} patterns in all string config fields.
+func expandEnvInConfig(cfg *Config) {
+	for i := range cfg.Server.Listeners {
+		cfg.Server.Listeners[i].Address = ExpandEnvValue(cfg.Server.Listeners[i].Address)
+		cfg.Server.Listeners[i].TLS.CertFile = ExpandEnvValue(cfg.Server.Listeners[i].TLS.CertFile)
+		cfg.Server.Listeners[i].TLS.KeyFile = ExpandEnvValue(cfg.Server.Listeners[i].TLS.KeyFile)
+		cfg.Server.Listeners[i].TLS.CAFile = ExpandEnvValue(cfg.Server.Listeners[i].TLS.CAFile)
+		cfg.Server.Listeners[i].TLS.ClientCAFile = ExpandEnvValue(cfg.Server.Listeners[i].TLS.ClientCAFile)
+	}
+	for i := range cfg.Targets {
+		cfg.Targets[i].Host = ExpandEnvValue(cfg.Targets[i].Host)
+		cfg.Targets[i].TLS.CertFile = ExpandEnvValue(cfg.Targets[i].TLS.CertFile)
+		cfg.Targets[i].TLS.KeyFile = ExpandEnvValue(cfg.Targets[i].TLS.KeyFile)
+		cfg.Targets[i].TLS.CAFile = ExpandEnvValue(cfg.Targets[i].TLS.CAFile)
+		cfg.Targets[i].TLS.ClientCAFile = ExpandEnvValue(cfg.Targets[i].TLS.ClientCAFile)
+	}
+	cfg.Routing.DefaultTarget = ExpandEnvValue(cfg.Routing.DefaultTarget)
+	for i := range cfg.Routing.Rules {
+		cfg.Routing.Rules[i].Database = ExpandEnvValue(cfg.Routing.Rules[i].Database)
+		cfg.Routing.Rules[i].Target = ExpandEnvValue(cfg.Routing.Rules[i].Target)
+	}
+	for i := range cfg.Policy.Files {
+		cfg.Policy.Files[i] = ExpandEnvValue(cfg.Policy.Files[i])
+	}
+	cfg.Audit.Level = ExpandEnvValue(cfg.Audit.Level)
+	cfg.Audit.RecordFile = ExpandEnvValue(cfg.Audit.RecordFile)
+	cfg.Audit.WebhookURL = ExpandEnvValue(cfg.Audit.WebhookURL)
+	for i := range cfg.Audit.Outputs {
+		cfg.Audit.Outputs[i].Path = ExpandEnvValue(cfg.Audit.Outputs[i].Path)
+	}
+	cfg.Admin.Address = ExpandEnvValue(cfg.Admin.Address)
+	cfg.Admin.AuthToken = ExpandEnvValue(cfg.Admin.AuthToken)
+	cfg.Metrics.Address = ExpandEnvValue(cfg.Metrics.Address)
+	cfg.Rewrite.ForceWhere = ExpandEnvValue(cfg.Rewrite.ForceWhere)
+	cfg.SlowQuery.Threshold = ExpandEnvValue(cfg.SlowQuery.Threshold)
+	cfg.PlanAnalysis.Timeout = ExpandEnvValue(cfg.PlanAnalysis.Timeout)
+}
+
+// ExpandEnvValue replaces $ENV{VAR} patterns with environment variable values.
 func ExpandEnvValue(s string) string {
 	for {
 		start := strings.Index(s, "$ENV{")

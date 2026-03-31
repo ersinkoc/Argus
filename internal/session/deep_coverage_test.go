@@ -14,7 +14,7 @@ func TestManagerCheckTimeoutsIdle(t *testing.T) {
 	defer m.Stop()
 
 	timedOut := make(chan string, 1)
-	m.OnTimeout(func(s *Session) {
+	m.OnTimeout(func(s *Session, _ string) {
 		timedOut <- s.ID
 	})
 
@@ -45,7 +45,7 @@ func TestManagerCheckTimeoutsMaxDuration(t *testing.T) {
 	defer m.Stop()
 
 	timedOut := make(chan bool, 1)
-	m.OnTimeout(func(s *Session) {
+	m.OnTimeout(func(s *Session, _ string) {
 		timedOut <- true
 	})
 
