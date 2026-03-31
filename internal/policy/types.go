@@ -44,10 +44,9 @@ func ParseAction(s string) Action {
 // Context is the policy evaluation context.
 type Context struct {
 	// Who
-	Username   string
-	Roles      []string
-	ClientIP   net.IP
-	AuthMethod string
+	Username string
+	Roles    []string
+	ClientIP net.IP
 
 	// Where
 	Database string
@@ -60,9 +59,8 @@ type Context struct {
 	// What
 	CommandType inspection.CommandType
 	RiskLevel   inspection.RiskLevel
-	RawSQL      string
-	Confidence  float64
-	HasWhere    bool
+	RawSQL   string
+	HasWhere bool
 	CostScore   int     // heuristic query cost estimate 0-100
 	PlanCost    float64 // real planner cost from EXPLAIN (0 = not available)
 }

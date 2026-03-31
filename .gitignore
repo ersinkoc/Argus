@@ -35,6 +35,9 @@ bin/
 # Audit logs (runtime)
 *.jsonl
 
+# Stale build artifacts
+plan.html
+
 # Secrets
 *.pem
 *.key

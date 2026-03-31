@@ -1,7 +1,6 @@
 package core
 
 import (
-	"context"
 	"encoding/binary"
 	"net"
 	"testing"
@@ -238,6 +237,3 @@ func readPgMessage(t *testing.T, conn net.Conn) *pgcodec.Message {
 	}
 	return msg
 }
-
-// Ensure context is used
-var _ = context.Background

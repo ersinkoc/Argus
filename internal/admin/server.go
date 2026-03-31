@@ -254,6 +254,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "argus_protocol_commands_total{protocol=\"mysql\",type=\"query\"} %d\n", ps.MySQLQueries.Load())
 	fmt.Fprintf(w, "argus_protocol_commands_total{protocol=\"mysql\",type=\"prepared\"} %d\n", ps.MySQLPrepared.Load())
 	fmt.Fprintf(w, "argus_protocol_commands_total{protocol=\"mssql\",type=\"batch\"} %d\n", ps.MSSQLBatches.Load())
+	fmt.Fprintf(w, "argus_protocol_commands_total{protocol=\"mongodb\",type=\"command\"} %d\n", ps.MongoDBCommands.Load())
 
 	// ── Per-database stats ────────────────────────────────────────────────
 	dbStats := metrics.DatabaseStats.Snapshot()

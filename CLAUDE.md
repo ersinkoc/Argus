@@ -39,7 +39,7 @@ make cross-all                          # cross-compile linux/darwin/windows
 | `internal/policy/` | Engine, matcher (14 conditions), WAF rules, cache, dry-run, validator |
 | `internal/masking/` | Streaming pipeline, 8 transformers, PII auto-detection |
 | `internal/ratelimit/` | Token bucket rate limiter |
-| `internal/session/` | Lifecycle, identity, timeout, tagging, concurrency |
+| `internal/session/` | Lifecycle, identity, timeout, concurrency |
 | `internal/pool/` | Dedicated + shared pool, circuit breaker, histogram, health |
 | `internal/audit/` | Logger, rotation, webhook, recorder, search, replay, compaction, slow query |
 | `internal/admin/` | 26 REST endpoints + WebSocket, auth middleware, dashboard UI, test runner |
@@ -47,8 +47,8 @@ make cross-all                          # cross-compile linux/darwin/windows
 | `internal/cluster/` | Multi-instance shared session store |
 | `internal/plugin/` | Plugin registry (TransformerPlugin, AuditWriterPlugin) |
 | `internal/classify/` | Data classification engine (5 levels, 17 rules) |
-| `internal/config/` | Loading, validation, env overrides, cross-reference |
-| `internal/metrics/` | Counters, query latency histogram |
+| `internal/config/` | Loading, validation, `$ENV{VAR}` expansion, env overrides, cross-reference |
+| `internal/metrics/` | Counters, query latency histogram, per-protocol stats |
 | `internal/plan/` | EXPLAIN-based query plan cost analysis (PostgreSQL + MySQL) |
 
 ### Pipeline Flow
@@ -72,8 +72,10 @@ Command → Inspect → Cost → Policy (14 conditions + SQLi detection) → Rat
 - Protocol handlers implement `protocol.Handler` interface
 - Masking is streaming — O(1) memory per row
 - Audit logging is async via buffered channel (drops on overflow)
-- Policy evaluation is cached (LRU, 60s TTL)
-- Config supports `$ENV{VAR}` for secrets and `ARGUS_*` env overrides
+- Policy evaluation is cached (LRU, 60s TTL) with cache hit/miss counters
+- Config supports `$ENV{VAR}` expansion in all string fields and `ARGUS_*` env overrides
+- Rate limiter buckets auto-cleaned every 5 minutes (prevents memory leaks)
+- Webhook writer flushed on graceful shutdown
 - Policy files watched and hot-reloaded
 - Tests use `net.Pipe()` for protocol-level testing
 - Admin API uses `SessionProvider` interface to avoid import cycles

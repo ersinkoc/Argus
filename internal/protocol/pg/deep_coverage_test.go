@@ -9,7 +9,6 @@ import (
 
 	"github.com/ersinkoc/argus/internal/masking"
 	"github.com/ersinkoc/argus/internal/policy"
-	"github.com/ersinkoc/argus/internal/protocol"
 )
 
 // --- ForwardResult edge cases ---
@@ -1051,6 +1050,3 @@ func TestWriteErrorAndRead(t *testing.T) {
 		t.Errorf("type = %c, want Z", msg.Type)
 	}
 }
-
-// Ensure protocol.ResultStats is used correctly
-var _ *protocol.ResultStats

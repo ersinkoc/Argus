@@ -15,8 +15,9 @@ import (
 
 // Handler implements protocol.Handler for MySQL.
 type Handler struct {
-	stmtStore   *StmtStore // tracks prepared statements per connection
-	lastCmdByte byte       // last command byte for PREPARE response handling
+	stmtStore      *StmtStore // tracks prepared statements per connection
+	lastCmdByte    byte       // last command byte for PREPARE response handling
+	lastPrepareSQL string     // SQL from most recent COM_STMT_PREPARE (stored until response assigns ID)
 }
 
 // New creates a new MySQL protocol handler.
@@ -172,6 +173,7 @@ func (h *Handler) ReadCommand(ctx context.Context, client net.Conn) (*inspection
 		// Extract SQL from COM_STMT_PREPARE for inspection
 		h.lastCmdByte = ComStmtPrepare
 		sql := string(pkt.Payload[1:])
+		h.lastPrepareSQL = sql // save for handlePrepareResponse to store with stmtID
 		cmd := inspection.Classify(sql)
 		cmd.Confidence = 0.8 // prepared statement, no param values yet
 		metrics.ProtocolStats.MySQLPrepared.Add(1)
@@ -373,9 +375,11 @@ func (h *Handler) handlePrepareResponse(backend, client net.Conn, stats *protoco
 
 		h.stmtStore.Add(&PreparedStatement{
 			ID:        stmtID,
+			SQL:       h.lastPrepareSQL,
 			NumParams: numParams,
 			NumCols:   numCols,
 		})
+		h.lastPrepareSQL = ""
 
 		// Forward parameter definitions
 		for i := 0; i < numParams; i++ {

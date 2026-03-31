@@ -1,7 +1,6 @@
 package core
 
 import (
-	"context"
 	"encoding/binary"
 	"net"
 	"testing"
@@ -202,5 +201,3 @@ func parsePort(s string) int {
 	for _, c := range s { n = n*10 + int(c-'0') }
 	return n
 }
-
-var _ = context.Background

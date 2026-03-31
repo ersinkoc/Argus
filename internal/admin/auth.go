@@ -21,6 +21,7 @@ func NewAuthMiddleware(token string) *AuthMiddleware {
 			"/healthz": true,
 			"/livez":   true,
 			"/ready":   true,
+			"/readyz":  true,
 			"/metrics": true,
 		},
 	}

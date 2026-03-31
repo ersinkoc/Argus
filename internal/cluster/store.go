@@ -177,11 +177,6 @@ func (cm *ClusterManager) NodeID() string {
 	return cm.nodeID
 }
 
-// Store returns the shared store.
-func (cm *ClusterManager) Store() Store {
-	return cm.store
-}
-
 // RegisterNode registers this node in the cluster.
 func (cm *ClusterManager) RegisterNode(address string) {
 	cm.mu.Lock()

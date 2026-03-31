@@ -426,6 +426,8 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 			metrics.ProtocolStats.MySQLCommands.Add(1)
 		case "mssql":
 			metrics.ProtocolStats.MSSQLCommands.Add(1)
+		case "mongodb":
+			metrics.ProtocolStats.MongoDBCommands.Add(1)
 		}
 
 		// Query cost estimation (before policy eval so policies can use it)
@@ -469,9 +471,8 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 			Timestamp:   time.Now(),
 			CommandType: cmd.Type,
 			RiskLevel:   cmd.RiskLevel,
-			RawSQL:      cmd.Raw,
-			Confidence:  cmd.Confidence,
-			HasWhere:    cmd.HasWhere,
+			RawSQL:   cmd.Raw,
+			HasWhere: cmd.HasWhere,
 			CostScore:   costEstimate.Score,
 			PlanCost:    planCost,
 		}

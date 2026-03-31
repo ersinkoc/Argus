@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"bufio"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -197,15 +196,4 @@ func TestHandleWebSocketNonHijacker(t *testing.T) {
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500 for non-hijacker, got %d", w.Code)
 	}
-}
-
-// hijackableRecorder implements http.Hijacker for testing
-type hijackableRecorder struct {
-	*httptest.ResponseRecorder
-	conn   net.Conn
-	reader *bufio.ReadWriter
-}
-
-func (hr *hijackableRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	return hr.conn, hr.reader, nil
 }

@@ -6,6 +6,7 @@ import (
 	"net"
 
 	"github.com/ersinkoc/argus/internal/masking"
+	"github.com/ersinkoc/argus/internal/metrics"
 	"github.com/ersinkoc/argus/internal/protocol"
 )
 
@@ -138,6 +139,7 @@ func ForwardResult(ctx context.Context, backend, client net.Conn, pipeline *mask
 
 		case MsgCopyInResponse:
 			// COPY FROM STDIN — forward response, then relay client data to backend
+			metrics.ProtocolStats.PGCopy.Add(1)
 			if err := WriteMessage(client, msg); err != nil {
 				return stats, fmt.Errorf("forwarding CopyInResponse: %w", err)
 			}
@@ -148,6 +150,7 @@ func ForwardResult(ctx context.Context, backend, client net.Conn, pipeline *mask
 
 		case MsgCopyOutResponse:
 			// COPY TO STDOUT — forward response, then relay backend data to client
+			metrics.ProtocolStats.PGCopy.Add(1)
 			if err := WriteMessage(client, msg); err != nil {
 				return stats, fmt.Errorf("forwarding CopyOutResponse: %w", err)
 			}

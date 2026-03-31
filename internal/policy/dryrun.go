@@ -50,9 +50,8 @@ func (e *Engine) DryRun(input DryRunInput) *DryRunResult {
 		Username:   input.Username,
 		Database:   input.Database,
 		Tables:     input.Tables,
-		RawSQL:     input.SQL,
-		Timestamp:  time.Now(),
-		Confidence: 1.0,
+		RawSQL:    input.SQL,
+		Timestamp: time.Now(),
 	}
 
 	if input.ClientIP != "" {
