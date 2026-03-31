@@ -59,9 +59,10 @@ func (e *Engine) Evaluate(ctx *Context) *Decision {
 	return decision
 }
 
-// InvalidateCache clears the decision cache (called on policy reload).
+// InvalidateCache clears the decision cache and regex cache (called on policy reload).
 func (e *Engine) InvalidateCache() {
 	e.cache.clear()
+	ClearRegexCache()
 }
 
 func (e *Engine) evaluate(ctx *Context, ps *PolicySet) *Decision {

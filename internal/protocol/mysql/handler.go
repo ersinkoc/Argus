@@ -387,11 +387,18 @@ func (h *Handler) handlePrepareResponse(backend, client net.Conn, stats *protoco
 			if err != nil {
 				return stats, err
 			}
-			WritePacket(client, p)
+			if err := WritePacket(client, p); err != nil {
+				return stats, fmt.Errorf("forwarding param definition: %w", err)
+			}
 		}
 		if numParams > 0 {
-			eof, _ := ReadPacket(backend)
-			WritePacket(client, eof)
+			eof, err := ReadPacket(backend)
+			if err != nil {
+				return stats, err
+			}
+			if err := WritePacket(client, eof); err != nil {
+				return stats, fmt.Errorf("forwarding param EOF: %w", err)
+			}
 		}
 
 		// Forward column definitions
@@ -400,11 +407,18 @@ func (h *Handler) handlePrepareResponse(backend, client net.Conn, stats *protoco
 			if err != nil {
 				return stats, err
 			}
-			WritePacket(client, p)
+			if err := WritePacket(client, p); err != nil {
+				return stats, fmt.Errorf("forwarding column definition: %w", err)
+			}
 		}
 		if numCols > 0 {
-			eof, _ := ReadPacket(backend)
-			WritePacket(client, eof)
+			eof, err := ReadPacket(backend)
+			if err != nil {
+				return stats, err
+			}
+			if err := WritePacket(client, eof); err != nil {
+				return stats, fmt.Errorf("forwarding column EOF: %w", err)
+			}
 		}
 	}
 

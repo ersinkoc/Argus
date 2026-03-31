@@ -36,6 +36,14 @@ func GetRegex(pattern string) (*regexp.Regexp, error) {
 	return re, nil
 }
 
+// ClearRegexCache evicts all cached regex patterns.
+// Called on policy reload to prevent stale patterns from accumulating.
+func ClearRegexCache() {
+	globalRegexCache.mu.Lock()
+	globalRegexCache.cache = make(map[string]*regexp.Regexp)
+	globalRegexCache.mu.Unlock()
+}
+
 // MatchSQLRegex checks if SQL matches a regex pattern.
 func MatchSQLRegex(sql string, patterns []string) bool {
 	for _, pattern := range patterns {

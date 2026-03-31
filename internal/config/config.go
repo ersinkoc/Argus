@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -419,7 +420,10 @@ func ExpandEnvValue(s string) string {
 			break
 		}
 		varName := s[start+5 : start+end]
-		envVal := os.Getenv(varName)
+		envVal, ok := os.LookupEnv(varName)
+		if !ok {
+			log.Printf("[argus] WARNING: $ENV{%s} references unset environment variable", varName)
+		}
 		s = s[:start] + envVal + s[start+end+1:]
 	}
 	return s

@@ -2,6 +2,8 @@ package core
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"sync"
 	"time"
@@ -61,11 +63,20 @@ func (am *ApprovalManager) OnNotify(fn func(*ApprovalRequest)) {
 
 // RequestApproval creates a pending approval and blocks until approved, denied, or timeout.
 func (am *ApprovalManager) RequestApproval(ctx context.Context, req *ApprovalRequest) (ApprovalStatus, error) {
+	if req.ID == "" {
+		b := make([]byte, 8)
+		rand.Read(b)
+		req.ID = hex.EncodeToString(b)
+	}
 	req.Status = ApprovalPending
 	req.RequestedAt = time.Now()
 	req.doneCh = make(chan ApprovalStatus, 1)
 
 	am.mu.Lock()
+	if _, exists := am.pending[req.ID]; exists {
+		am.mu.Unlock()
+		return ApprovalDenied, fmt.Errorf("duplicate approval ID %q", req.ID)
+	}
 	am.pending[req.ID] = req
 	am.mu.Unlock()
 

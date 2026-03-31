@@ -51,11 +51,29 @@ func (r *Rewriter) Rewrite(sql string, cmd *Command) (string, []string) {
 }
 
 func hasKeyword(sql, keyword string) bool {
-	upper := strings.ToUpper(sql)
-	kw := strings.ToUpper(keyword)
-	// Simple check — not inside quotes
-	idx := strings.LastIndex(upper, kw)
-	return idx >= 0
+	return indexKeywordOutsideQuotes(strings.ToUpper(sql), strings.ToUpper(keyword)) >= 0
+}
+
+// indexKeywordOutsideQuotes finds a SQL keyword in the string, skipping
+// content inside single-quoted string literals to avoid false matches.
+func indexKeywordOutsideQuotes(upper, keyword string) int {
+	inQuote := false
+	klen := len(keyword)
+	for i := 0; i < len(upper); i++ {
+		if upper[i] == '\'' {
+			inQuote = !inQuote
+			continue
+		}
+		if !inQuote && i+klen <= len(upper) && upper[i:i+klen] == keyword {
+			// Check word boundaries
+			before := i == 0 || upper[i-1] == ' ' || upper[i-1] == '\n' || upper[i-1] == '\t' || upper[i-1] == '('
+			after := i+klen == len(upper) || upper[i+klen] == ' ' || upper[i+klen] == '\n' || upper[i+klen] == '\t' || upper[i+klen] == ')'
+			if before && after {
+				return i
+			}
+		}
+	}
+	return -1
 }
 
 func addLimit(sql string, limit int) string {
@@ -69,7 +87,7 @@ func injectWhere(sql string, condition string) string {
 	// Look for ORDER BY, GROUP BY, HAVING, LIMIT, UNION — insert WHERE before them
 	insertPoints := []string{"ORDER BY", "GROUP BY", "HAVING", "LIMIT", "UNION"}
 	for _, point := range insertPoints {
-		idx := strings.Index(upper, point)
+		idx := indexKeywordOutsideQuotes(upper, point)
 		if idx > 0 {
 			return sql[:idx] + "WHERE " + condition + " " + sql[idx:]
 		}
