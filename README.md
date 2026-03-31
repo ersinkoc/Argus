@@ -450,6 +450,10 @@ Three built-in policy profiles:
 | `/api/dashboard` | GET | Aggregated dashboard data |
 | `/api/classify` | POST | Data classification engine |
 | `/api/plugins` | GET | List registered plugins |
+| `/api/gateway/query` | POST | SQL Gateway — submit query with full policy evaluation |
+| `/api/gateway/approve` | POST | Approve pending query (one-time or time-window) |
+| `/api/gateway/allowlist` | GET/DELETE | Manage pre-approved query allowlist |
+| `/api/gateway/status` | GET | Poll approval status |
 | `/ready` | GET | Kubernetes readiness probe |
 | `/livez` | GET | Kubernetes liveness probe |
 | `/api/events/ws` | WebSocket | Live event stream |
@@ -484,7 +488,8 @@ argus/
 │   ├── cluster/            # Multi-instance shared session store
 │   ├── config/             # Loading, validation, env overrides
 │   ├── metrics/            # Counters, query latency histogram
-│   └── plugin/             # Plugin registry (transformer, audit writer, auth provider)
+│   ├── plugin/             # Plugin registry (transformer, audit writer, auth provider)
+│   └── gateway/            # SQL Gateway HTTP API, query executor, allowlist, approval
 ├── configs/
 │   ├── argus-multidb.json  # Multi-database Docker config
 │   └── policies/
@@ -608,7 +613,7 @@ bash scripts/e2e-realworld.sh   # Real-world E2E (45 tests)
 bash scripts/e2e-extra-scenarios.sh  # Extra scenarios (63 tests)
 ```
 
-Current: **1220 unit tests + 171 E2E**, **92% coverage** (19 packages, 4 at 100%).
+Current: **1307 unit tests + 171 E2E**, **84%+ coverage** (22 packages).
 
 ---
 

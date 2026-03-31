@@ -1197,6 +1197,12 @@ cmd/argus/main.go
   ├── internal/admin         HTTP server, WebSocket, dashboard, test runner
   │     ├── internal/session           (via SessionProvider interface)
   │     └── internal/pool              (for pool stats)
+  ├── internal/gateway       SQL Gateway HTTP API, executors, allowlist, auth
+  │     ├── internal/policy            (policy evaluation)
+  │     ├── internal/pool              (backend connection pools)
+  │     ├── internal/masking           (result masking)
+  │     ├── internal/inspection        (classify, cost, fingerprint)
+  │     └── internal/protocol/pg,mysql (wire protocol for execution)
   ├── internal/classify      Data classification engine
   └── internal/plugin        Plugin registry (transformer + audit writer)
 
@@ -1232,8 +1238,9 @@ Standalone packages (not imported by main binary):
 │ internal/auth          │   3   │  ~60     │  ~91%    │
 │ internal/cluster       │   1   │  ~15     │  ~95%    │
 │ internal/plugin        │   1   │  ~20     │  ~92%    │
+│ internal/gateway       │   8   │  ~7      │  ~15%    │
 ├────────────────────────┼───────┼──────────┼──────────┤
-│ TOTAL                  │  ~72  │  ~1304   │  ~92.2%  │
+│ TOTAL                  │  ~80  │  ~1307   │  ~84%    │
 └────────────────────────┴───────┴──────────┴──────────┘
 ```
 
