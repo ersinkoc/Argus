@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"sync"
@@ -142,7 +143,9 @@ func (w *WebhookWriter) flush() {
 		log.Printf("[argus] webhook send error (%d events): %v", len(events), err)
 		return
 	}
-	defer resp.Body.Close()
+	// Drain and close body to enable HTTP connection reuse
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		log.Printf("[argus] webhook returned %d (%d events)", resp.StatusCode, len(events))

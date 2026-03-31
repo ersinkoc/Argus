@@ -407,11 +407,17 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 	protocolName := handler.Name()
 
 	for {
+		// Set read deadline to detect idle/dead clients
+		client.SetReadDeadline(time.Now().Add(5 * time.Minute))
+
 		// Read command from client
 		cmd, rawMsg, err := handler.ReadCommand(ctx, client)
 		if err != nil {
-			return // client disconnected
+			return // client disconnected or timeout
 		}
+
+		// Clear deadline for the rest of the pipeline
+		client.SetReadDeadline(time.Time{})
 
 		// Terminate message
 		if cmd == nil {

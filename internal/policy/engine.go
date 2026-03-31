@@ -150,14 +150,31 @@ func (e *Engine) matchRule(ctx *Context, rule *PolicyRule, roles map[string]Role
 }
 
 func (e *Engine) cacheKey(ctx *Context) string {
-	key := fmt.Sprintf("%s|%s|%s|%s|%s",
+	// Cache key must include all fields that condition matchers inspect.
+	// Omitting any field would cause cache hits to bypass those conditions.
+	ipStr := ""
+	if ctx.ClientIP != nil {
+		ipStr = ctx.ClientIP.String()
+	}
+	hasWhere := "0"
+	if ctx.HasWhere {
+		hasWhere = "1"
+	}
+	key := fmt.Sprintf("%s|%s|%s|%s|%s|%s|%s|%d|%f",
 		ctx.Username,
 		strings.Join(ctx.Roles, ","),
 		ctx.Database,
 		ctx.CommandType.String(),
 		strings.Join(ctx.Tables, ","),
+		ipStr,
+		hasWhere,
+		ctx.CostScore,
+		ctx.PlanCost,
 	)
-	h := sha256.Sum256([]byte(key))
+	// Include RawSQL hash separately (SQL can be very long)
+	sqlHash := sha256.Sum256([]byte(ctx.RawSQL))
+	combined := key + "|" + hex.EncodeToString(sqlHash[:8])
+	h := sha256.Sum256([]byte(combined))
 	return hex.EncodeToString(h[:16])
 }
 

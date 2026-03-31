@@ -92,6 +92,11 @@ func (l *Listener) acceptLoop() {
 		l.wg.Add(1)
 		go func() {
 			defer l.wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[argus] panic in connection handler: %v", r)
+				}
+			}()
 			if l.handler != nil {
 				l.handler(conn)
 			} else {
