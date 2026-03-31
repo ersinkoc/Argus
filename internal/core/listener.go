@@ -11,6 +11,9 @@ import (
 	"github.com/ersinkoc/argus/internal/config"
 )
 
+// maxConcurrentConns limits simultaneous connections per listener to prevent DoS.
+const maxConcurrentConns = 10000
+
 // Listener manages TCP listeners for incoming connections.
 type Listener struct {
 	cfg       config.ListenerConfig
@@ -19,15 +22,17 @@ type Listener struct {
 	wg        sync.WaitGroup
 	ctx       context.Context
 	cancel    context.CancelFunc
+	connSem   chan struct{} // connection semaphore
 }
 
 // NewListener creates a new TCP listener.
 func NewListener(cfg config.ListenerConfig) *Listener {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Listener{
-		cfg:    cfg,
-		ctx:    ctx,
-		cancel: cancel,
+		cfg:     cfg,
+		ctx:     ctx,
+		cancel:  cancel,
+		connSem: make(chan struct{}, maxConcurrentConns),
 	}
 }
 
@@ -89,9 +94,19 @@ func (l *Listener) acceptLoop() {
 			}
 		}
 
+		// Enforce connection limit
+		select {
+		case l.connSem <- struct{}{}:
+		default:
+			log.Printf("[argus] connection limit reached (%d), rejecting %v", maxConcurrentConns, conn.RemoteAddr())
+			conn.Close()
+			continue
+		}
+
 		l.wg.Add(1)
 		go func() {
 			defer l.wg.Done()
+			defer func() { <-l.connSem }()
 			defer func() {
 				if r := recover(); r != nil {
 					log.Printf("[argus] panic in connection handler: %v", r)

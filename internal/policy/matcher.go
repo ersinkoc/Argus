@@ -110,9 +110,14 @@ func matchCondition(ctx *Context, cond *ConditionConfig) bool {
 		return true
 	}
 
+	// Pre-compute uppercased SQL once for all string-matching conditions
+	var upper string
+	if len(cond.SQLContains) > 0 || len(cond.SQLNotContains) > 0 || cond.SQLInjection || cond.MaxJoins > 0 {
+		upper = strings.ToUpper(ctx.RawSQL)
+	}
+
 	// SQL contains
 	if len(cond.SQLContains) > 0 {
-		upper := strings.ToUpper(ctx.RawSQL)
 		allFound := true
 		for _, s := range cond.SQLContains {
 			if !strings.Contains(upper, strings.ToUpper(s)) {
@@ -181,7 +186,6 @@ func matchCondition(ctx *Context, cond *ConditionConfig) bool {
 
 	// SQL not contains — matches when the SQL does NOT contain ALL specified strings
 	if len(cond.SQLNotContains) > 0 {
-		upper := strings.ToUpper(ctx.RawSQL)
 		allContained := true
 		for _, s := range cond.SQLNotContains {
 			if !strings.Contains(upper, strings.ToUpper(s)) {
@@ -218,7 +222,7 @@ func matchCondition(ctx *Context, cond *ConditionConfig) bool {
 
 	// Max JOINs
 	if cond.MaxJoins > 0 {
-		joinCount := countJoins(ctx.RawSQL)
+		joinCount := countJoinsUpper(upper)
 		if joinCount < cond.MaxJoins {
 			return false
 		}
@@ -226,7 +230,7 @@ func matchCondition(ctx *Context, cond *ConditionConfig) bool {
 
 	// SQL injection detection
 	if cond.SQLInjection {
-		if !detectSQLInjection(ctx.RawSQL) {
+		if !detectSQLInjectionUpper(upper) {
 			return false
 		}
 	}
@@ -245,14 +249,19 @@ func matchCondition(ctx *Context, cond *ConditionConfig) bool {
 
 // countJoins counts JOIN keywords in SQL.
 func countJoins(sql string) int {
-	upper := strings.ToUpper(sql)
-	// Count all JOIN occurrences (each INNER/LEFT/RIGHT/CROSS/FULL JOIN contains exactly one " JOIN ")
+	return countJoinsUpper(strings.ToUpper(sql))
+}
+
+func countJoinsUpper(upper string) int {
 	return strings.Count(upper, " JOIN ")
 }
 
 // detectSQLInjection checks for common SQL injection patterns.
 func detectSQLInjection(sql string) bool {
-	upper := strings.ToUpper(sql)
+	return detectSQLInjectionUpper(strings.ToUpper(sql))
+}
+
+func detectSQLInjectionUpper(upper string) bool {
 
 	// Tautology patterns: OR 1=1, OR 'a'='a', OR true
 	for _, pattern := range sqliTautologyPatterns {
@@ -272,14 +281,14 @@ func detectSQLInjection(sql string) bool {
 	}
 
 	// Comment-based termination: '; -- or '; #
-	if (strings.Contains(sql, "'--") || strings.Contains(sql, "'#") ||
-		strings.Contains(sql, "\"--") || strings.Contains(sql, "\"#")) {
+	if (strings.Contains(upper, "'--") || strings.Contains(upper, "'#") ||
+		strings.Contains(upper, "\"--") || strings.Contains(upper, "\"#")) {
 		return true
 	}
 
 	// Stacked queries with dangerous commands after semicolon
-	if idx := strings.Index(sql, ";"); idx >= 0 && idx < len(sql)-1 {
-		after := strings.TrimSpace(strings.ToUpper(sql[idx+1:]))
+	if idx := strings.Index(upper, ";"); idx >= 0 && idx < len(upper)-1 {
+		after := strings.TrimSpace(upper[idx+1:])
 		for _, cmd := range []string{"DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "EXEC", "CREATE", "GRANT", "SHUTDOWN"} {
 			if strings.HasPrefix(after, cmd) {
 				return true

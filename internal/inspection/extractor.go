@@ -96,16 +96,17 @@ func readTableNames(tokens []Token, idx int) []string {
 	return names
 }
 
+var tableListTerminators = map[string]bool{
+	"WHERE": true, "SET": true, "ORDER": true, "GROUP": true,
+	"HAVING": true, "LIMIT": true, "OFFSET": true, "UNION": true,
+	"ON": true, "USING": true, "VALUES": true, "SELECT": true,
+	"INNER": true, "LEFT": true, "RIGHT": true, "OUTER": true,
+	"CROSS": true, "NATURAL": true, "JOIN": true, "RETURNING": true,
+	"FOR": true, "INTO": true, "FROM": true,
+}
+
 func isTableListTerminator(kw string) bool {
-	terminators := map[string]bool{
-		"WHERE": true, "SET": true, "ORDER": true, "GROUP": true,
-		"HAVING": true, "LIMIT": true, "OFFSET": true, "UNION": true,
-		"ON": true, "USING": true, "VALUES": true, "SELECT": true,
-		"INNER": true, "LEFT": true, "RIGHT": true, "OUTER": true,
-		"CROSS": true, "NATURAL": true, "JOIN": true, "RETURNING": true,
-		"FOR": true, "INTO": true, "FROM": true,
-	}
-	return terminators[kw]
+	return tableListTerminators[kw]
 }
 
 // extractColumns extracts column names from the SELECT list or relevant clauses.

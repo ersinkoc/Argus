@@ -206,9 +206,21 @@ func main() {
 			return result, nil
 		})
 
-		// Wire config export
+		// Wire config export (redact sensitive fields)
 		adminServer.SetConfigExporter(func() ([]byte, error) {
-			return json.MarshalIndent(cfg, "", "  ")
+			safe := *cfg
+			safe.Admin.AuthToken = "***REDACTED***"
+			for i := range safe.Targets {
+				if safe.Targets[i].TLS.KeyFile != "" {
+					safe.Targets[i].TLS.KeyFile = "***REDACTED***"
+				}
+			}
+			for i := range safe.Server.Listeners {
+				if safe.Server.Listeners[i].TLS.KeyFile != "" {
+					safe.Server.Listeners[i].TLS.KeyFile = "***REDACTED***"
+				}
+			}
+			return json.MarshalIndent(&safe, "", "  ")
 		})
 
 		// Set audit/recording paths for search and replay

@@ -252,12 +252,13 @@ func assessRisk(cmd *Command, tokens []Token, hasCommentWithSQL bool) RiskLevel 
 	return risk
 }
 
+var dangerousKeywords = map[string]bool{
+	"DROP": true, "TRUNCATE": true, "DELETE": true,
+	"UPDATE": true, "INSERT": true, "ALTER": true,
+	"GRANT": true, "REVOKE": true, "EXEC": true,
+	"EXECUTE": true,
+}
+
 func isDangerousKeyword(kw string) bool {
-	dangerous := map[string]bool{
-		"DROP": true, "TRUNCATE": true, "DELETE": true,
-		"UPDATE": true, "INSERT": true, "ALTER": true,
-		"GRANT": true, "REVOKE": true, "EXEC": true,
-		"EXECUTE": true,
-	}
-	return dangerous[kw]
+	return dangerousKeywords[kw]
 }

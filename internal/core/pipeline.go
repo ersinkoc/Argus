@@ -295,9 +295,9 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 		var d net.Dialer
 		conn, err := d.DialContext(context.Background(), "tcp", target.Address())
 		if err != nil {
-			log.Printf("[argus] failed to connect to backend: %v", err)
+			log.Printf("[argus] failed to connect to backend %s: %v", target.Name, err)
 			metrics.Global.ConnectionsFailed.Add(1)
-			handler.WriteError(context.Background(), clientConn, "08001", fmt.Sprintf("Cannot connect to database: %v", err))
+			handler.WriteError(context.Background(), clientConn, "08001", "Cannot connect to database")
 			return
 		}
 		backendNetConn = conn
@@ -312,9 +312,9 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 		var err error
 		poolConn, err = pl.Acquire(context.Background())
 		if err != nil {
-			log.Printf("[argus] failed to acquire backend connection: %v", err)
+			log.Printf("[argus] failed to acquire backend connection for %s: %v", target.Name, err)
 			metrics.Global.ConnectionsFailed.Add(1)
-			handler.WriteError(context.Background(), clientConn, "08001", fmt.Sprintf("Cannot connect to database: %v", err))
+			handler.WriteError(context.Background(), clientConn, "08001", "Cannot connect to database")
 			return
 		}
 		defer pl.Remove(poolConn)
