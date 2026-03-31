@@ -145,9 +145,9 @@ func (gw *Gateway) ApprovalManager() *core.ApprovalManager { return gw.approvalM
 func (gw *Gateway) ExecuteQuery(ctx context.Context, req QueryRequest) QueryResponse {
 	start := time.Now()
 
-	// 1. Classify
+	// 1. Classify (tokens are cached on cmd for reuse)
 	cmd := inspection.Classify(req.SQL)
-	fingerprint := inspection.FingerprintHash(req.SQL)
+	fingerprint := inspection.FingerprintHashFromCommand(cmd)
 	costEstimate := inspection.EstimateCost(cmd)
 
 	// Per-API-key rate limit (before any processing)

@@ -260,7 +260,7 @@ func (gw *Gateway) HandleDryRun(w http.ResponseWriter, r *http.Request) {
 
 	// Run the pipeline up to (but not including) execution
 	cmd := inspection.Classify(req.SQL)
-	fingerprint := inspection.FingerprintHash(req.SQL)
+	fingerprint := inspection.FingerprintHashFromCommand(cmd)
 	costEstimate := inspection.EstimateCost(cmd)
 
 	var clientIP net.IP

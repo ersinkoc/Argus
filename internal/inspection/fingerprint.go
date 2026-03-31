@@ -18,14 +18,17 @@ import (
 func Fingerprint(sql string) string {
 	tokenizer := NewTokenizer(sql)
 	tokens := tokenizer.Tokenize()
+	return fingerprintFromTokens(tokens)
+}
 
+// fingerprintFromTokens builds a fingerprint from pre-computed tokens.
+func fingerprintFromTokens(tokens []Token) string {
 	var parts []string
 	for _, tok := range tokens {
 		switch tok.Type {
 		case TokenLiteral:
 			parts = append(parts, "?")
 		case TokenComment:
-			// Strip comments from fingerprint
 			continue
 		case TokenKeyword:
 			parts = append(parts, tok.Upper)
@@ -35,13 +38,25 @@ func Fingerprint(sql string) string {
 			parts = append(parts, tok.Value)
 		}
 	}
-
 	return strings.Join(parts, " ")
 }
 
 // FingerprintHash returns a short hash of the fingerprint for use as a cache/grouping key.
 func FingerprintHash(sql string) string {
 	fp := Fingerprint(sql)
+	h := sha256.Sum256([]byte(fp))
+	return hex.EncodeToString(h[:8])
+}
+
+// FingerprintHashFromCommand returns a fingerprint hash using pre-computed tokens
+// from a Command, avoiding re-tokenization.
+func FingerprintHashFromCommand(cmd *Command) string {
+	var fp string
+	if cmd.Tokens != nil {
+		fp = fingerprintFromTokens(cmd.Tokens)
+	} else {
+		fp = Fingerprint(cmd.Raw)
+	}
 	h := sha256.Sum256([]byte(fp))
 	return hex.EncodeToString(h[:8])
 }

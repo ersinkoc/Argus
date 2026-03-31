@@ -23,8 +23,12 @@ func EstimateCost(cmd *Command) *CostEstimate {
 		TableCount: len(cmd.Tables),
 	}
 
-	tokenizer := NewTokenizer(cmd.Raw)
-	tokens := tokenizer.Tokenize()
+	// Reuse tokens from Classify if available (avoids re-tokenization)
+	tokens := cmd.Tokens
+	if tokens == nil {
+		tokenizer := NewTokenizer(cmd.Raw)
+		tokens = tokenizer.Tokenize()
+	}
 
 	depth := 0
 	for _, tok := range tokens {

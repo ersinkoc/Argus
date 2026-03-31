@@ -644,7 +644,7 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 			}
 
 			duration := time.Since(queryStart)
-			fingerprint := inspection.FingerprintHash(cmd.Raw)
+			fingerprint := inspection.FingerprintHashFromCommand(cmd)
 
 			// Per-database metrics
 			metrics.DatabaseStats.RecordQuery(sess.Database)

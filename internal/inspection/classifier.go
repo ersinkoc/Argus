@@ -85,6 +85,7 @@ type Command struct {
 	HasWhere    bool
 	IsMulti     bool // multiple statements
 	Warnings    []string
+	Tokens      []Token `json:"-"` // cached tokens for reuse by EstimateCost/Fingerprint
 }
 
 // Classify analyzes a SQL string and returns a Command.
@@ -94,6 +95,7 @@ func Classify(sql string) *Command {
 
 	cmd := &Command{
 		Raw:        sql,
+		Tokens:     tokens,
 		Type:       CommandUNKNOWN,
 		Confidence: 1.0,
 	}
