@@ -67,8 +67,15 @@ func (l *Logger) Start() {
 }
 
 // Log sends an event to the audit log.
+// Events are filtered based on the logger's configured level:
+//   - Minimal: connection lifecycle, blocked commands, admin events only
+//   - Standard: all events (default)
+//   - Verbose: all events
 func (l *Logger) Log(event Event) {
 	if l.closed.Load() {
+		return
+	}
+	if l.level == LevelMinimal && !isMinimalEvent(event.EventType) {
 		return
 	}
 	if event.ID == "" {
@@ -87,6 +94,18 @@ func (l *Logger) Log(event Event) {
 	default:
 		l.dropped.Add(1)
 	}
+}
+
+// isMinimalEvent returns true for events that should always be logged even at minimal level.
+func isMinimalEvent(eventType string) bool {
+	switch eventType {
+	case "connection_open", "connection_close",
+		"auth_success", "auth_failure",
+		"command_blocked", "session_timeout",
+		"session_killed", "policy_reloaded":
+		return true
+	}
+	return false
 }
 
 // ShouldLog checks if an event should be logged at the current level.

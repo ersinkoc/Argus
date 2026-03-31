@@ -213,7 +213,7 @@ check_output "Metric: active_sessions gauge" \
 
 check_output "Metric: pool active per target" \
     "echo '$METRICS'" \
-    "argus_pool_active_connections"
+    "argus_pool_connections"
 
 check_output "Metric: pool idle per target" \
     "echo '$METRICS'" \

@@ -48,6 +48,7 @@ type Server struct {
 	validateFn     func() (any, error)
 	classifyFn     func([]string) any
 	pluginListFn   func() any
+	onSessionKill  func(sessionID string)
 }
 
 // NewServer creates a new admin server.
@@ -306,6 +307,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		Username     string   `json:"username"`
 		Database     string   `json:"database"`
 		ClientIP     string   `json:"client_ip"`
+		AuthMethod   string   `json:"auth_method,omitempty"`
 		Roles        []string `json:"roles"`
 		Duration     string   `json:"duration"`
 		IdleDuration string   `json:"idle_duration"`
@@ -321,6 +323,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 			Username:     sess.Username,
 			Database:     sess.Database,
 			ClientIP:     sess.ClientIP.String(),
+			AuthMethod:   sess.AuthMethod,
 			Roles:        sess.Roles,
 			Duration:     sess.Duration().String(),
 			IdleDuration: sess.IdleDuration().String(),
@@ -349,6 +352,10 @@ func (s *Server) handleSessionKill(w http.ResponseWriter, r *http.Request) {
 	if err := s.provider.SessionManager().Kill(sessionID); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error": %q}`, err.Error()), http.StatusNotFound)
 		return
+	}
+
+	if s.onSessionKill != nil {
+		s.onSessionKill(sessionID)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -836,6 +843,11 @@ func (s *Server) SetClassifyFunc(fn func([]string) any) {
 // SetPluginListFunc sets the plugin list function.
 func (s *Server) SetPluginListFunc(fn func() any) {
 	s.pluginListFn = fn
+}
+
+// SetOnSessionKill sets a callback invoked after a session is killed via the admin API.
+func (s *Server) SetOnSessionKill(fn func(sessionID string)) {
+	s.onSessionKill = fn
 }
 
 func (s *Server) handleClassify(w http.ResponseWriter, r *http.Request) {

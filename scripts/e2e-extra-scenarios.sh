@@ -195,7 +195,7 @@ check_api "API: Config export" "$API/api/config/export" "targets"
 check_api "API: Stats" "$API/api/stats" "commands"
 check_api "API: Policy validate" "$API/api/policies/validate" "valid"
 check_api "API: Metrics goroutines" "$API/metrics" "argus_go_goroutines"
-check_api "API: Metrics pool active" "$API/metrics" "argus_pool_active"
+check_api "API: Metrics pool active" "$API/metrics" "argus_pool_connections"
 check_api "API: Metrics query duration" "$API/metrics" "argus_query_duration"
 check_api "API: Audit search" "$API/api/audit/search?limit=5" "\["
 check_api_post() {

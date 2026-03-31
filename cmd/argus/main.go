@@ -249,6 +249,15 @@ func main() {
 			}
 		})
 
+		adminServer.SetOnSessionKill(func(sessionID string) {
+			auditLogger.Log(audit.Event{
+				EventType: audit.SessionKilled.String(),
+				SessionID: sessionID,
+				Action:    "killed",
+				Reason:    "admin_api",
+			})
+		})
+
 		// Wire test runner with proxy addresses
 		if len(cfg.Targets) > 0 {
 			trc := &admin.TestRunnerConfig{}

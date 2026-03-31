@@ -317,6 +317,13 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 		backendNetConn = poolConn.NetConn()
 	}
 
+	// Log connection open
+	p.auditLogger.Log(audit.Event{
+		EventType: audit.ConnectionOpen.String(),
+		ClientIP:  remoteAddr.IP.String(),
+		Action:    "accept",
+	})
+
 	// Perform handshake
 	ctx := context.Background()
 	sessionInfo, err := handler.Handshake(ctx, clientConn, backendNetConn)
@@ -416,6 +423,7 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 		}
 
 		sess.IncrementCommand()
+		sess.AddBytes(int64(len(rawMsg)), 0)
 		metrics.Global.CommandsTotal.Add(1)
 
 		// Per-protocol metrics
@@ -615,6 +623,14 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 			// Per-database metrics
 			metrics.DatabaseStats.RecordQuery(sess.Database)
 			metrics.DatabaseStats.RecordRows(sess.Database, stats.RowCount)
+			sess.AddBytes(0, stats.ByteCount)
+
+			// Track write operations
+			switch cmd.Type {
+			case inspection.CommandINSERT, inspection.CommandUPDATE,
+				inspection.CommandDELETE, inspection.CommandDDL, inspection.CommandDCL:
+				metrics.DatabaseStats.RecordWrite(sess.Database)
+			}
 
 			// Record query latency
 			metrics.QueryLatency.Observe(float64(duration.Microseconds()))
