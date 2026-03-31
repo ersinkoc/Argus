@@ -3,6 +3,7 @@ package admin
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/ersinkoc/argus/internal/metrics"
@@ -35,7 +36,7 @@ func TestHandleMetricsDatabaseStats(t *testing.T) {
 		`database="testdb"`,
 	}
 	for _, check := range checks {
-		if !containsStr(body, check) {
+		if !strings.Contains(body, check) {
 			t.Errorf("metrics should contain %q", check)
 		}
 	}

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -167,7 +168,7 @@ func TestHandleMetricsContent(t *testing.T) {
 		"argus_pool_acquire_wait_microseconds_count",
 	}
 	for _, check := range checks {
-		if !containsStr(body, check) {
+		if !strings.Contains(body, check) {
 			t.Errorf("metrics should contain %q", check)
 		}
 	}

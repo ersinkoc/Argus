@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -45,9 +46,9 @@ func TestCacheEviction(t *testing.T) {
 	// Fill cache beyond max size to trigger eviction
 	for i := 0; i < 15000; i++ {
 		ctx := &Context{
-			Username:    "user_" + itoa(i),
+			Username:    "user_" + strconv.Itoa(i),
 			CommandType: inspection.CommandSELECT,
-			Tables:      []string{"table_" + itoa(i)},
+			Tables:      []string{"table_" + strconv.Itoa(i)},
 			Timestamp:   time.Now(),
 		}
 		engine.Evaluate(ctx)
@@ -82,14 +83,4 @@ func TestDryRunWithClientIP(t *testing.T) {
 	if result.Decision.Action != "allow" {
 		t.Errorf("action = %q", result.Decision.Action)
 	}
-}
-
-func itoa(n int) string {
-	if n == 0 { return "0" }
-	s := ""
-	for n > 0 {
-		s = string(rune('0'+n%10)) + s
-		n /= 10
-	}
-	return s
 }

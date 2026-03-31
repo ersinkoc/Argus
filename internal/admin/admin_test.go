@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/ersinkoc/argus/internal/pool"
@@ -98,14 +99,14 @@ func TestMetricsEndpoint(t *testing.T) {
 		"argus_go_gc_runs_total",
 	}
 	for _, expected := range required {
-		if !containsStr(body, expected) {
+		if !strings.Contains(body, expected) {
 			t.Errorf("metrics missing %q", expected)
 		}
 	}
 
 	// Content-Type should indicate Prometheus format
 	ct := w.Header().Get("Content-Type")
-	if !containsStr(ct, "text/plain") {
+	if !strings.Contains(ct, "text/plain") {
 		t.Errorf("Content-Type = %q, want text/plain", ct)
 	}
 }
@@ -208,17 +209,4 @@ func TestPolicyReloadSuccess(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200", w.Code)
 	}
-}
-
-func containsStr(s, substr string) bool {
-	return len(s) >= len(substr) && searchStr(s, substr)
-}
-
-func searchStr(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
 }

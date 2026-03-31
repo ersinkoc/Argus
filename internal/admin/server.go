@@ -303,17 +303,18 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	sessions := s.provider.SessionManager().ActiveSessions()
 
 	type sessionInfo struct {
-		ID           string   `json:"id"`
-		Username     string   `json:"username"`
-		Database     string   `json:"database"`
-		ClientIP     string   `json:"client_ip"`
-		AuthMethod   string   `json:"auth_method,omitempty"`
-		Roles        []string `json:"roles"`
-		Duration     string   `json:"duration"`
-		IdleDuration string   `json:"idle_duration"`
-		CommandCount int64    `json:"command_count"`
-		BytesIn      int64    `json:"bytes_in"`
-		BytesOut     int64    `json:"bytes_out"`
+		ID           string            `json:"id"`
+		Username     string            `json:"username"`
+		Database     string            `json:"database"`
+		ClientIP     string            `json:"client_ip"`
+		AuthMethod   string            `json:"auth_method,omitempty"`
+		Roles        []string          `json:"roles"`
+		Parameters   map[string]string `json:"parameters,omitempty"`
+		Duration     string            `json:"duration"`
+		IdleDuration string            `json:"idle_duration"`
+		CommandCount int64             `json:"command_count"`
+		BytesIn      int64             `json:"bytes_in"`
+		BytesOut     int64             `json:"bytes_out"`
 	}
 
 	result := make([]sessionInfo, 0, len(sessions))
@@ -325,6 +326,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 			ClientIP:     sess.ClientIP.String(),
 			AuthMethod:   sess.AuthMethod,
 			Roles:        sess.Roles,
+			Parameters:   sess.Parameters,
 			Duration:     sess.Duration().String(),
 			IdleDuration: sess.IdleDuration().String(),
 			CommandCount: sess.CommandCount,
