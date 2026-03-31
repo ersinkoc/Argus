@@ -140,6 +140,58 @@ func ReadAllPackets(conn net.Conn) ([]byte, byte, error) {
 	}
 }
 
+// patchPreLoginEncryption finds the ENCRYPTION token in a pre-login response
+// and sets it to NOT_SUP (0x02) so clients fall back to plaintext.
+// TDS pre-login format: repeating [token(1) offset(2) length(2)] terminated by 0xFF,
+// followed by data at the specified offsets.
+func patchPreLoginEncryption(data []byte) {
+	const tokenEncryption = 0x01
+	const encryptNotSup = 0x02
+
+	pos := 0
+	for pos < len(data) {
+		tokenType := data[pos]
+		if tokenType == 0xFF {
+			break
+		}
+		if pos+5 > len(data) {
+			break
+		}
+		offset := int(data[pos+1])<<8 | int(data[pos+2])
+		length := int(data[pos+3])<<8 | int(data[pos+4])
+		if tokenType == tokenEncryption && length >= 1 && offset < len(data) {
+			data[offset] = encryptNotSup
+			return
+		}
+		pos += 5
+	}
+}
+
+// patchPreLoginMARS finds the MARS token (0x04) in a pre-login packet
+// and sets it to 0x00 (MARS OFF) to prevent MARS negotiation.
+func patchPreLoginMARS(data []byte) {
+	const tokenMARS = 0x04
+	const marsOff = 0x00
+
+	pos := 0
+	for pos < len(data) {
+		tokenType := data[pos]
+		if tokenType == 0xFF {
+			break
+		}
+		if pos+5 > len(data) {
+			break
+		}
+		offset := int(data[pos+1])<<8 | int(data[pos+2])
+		length := int(data[pos+3])<<8 | int(data[pos+4])
+		if tokenType == tokenMARS && length >= 1 && offset < len(data) {
+			data[offset] = marsOff
+			return
+		}
+		pos += 5
+	}
+}
+
 // BuildPreLoginResponse creates a minimal pre-login response.
 func BuildPreLoginResponse() *Packet {
 	// Minimal pre-login response

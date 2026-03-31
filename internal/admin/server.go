@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/ersinkoc/argus/internal/audit"
@@ -183,7 +184,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"status":          status,
 		"active_sessions": s.provider.SessionManager().Count(),
 		"pools":           poolStats,
-		"uptime":          time.Since(startTime).String(),
+		"uptime":          formatUptime(time.Since(startTime)),
 		"version":         Version,
 	}
 
@@ -427,7 +428,7 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	runtime.ReadMemStats(&memStats)
 
 	resp := map[string]any{
-		"uptime":      time.Since(startTime).String(),
+		"uptime":      formatUptime(time.Since(startTime)),
 		"sessions":    s.provider.SessionManager().Count(),
 		"goroutines":  runtime.NumGoroutine(),
 		"memory_mb":   memStats.Alloc / 1024 / 1024,
@@ -611,7 +612,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 	dashboard := map[string]any{
 		"overview": map[string]any{
-			"uptime":           time.Since(startTime).String(),
+			"uptime":           formatUptime(time.Since(startTime)),
 			"version":          Version,
 			"active_sessions":  sm.Count(),
 			"goroutines":       runtime.NumGoroutine(),
@@ -940,3 +941,34 @@ var (
 	startTime = time.Now()
 	Version   = "dev"
 )
+
+// formatUptime formats a duration into a human-friendly string like "2d 5h 14m 3s".
+func formatUptime(d time.Duration) string {
+	d = d.Truncate(time.Second)
+	if d < time.Second {
+		return "0s"
+	}
+
+	days := int(d.Hours()) / 24
+	d -= time.Duration(days) * 24 * time.Hour
+	hours := int(d.Hours())
+	d -= time.Duration(hours) * time.Hour
+	minutes := int(d.Minutes())
+	d -= time.Duration(minutes) * time.Minute
+	seconds := int(d.Seconds())
+
+	var parts []string
+	if days > 0 {
+		parts = append(parts, fmt.Sprintf("%dd", days))
+	}
+	if hours > 0 {
+		parts = append(parts, fmt.Sprintf("%dh", hours))
+	}
+	if minutes > 0 {
+		parts = append(parts, fmt.Sprintf("%dm", minutes))
+	}
+	if seconds > 0 || len(parts) == 0 {
+		parts = append(parts, fmt.Sprintf("%ds", seconds))
+	}
+	return strings.Join(parts, " ")
+}

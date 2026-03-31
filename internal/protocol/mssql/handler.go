@@ -45,6 +45,10 @@ func (h *Handler) Handshake(ctx context.Context, client, backend net.Conn) (*ses
 		return nil, fmt.Errorf("expected pre-login packet, got 0x%02x", pktType)
 	}
 
+	// Tell backend we don't need encryption and disable MARS in pre-login
+	patchPreLoginEncryption(preLoginData)
+	patchPreLoginMARS(preLoginData)
+
 	// Forward pre-login to backend
 	pkt := &Packet{
 		Type:   PacketPreLogin,
@@ -60,6 +64,9 @@ func (h *Handler) Handshake(ctx context.Context, client, backend net.Conn) (*ses
 	if err != nil {
 		return nil, fmt.Errorf("reading backend pre-login response: %w", err)
 	}
+
+	// Tell client encryption is not supported (plaintext proxy)
+	patchPreLoginEncryption(respData)
 
 	respPkt := &Packet{
 		Type:   PacketReply,
@@ -82,6 +89,9 @@ func (h *Handler) Handshake(ctx context.Context, client, backend net.Conn) (*ses
 
 	// Extract username from Login7 packet
 	username := extractLogin7Username(loginData)
+
+	// Disable MARS and FeatureExt in Login7 to avoid MARS TDS header requirements.
+	loginData = disableMARS(loginData)
 
 	// Forward to backend
 	loginPkt := &Packet{
@@ -250,6 +260,43 @@ func (h *Handler) WriteError(ctx context.Context, client net.Conn, code string, 
 
 func (h *Handler) Close() error {
 	return nil
+}
+
+// disableMARS strips MARS and FeatureExt from a Login7 packet.
+// It clears fMarsOn in OptionFlags2 and removes the entire FeatureExt block
+// by truncating the Login7 data and updating the packet length.
+func disableMARS(loginData []byte) []byte {
+	if len(loginData) <= 59 {
+		return loginData
+	}
+	loginData[25] &^= 0x04 // OptionFlags2: fMarsOn
+
+	if loginData[27]&0x10 == 0 {
+		return loginData // no FeatureExt
+	}
+
+	// ibExtension at bytes 56-57 (LE uint16): offset to a 4-byte pointer
+	extPtrOff := int(loginData[56]) | int(loginData[57])<<8
+	if extPtrOff > 0 && extPtrOff+4 <= len(loginData) {
+		feOff := int(loginData[extPtrOff]) | int(loginData[extPtrOff+1])<<8 |
+			int(loginData[extPtrOff+2])<<16 | int(loginData[extPtrOff+3])<<24
+		if feOff > 0 && feOff < len(loginData) {
+			// Truncate data at FeatureExt start + 1 byte (0xFF terminator)
+			loginData[feOff] = 0xFF
+			loginData = loginData[:feOff+1]
+		}
+	}
+
+	loginData[27] &^= 0x10 // clear fExtension
+
+	// Update Login7 length field (bytes 0-3, LE uint32)
+	newLen := len(loginData)
+	loginData[0] = byte(newLen)
+	loginData[1] = byte(newLen >> 8)
+	loginData[2] = byte(newLen >> 16)
+	loginData[3] = byte(newLen >> 24)
+
+	return loginData
 }
 
 // --- helpers ---

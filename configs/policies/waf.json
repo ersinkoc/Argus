@@ -33,8 +33,6 @@
   },
   "policies": [
 
-    {"name": "--- WAF: SQL INJECTION PROTECTION ---", "match": {}, "action": "audit"},
-
     {
       "name": "waf-sqli-detection",
       "description": "Block queries with SQL injection patterns (tautology, UNION, stacked, blind)",
@@ -44,6 +42,45 @@
       },
       "action": "block",
       "reason": "SQL injection pattern detected"
+    },
+    {
+      "name": "waf-block-ddl-non-dba",
+      "description": "Only DBA can run destructive DDL (DROP, TRUNCATE, ALTER)",
+      "match": {
+        "roles": ["!dba"],
+        "commands": ["DDL"]
+      },
+      "condition": {
+        "sql_contains": ["DROP"]
+      },
+      "action": "block",
+      "reason": "DROP requires DBA role"
+    },
+    {
+      "name": "waf-block-truncate",
+      "description": "Block TRUNCATE for non-DBA",
+      "match": {
+        "roles": ["!dba"],
+        "commands": ["DDL"]
+      },
+      "condition": {
+        "sql_contains": ["TRUNCATE"]
+      },
+      "action": "block",
+      "reason": "TRUNCATE requires DBA role"
+    },
+    {
+      "name": "waf-block-alter-table-non-dba",
+      "description": "Block ALTER TABLE for non-DBA",
+      "match": {
+        "roles": ["!dba"],
+        "commands": ["DDL"]
+      },
+      "condition": {
+        "sql_contains": ["ALTER"]
+      },
+      "action": "block",
+      "reason": "Schema modifications require DBA role"
     },
     {
       "name": "waf-block-schema-enumeration",
@@ -86,50 +123,6 @@
       "reason": "Suspicious query pattern — possible comment injection"
     },
 
-    {"name": "--- WAF: DESTRUCTIVE OPERATION PROTECTION ---", "match": {}, "action": "audit"},
-
-    {
-      "name": "waf-block-ddl-non-dba",
-      "description": "Only DBA can run destructive DDL (DROP, TRUNCATE, ALTER)",
-      "match": {
-        "roles": ["!dba"],
-        "commands": ["DDL"]
-      },
-      "condition": {
-        "sql_contains": ["DROP"]
-      },
-      "action": "block",
-      "reason": "DROP requires DBA role"
-    },
-    {
-      "name": "waf-block-truncate",
-      "description": "Block TRUNCATE for non-DBA",
-      "match": {
-        "roles": ["!dba"],
-        "commands": ["DDL"]
-      },
-      "condition": {
-        "sql_contains": ["TRUNCATE"]
-      },
-      "action": "block",
-      "reason": "TRUNCATE requires DBA role"
-    },
-    {
-      "name": "waf-block-alter-table-non-dba",
-      "description": "Block ALTER TABLE for non-DBA",
-      "match": {
-        "roles": ["!dba"],
-        "commands": ["DDL"]
-      },
-      "condition": {
-        "sql_contains": ["ALTER"]
-      },
-      "action": "block",
-      "reason": "Schema modifications require DBA role"
-    },
-
-    {"name": "--- WAF: BULK OPERATION PROTECTION ---", "match": {}, "action": "audit"},
-
     {
       "name": "waf-block-delete-no-where",
       "description": "Block DELETE without WHERE clause",
@@ -154,8 +147,6 @@
       "action": "block",
       "reason": "UPDATE without WHERE clause is prohibited"
     },
-
-    {"name": "--- WAF: DATA EXFILTRATION PROTECTION ---", "match": {}, "action": "audit"},
 
     {
       "name": "waf-block-oversized-queries",
@@ -215,8 +206,6 @@
       },
       "max_rows": 50000
     },
-
-    {"name": "--- WAF: PRIVILEGE ESCALATION PROTECTION ---", "match": {}, "action": "audit"},
 
     {
       "name": "waf-block-dcl-non-dba",
@@ -278,8 +267,6 @@
       "reason": "System-level operations are prohibited"
     },
 
-    {"name": "--- WAF: ACCESS CONTROL ---", "match": {}, "action": "audit"},
-
     {
       "name": "waf-readonly-enforcement",
       "description": "Read-only users cannot write or modify schema",
@@ -326,8 +313,6 @@
       "reason": "Production access restricted to internal network"
     },
 
-    {"name": "--- WAF: RATE LIMITING ---", "match": {}, "action": "audit"},
-
     {
       "name": "waf-rate-limit-contractors",
       "description": "Rate limit contractor queries (5 qps, burst 10)",
@@ -351,8 +336,6 @@
       }
     },
 
-    {"name": "--- WAF: SENSITIVE TABLE PROTECTION ---", "match": {}, "action": "audit"},
-
     {
       "name": "waf-protect-credentials-table",
       "description": "Block non-DBA access to credential/password tables",
@@ -374,8 +357,6 @@
       "action": "block",
       "reason": "Audit log modification prohibited — tamper protection"
     },
-
-    {"name": "--- WAF: DATA MASKING ---", "match": {}, "action": "audit"},
 
     {
       "name": "waf-mask-pii-support",
@@ -444,8 +425,6 @@
         {"column": "date_of_birth", "transformer": "redact"}
       ]
     },
-
-    {"name": "--- WAF: DEFAULT ACTIONS ---", "match": {}, "action": "audit"},
 
     {
       "name": "waf-allow-reads",
