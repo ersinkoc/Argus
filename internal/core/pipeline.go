@@ -400,7 +400,8 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 		Action:    "close",
 	})
 
-	log.Printf("[argus] session %s closed (commands=%d)", sess.ID[:8], sess.CommandCount)
+	cmdCount, _, _ := sess.Stats()
+	log.Printf("[argus] session %s closed (commands=%d)", sess.ID[:8], cmdCount)
 }
 
 func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler protocol.Handler, client, backend net.Conn) {
@@ -620,6 +621,7 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 			stats, err := handler.ReadAndForwardResult(ctx, backend, client, pipeline)
 			if err != nil {
 				log.Printf("[argus] result forward error: %v", err)
+				handler.WriteError(ctx, client, "08006", fmt.Sprintf("Backend error: %v", err))
 				return
 			}
 

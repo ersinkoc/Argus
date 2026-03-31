@@ -52,6 +52,16 @@ func (s *Session) AddBytes(in, out int64) {
 	s.mu.Unlock()
 }
 
+// Stats returns a snapshot of the session's mutable counters.
+func (s *Session) Stats() (commandCount, bytesIn, bytesOut int64) {
+	s.mu.Lock()
+	commandCount = s.CommandCount
+	bytesIn = s.BytesIn
+	bytesOut = s.BytesOut
+	s.mu.Unlock()
+	return
+}
+
 // Duration returns how long the session has been active.
 func (s *Session) Duration() time.Duration {
 	return time.Since(s.StartTime)

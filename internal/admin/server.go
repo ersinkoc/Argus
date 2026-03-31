@@ -319,6 +319,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 
 	result := make([]sessionInfo, 0, len(sessions))
 	for _, sess := range sessions {
+		cmdCount, bIn, bOut := sess.Stats()
 		result = append(result, sessionInfo{
 			ID:           sess.ID,
 			Username:     sess.Username,
@@ -329,9 +330,9 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 			Parameters:   sess.Parameters,
 			Duration:     sess.Duration().String(),
 			IdleDuration: sess.IdleDuration().String(),
-			CommandCount: sess.CommandCount,
-			BytesIn:      sess.BytesIn,
-			BytesOut:     sess.BytesOut,
+			CommandCount: cmdCount,
+			BytesIn:      bIn,
+			BytesOut:     bOut,
 		})
 	}
 

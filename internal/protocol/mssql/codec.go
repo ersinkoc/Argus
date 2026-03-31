@@ -110,6 +110,9 @@ func WritePacket(conn net.Conn, pkt *Packet) error {
 	return err
 }
 
+// MaxReassemblySize is the maximum total size for reassembled TDS messages (16MB).
+const MaxReassemblySize = 16 * 1024 * 1024
+
 // ReadAllPackets reads TDS packets until EOM (end of message).
 func ReadAllPackets(conn net.Conn) ([]byte, byte, error) {
 	var data []byte
@@ -123,6 +126,10 @@ func ReadAllPackets(conn net.Conn) ([]byte, byte, error) {
 
 		if pktType == 0 {
 			pktType = pkt.Type
+		}
+
+		if len(data)+len(pkt.Data) > MaxReassemblySize {
+			return nil, 0, fmt.Errorf("TDS reassembled message exceeds %d bytes", MaxReassemblySize)
 		}
 
 		data = append(data, pkt.Data...)

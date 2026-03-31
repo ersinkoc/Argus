@@ -36,8 +36,8 @@ func (e *Engine) Evaluate(ctx *Context) *Decision {
 	ps := e.loader.Current()
 	if ps == nil {
 		return &Decision{
-			Action:     ActionAllow,
-			Reason:     "no policies loaded",
+			Action:     ActionBlock,
+			Reason:     "no policies loaded — fail-closed",
 			PolicyName: "default",
 			LogLevel:   "standard",
 		}

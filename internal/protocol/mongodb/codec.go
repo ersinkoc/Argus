@@ -112,6 +112,9 @@ func ParseOpMsg(payload []byte) (flagBits uint32, sections []OpMsgSection, err e
 				return flagBits, sections, fmt.Errorf("OP_MSG body truncated")
 			}
 			docLen := int(binary.LittleEndian.Uint32(payload[offset:]))
+			if docLen < 5 { // minimum BSON document is 5 bytes (length + null terminator)
+				return flagBits, sections, fmt.Errorf("OP_MSG body doc too small: %d", docLen)
+			}
 			if offset+docLen > len(payload) {
 				return flagBits, sections, fmt.Errorf("OP_MSG body doc truncated")
 			}
@@ -123,6 +126,9 @@ func ParseOpMsg(payload []byte) (flagBits uint32, sections []OpMsgSection, err e
 				return flagBits, sections, fmt.Errorf("OP_MSG sequence truncated")
 			}
 			seqLen := int(binary.LittleEndian.Uint32(payload[offset:]))
+			if seqLen < 4 { // minimum sequence size is 4 bytes (the length field itself)
+				return flagBits, sections, fmt.Errorf("OP_MSG sequence too small: %d", seqLen)
+			}
 			if offset+seqLen > len(payload) {
 				return flagBits, sections, fmt.Errorf("OP_MSG sequence data truncated")
 			}
