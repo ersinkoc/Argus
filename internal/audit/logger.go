@@ -102,7 +102,10 @@ func isMinimalEvent(eventType string) bool {
 	case "connection_open", "connection_close",
 		"auth_success", "auth_failure",
 		"command_blocked", "session_timeout",
-		"session_killed", "policy_reloaded":
+		"session_killed", "policy_reloaded",
+		"gateway_query", "approval_created",
+		"approval_resolved", "allowlist_added",
+		"allowlist_used":
 		return true
 	}
 	return false

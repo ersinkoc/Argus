@@ -8,7 +8,6 @@ import (
 
 func TestPolicyConfigUnmarshalEmpty(t *testing.T) {
 	// Empty JSON — should use defaults
-	cfg := DefaultConfig()
 	content := `{
 		"server": {"listeners": [{"address": ":5432", "protocol": "postgresql"}]},
 		"pool": {"max_connections_per_target": 1, "connection_max_lifetime": "1h", "connection_timeout": "1s", "health_check_interval": "1s"},

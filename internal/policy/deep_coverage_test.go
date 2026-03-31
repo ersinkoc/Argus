@@ -178,7 +178,7 @@ func TestDecisionCacheExpiry(t *testing.T) {
 	// Wait for expiry
 	time.Sleep(100 * time.Millisecond)
 
-	d, ok = cache.get("key1")
+	_, ok = cache.get("key1")
 	if ok {
 		t.Error("expired entry should not be found")
 	}
