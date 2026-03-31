@@ -254,7 +254,11 @@ func (p *Proxy) PoolStats() map[string]pool.PoolStats {
 func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 	defer clientConn.Close()
 
-	remoteAddr := clientConn.RemoteAddr().(*net.TCPAddr)
+	remoteAddr, ok := clientConn.RemoteAddr().(*net.TCPAddr)
+	if !ok {
+		log.Printf("[argus] non-TCP connection from %v", clientConn.RemoteAddr())
+		return
+	}
 	handler := p.router.GetHandler(protocolName)
 	if handler == nil {
 		log.Printf("[argus] no handler for protocol %q", protocolName)

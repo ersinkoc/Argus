@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -56,7 +57,7 @@ func (p *LDAPProvider) Authenticate(username, password string) ([]string, error)
 		return nil, fmt.Errorf("empty username or password")
 	}
 
-	addr := fmt.Sprintf("%s:%d", p.cfg.Host, p.cfg.Port)
+	addr := net.JoinHostPort(p.cfg.Host, strconv.Itoa(p.cfg.Port))
 
 	// Connect
 	var conn net.Conn
@@ -107,7 +108,7 @@ func (p *LDAPProvider) resolveGroups(username string) []string {
 		return nil
 	}
 
-	addr := fmt.Sprintf("%s:%d", p.cfg.Host, p.cfg.Port)
+	addr := net.JoinHostPort(p.cfg.Host, strconv.Itoa(p.cfg.Port))
 	var conn net.Conn
 	var err error
 

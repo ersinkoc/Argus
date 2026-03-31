@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -31,7 +32,7 @@ type QueryRecorder struct {
 	mu      sync.Mutex
 	file    *os.File
 	encoder *json.Encoder
-	enabled bool
+	enabled atomic.Bool
 }
 
 // NewQueryRecorder creates a recorder writing to the specified file.
@@ -41,16 +42,17 @@ func NewQueryRecorder(path string) (*QueryRecorder, error) {
 		return nil, err
 	}
 
-	return &QueryRecorder{
+	r := &QueryRecorder{
 		file:    f,
 		encoder: json.NewEncoder(f),
-		enabled: true,
-	}, nil
+	}
+	r.enabled.Store(true)
+	return r, nil
 }
 
 // Record writes a query record.
 func (r *QueryRecorder) Record(rec QueryRecord) {
-	if !r.enabled {
+	if !r.enabled.Load() {
 		return
 	}
 	r.mu.Lock()
@@ -60,7 +62,7 @@ func (r *QueryRecorder) Record(rec QueryRecord) {
 
 // Close closes the recorder.
 func (r *QueryRecorder) Close() error {
-	r.enabled = false
+	r.enabled.Store(false)
 	if r.file != nil {
 		return r.file.Close()
 	}
@@ -69,5 +71,5 @@ func (r *QueryRecorder) Close() error {
 
 // Enabled returns whether recording is active.
 func (r *QueryRecorder) Enabled() bool {
-	return r.enabled
+	return r.enabled.Load()
 }

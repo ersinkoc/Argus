@@ -111,12 +111,14 @@ func main() {
 	proxy := core.NewProxy(cfg, policyEngine, auditLogger)
 
 	// Query recording
+	var queryRecorder *audit.QueryRecorder
 	if cfg.Audit.RecordFile != "" {
-		recorder, err := audit.NewQueryRecorder(cfg.Audit.RecordFile)
+		var err error
+		queryRecorder, err = audit.NewQueryRecorder(cfg.Audit.RecordFile)
 		if err != nil {
 			log.Printf("Warning: query recorder failed: %v", err)
 		} else {
-			proxy.SetQueryRecorder(recorder)
+			proxy.SetQueryRecorder(queryRecorder)
 			log.Printf("Query recording enabled: %s", cfg.Audit.RecordFile)
 		}
 	}
@@ -338,6 +340,11 @@ func main() {
 		// Flush pending webhook events before closing audit logger
 		if webhookWriter != nil {
 			webhookWriter.Stop()
+		}
+
+		// Close query recorder
+		if queryRecorder != nil {
+			queryRecorder.Close()
 		}
 
 		// Flush audit logs

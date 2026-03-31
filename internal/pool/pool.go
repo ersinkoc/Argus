@@ -65,7 +65,11 @@ func (p *Pool) Start() {
 
 	// Warmup: pre-create minimum idle connections
 	if p.minIdle > 0 {
-		go p.warmup()
+		p.wg.Add(1)
+		go func() {
+			defer p.wg.Done()
+			p.warmup()
+		}()
 	}
 }
 
