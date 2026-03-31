@@ -55,16 +55,28 @@ func hasKeyword(sql, keyword string) bool {
 }
 
 // indexKeywordOutsideQuotes finds a SQL keyword in the string, skipping
-// content inside single-quoted string literals to avoid false matches.
+// content inside quoted literals or identifiers:
+//   - Single quotes (SQL string literals: 'value')
+//   - Double quotes (SQL identifiers: "column")
+//   - Backticks (MySQL identifiers: `column`)
 func indexKeywordOutsideQuotes(upper, keyword string) int {
-	inQuote := false
+	var quoteChar byte // 0 = not in quote
 	klen := len(keyword)
 	for i := 0; i < len(upper); i++ {
-		if upper[i] == '\'' {
-			inQuote = !inQuote
+		ch := upper[i]
+		// Track quote state for ', ", `
+		if ch == '\'' || ch == '"' || ch == '`' {
+			if quoteChar == 0 {
+				quoteChar = ch // entering quote
+			} else if quoteChar == ch {
+				quoteChar = 0 // leaving quote
+			}
 			continue
 		}
-		if !inQuote && i+klen <= len(upper) && upper[i:i+klen] == keyword {
+		if quoteChar != 0 {
+			continue // inside a quoted section
+		}
+		if i+klen <= len(upper) && upper[i:i+klen] == keyword {
 			// Check word boundaries
 			before := i == 0 || upper[i-1] == ' ' || upper[i-1] == '\n' || upper[i-1] == '\t' || upper[i-1] == '('
 			after := i+klen == len(upper) || upper[i+klen] == ' ' || upper[i+klen] == '\n' || upper[i+klen] == '\t' || upper[i+klen] == ')'

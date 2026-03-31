@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 
 	"github.com/ersinkoc/argus/internal/audit"
+	"github.com/ersinkoc/argus/internal/inspection"
+	"github.com/ersinkoc/argus/internal/policy"
 )
 
 // HandleQuery handles POST /api/gateway/query — submit a SQL query.
@@ -226,6 +229,90 @@ func (gw *Gateway) HandleQueryStatus(w http.ResponseWriter, r *http.Request) {
 			"status":      "resolved_or_expired",
 		})
 	}
+}
+
+// HandleDryRun handles POST /api/gateway/dryrun — preview what would happen without executing.
+func (gw *Gateway) HandleDryRun(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req QueryRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"invalid request: %s"}`, err.Error()), http.StatusBadRequest)
+		return
+	}
+	if req.SQL == "" || req.Username == "" {
+		http.Error(w, `{"error":"sql and username are required"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Resolve from API key context
+	if apiKey, ok := r.Context().Value(gatewayAPIKeyCtx).(*APIKey); ok {
+		if req.Username == "" {
+			req.Username = apiKey.Username
+		}
+		if req.Database == "" && apiKey.Database != "" {
+			req.Database = apiKey.Database
+		}
+	}
+
+	// Run the pipeline up to (but not including) execution
+	cmd := inspection.Classify(req.SQL)
+	fingerprint := inspection.FingerprintHash(req.SQL)
+	costEstimate := inspection.EstimateCost(cmd)
+
+	var clientIP net.IP
+	if req.ClientIP != "" {
+		clientIP = net.ParseIP(req.ClientIP)
+	}
+
+	roles := req.Roles
+	if len(roles) == 0 && gw.policyEngine.Loader().Current() != nil {
+		roles = policy.ResolveUserRoles(req.Username, gw.policyEngine.Loader().Current().Roles)
+	}
+
+	policyCtx := &policy.Context{
+		Username:    req.Username,
+		Roles:       roles,
+		ClientIP:    clientIP,
+		Database:    req.Database,
+		Tables:      cmd.Tables,
+		Columns:     cmd.Columns,
+		Timestamp:   time.Now(),
+		CommandType: cmd.Type,
+		RiskLevel:   cmd.RiskLevel,
+		RawSQL:      req.SQL,
+		HasWhere:    cmd.HasWhere,
+		CostScore:   costEstimate.Score,
+	}
+	decision := gw.policyEngine.Evaluate(policyCtx)
+	needsApproval := gw.needsApproval(cmd)
+
+	// Check if allowlist would match
+	allowlistHit := gw.allowlist.Check(fingerprint, req.Username, req.Database) != nil
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"fingerprint":      fingerprint,
+		"command_type":     cmd.Type.String(),
+		"tables":           cmd.Tables,
+		"risk_level":       cmd.RiskLevel.String(),
+		"cost_score":       costEstimate.Score,
+		"cost_factors":     costEstimate.Factors,
+		"has_where":        cmd.HasWhere,
+		"roles":            roles,
+		"policy_action":    decision.Action.String(),
+		"policy_name":      decision.PolicyName,
+		"policy_reason":    decision.Reason,
+		"risk_score":       decision.RiskScore,
+		"masking_rules":    decision.MaskingRules,
+		"max_rows":         decision.MaxRows,
+		"needs_approval":   needsApproval,
+		"allowlist_hit":    allowlistHit,
+		"would_execute":    decision.Action != policy.ActionBlock && !needsApproval || allowlistHit,
+	})
 }
 
 // gatewayAPIKeyCtx is the context key for the resolved API key.

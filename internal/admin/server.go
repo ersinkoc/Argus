@@ -59,6 +59,7 @@ type GatewayHandler interface {
 	HandleApprove(w http.ResponseWriter, r *http.Request)
 	HandleAllowlist(w http.ResponseWriter, r *http.Request)
 	HandleQueryStatus(w http.ResponseWriter, r *http.Request)
+	HandleDryRun(w http.ResponseWriter, r *http.Request)
 }
 
 // SetGateway sets the gateway handler and optional API key middleware.
@@ -132,6 +133,7 @@ func (s *Server) Start() error {
 		mux.Handle("/api/gateway/approve", wrapGW(s.gatewayHandler.HandleApprove))
 		mux.Handle("/api/gateway/allowlist", wrapGW(s.gatewayHandler.HandleAllowlist))
 		mux.Handle("/api/gateway/status", wrapGW(s.gatewayHandler.HandleQueryStatus))
+		mux.Handle("/api/gateway/dryrun", wrapGW(s.gatewayHandler.HandleDryRun))
 	}
 
 	var handler http.Handler = mux

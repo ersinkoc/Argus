@@ -36,6 +36,7 @@ td{padding:8px;color:#e2e8f0;font-size:13px;border-bottom:1px solid #1e293b}
 <div class="g" id="cards"></div>
 <div class="sec"><h2>Targets</h2><div id="tgts"></div></div>
 <div class="sec"><h2>Sessions</h2><table><thead><tr><th>ID</th><th>User</th><th>DB</th><th>Duration</th><th>Cmds</th></tr></thead><tbody id="sess"></tbody></table></div>
+<div class="sec"><h2>Pending Approvals</h2><div id="approvals" style="font-size:13px;color:#94a3b8">Loading...</div></div>
 <div class="sec"><h2>Live Events <span id="ws-status" style="font-size:11px;color:#64748b">(connecting...)</span></h2><div id="events" style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:12px;max-height:400px;overflow-y:auto;font-family:monospace;font-size:12px"></div></div>
 <div class="ft">Argus - The Hundred-Eyed Database Guardian | Dashboard refreshes every 5s | Live events via WebSocket</div>
 <script>
@@ -46,7 +47,10 @@ function mk(tag,cls,txt){const e=document.createElement(tag);if(cls)e.className=
 function card(p,t,v,s){const d=document.createElement('div');d.className='c';const h=mk('h3','',t);const val=mk('div','v',String(v));const sub=mk('div','s',s);d.appendChild(h);d.appendChild(val);d.appendChild(sub);p.appendChild(d)}
 async function R(){
 try{
-const[h,d,s]=await Promise.all([fetch(B+'/healthz').then(r=>r.json()),fetch(B+'/api/dashboard').then(r=>r.json()),fetch(B+'/api/sessions').then(r=>r.json())]);
+const[h,d,s,ap]=await Promise.all([fetch(B+'/healthz').then(r=>r.json()),fetch(B+'/api/dashboard').then(r=>r.json()),fetch(B+'/api/sessions').then(r=>r.json()),fetch(B+'/api/approvals').then(r=>r.json()).catch(function(){return[]})]);
+const apDiv=E('approvals');apDiv.replaceChildren();
+if(!ap||ap.length===0){T(apDiv,'No pending approvals')}
+else{ap.forEach(function(a){const row=document.createElement('div');row.style.cssText='background:#1e293b;border:1px solid #334155;border-radius:8px;padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center';const info=mk('div','');info.innerHTML='<b style="color:#fbbf24">'+esc(a.username||'')+'</b>@'+esc(a.database||'')+' <span style="color:#94a3b8">'+esc((a.sql||'').substring(0,80))+'</span> <span style="color:#f87171">['+esc(a.risk_level||'')+']</span>';const btns=mk('div','');const appBtn=document.createElement('button');appBtn.textContent='Approve';appBtn.style.cssText='background:#065f46;color:#34d399;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;margin-right:6px;font-size:12px';appBtn.onclick=function(){fetch(B+'/api/approvals/approve?id='+a.id,{method:'POST'}).then(function(){R()})};const denyBtn=document.createElement('button');denyBtn.textContent='Deny';denyBtn.style.cssText='background:#7f1d1d;color:#f87171;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px';denyBtn.onclick=function(){fetch(B+'/api/approvals/deny?id='+a.id+'&approver=dashboard&reason=denied',{method:'POST'}).then(function(){R()})};btns.appendChild(appBtn);btns.appendChild(denyBtn);row.appendChild(info);row.appendChild(btns);apDiv.appendChild(row)})}
 const st=E('st');T(st,h.status);st.className='badge '+(h.status==='healthy'?'bg-ok':'bg-err');
 const o=d.overview||{},tr=d.traffic||{},p=d.pool||{};
 const cc=E('cards');cc.replaceChildren();
