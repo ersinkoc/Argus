@@ -266,6 +266,12 @@ func BuildCommandComplete(tag string) *Message {
 	return &Message{Type: MsgCommandComplete, Payload: payload}
 }
 
+// BuildSimpleQuery constructs a Simple Query ('Q') message.
+func BuildSimpleQuery(sql string) *Message {
+	payload := append([]byte(sql), 0)
+	return &Message{Type: MsgQuery, Payload: payload}
+}
+
 // ParseErrorResponse extracts fields from an ErrorResponse message.
 func ParseErrorResponse(payload []byte) map[byte]string {
 	fields := make(map[byte]string)

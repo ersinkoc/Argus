@@ -18,6 +18,11 @@ const (
 	SessionTimeout                    // session timed out
 	SessionKilled                     // session killed by admin
 	PolicyReloaded                    // policy files reloaded
+	GatewayQuery                      // query submitted via gateway API
+	ApprovalCreated                   // approval request created
+	ApprovalResolved                  // approval approved or denied
+	AllowlistAdded                    // allowlist entry created
+	AllowlistUsed                     // allowlist entry consumed
 )
 
 var eventTypeNames = map[EventType]string{
@@ -31,8 +36,13 @@ var eventTypeNames = map[EventType]string{
 	ResultTruncated: "result_truncated",
 	PolicyViolation: "policy_violation",
 	SessionTimeout:  "session_timeout",
-	SessionKilled:   "session_killed",
-	PolicyReloaded:  "policy_reloaded",
+	SessionKilled:    "session_killed",
+	PolicyReloaded:   "policy_reloaded",
+	GatewayQuery:     "gateway_query",
+	ApprovalCreated:  "approval_created",
+	ApprovalResolved: "approval_resolved",
+	AllowlistAdded:   "allowlist_added",
+	AllowlistUsed:    "allowlist_used",
 }
 
 func (e EventType) String() string {

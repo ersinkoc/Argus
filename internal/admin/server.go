@@ -49,6 +49,20 @@ type Server struct {
 	classifyFn     func([]string) any
 	pluginListFn   func() any
 	onSessionKill  func(sessionID string)
+	gatewayHandler GatewayHandler
+}
+
+// GatewayHandler is the interface for gateway HTTP handlers.
+type GatewayHandler interface {
+	HandleQuery(w http.ResponseWriter, r *http.Request)
+	HandleApprove(w http.ResponseWriter, r *http.Request)
+	HandleAllowlist(w http.ResponseWriter, r *http.Request)
+	HandleQueryStatus(w http.ResponseWriter, r *http.Request)
+}
+
+// SetGateway sets the gateway handler for SQL gateway endpoints.
+func (s *Server) SetGateway(gw GatewayHandler) {
+	s.gatewayHandler = gw
 }
 
 // NewServer creates a new admin server.
@@ -102,6 +116,14 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/ready", s.handleReady)
 	mux.HandleFunc("/readyz", s.handleReady) // Kubernetes readiness probe alias
 	mux.HandleFunc("/livez", s.handleLive)
+
+	// Gateway endpoints
+	if s.gatewayHandler != nil {
+		mux.HandleFunc("/api/gateway/query", s.gatewayHandler.HandleQuery)
+		mux.HandleFunc("/api/gateway/approve", s.gatewayHandler.HandleApprove)
+		mux.HandleFunc("/api/gateway/allowlist", s.gatewayHandler.HandleAllowlist)
+		mux.HandleFunc("/api/gateway/status", s.gatewayHandler.HandleQueryStatus)
+	}
 
 	var handler http.Handler = mux
 	if s.authToken != "" {

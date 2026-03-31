@@ -16,6 +16,7 @@ import (
 	"github.com/ersinkoc/argus/internal/classify"
 	"github.com/ersinkoc/argus/internal/config"
 	"github.com/ersinkoc/argus/internal/core"
+	"github.com/ersinkoc/argus/internal/gateway"
 	"github.com/ersinkoc/argus/internal/inspection"
 	"github.com/ersinkoc/argus/internal/plugin"
 	"github.com/ersinkoc/argus/internal/policy"
@@ -271,6 +272,26 @@ func main() {
 				Reason:    "admin_api",
 			})
 		})
+
+		// SQL Gateway
+		if cfg.Gateway.Enabled {
+			gw := gateway.New(gateway.GatewayDeps{
+				Cfg:             cfg,
+				PolicyEngine:    policyEngine,
+				AuditLogger:     auditLogger,
+				ApprovalManager: proxy.ApprovalManager(),
+				Pools:           proxy.Pools(),
+				AnomalyDetector: proxy.AnomalyDetector(),
+			})
+			if cfg.Gateway.WebhookURL != "" {
+				gw.SetWebhookNotifier(gateway.NewWebhookNotifier(
+					cfg.Gateway.WebhookURL,
+					cfg.Gateway.WebhookHeaders,
+				))
+			}
+			adminServer.SetGateway(gw)
+			log.Printf("SQL Gateway enabled with %d API key(s)", gw.APIKeyStore().Count())
+		}
 
 		// Wire test runner with proxy addresses
 		if len(cfg.Targets) > 0 {

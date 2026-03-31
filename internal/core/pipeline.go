@@ -251,6 +251,16 @@ func (p *Proxy) PoolStats() map[string]pool.PoolStats {
 	return stats
 }
 
+// Pools returns the connection pools (for gateway use).
+func (p *Proxy) Pools() map[string]*pool.Pool {
+	return p.pools
+}
+
+// AnomalyDetector returns the anomaly detector.
+func (p *Proxy) AnomalyDetector() *inspection.AnomalyDetector {
+	return p.anomalyDetector
+}
+
 func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 	defer clientConn.Close()
 

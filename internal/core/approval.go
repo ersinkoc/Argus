@@ -34,6 +34,12 @@ type ApprovalRequest struct {
 	ResolvedBy  string         `json:"resolved_by,omitempty"`
 	Reason      string         `json:"reason,omitempty"`
 
+	// Gateway-specific fields
+	Fingerprint  string `json:"fingerprint,omitempty"`
+	ClientIP     string `json:"client_ip,omitempty"`
+	CostScore    int    `json:"cost_score,omitempty"`
+	Source       string `json:"source,omitempty"` // "proxy" or "gateway"
+
 	doneCh chan ApprovalStatus
 }
 
@@ -158,4 +164,72 @@ func (am *ApprovalManager) Count() int {
 	am.mu.RLock()
 	defer am.mu.RUnlock()
 	return len(am.pending)
+}
+
+// Get returns a pending request by ID, or nil if not found.
+func (am *ApprovalManager) Get(id string) *ApprovalRequest {
+	am.mu.RLock()
+	defer am.mu.RUnlock()
+	return am.pending[id]
+}
+
+// SubmitForApproval creates a pending approval without blocking.
+// Returns the approval ID immediately. The caller can poll via Get()
+// or wait via WaitForResolution().
+func (am *ApprovalManager) SubmitForApproval(req *ApprovalRequest) (string, error) {
+	if req.ID == "" {
+		b := make([]byte, 8)
+		rand.Read(b)
+		req.ID = hex.EncodeToString(b)
+	}
+	req.Status = ApprovalPending
+	req.RequestedAt = time.Now()
+	req.doneCh = make(chan ApprovalStatus, 1)
+
+	am.mu.Lock()
+	if _, exists := am.pending[req.ID]; exists {
+		am.mu.Unlock()
+		return "", fmt.Errorf("duplicate approval ID %q", req.ID)
+	}
+	am.pending[req.ID] = req
+	am.mu.Unlock()
+
+	// Notify admins
+	if am.onNotify != nil {
+		am.onNotify(req)
+	}
+
+	// Start expiry goroutine
+	go func() {
+		time.Sleep(am.timeout)
+		am.mu.Lock()
+		if r, ok := am.pending[req.ID]; ok && r.Status == ApprovalPending {
+			r.Status = ApprovalExpired
+			delete(am.pending, req.ID)
+			select {
+			case r.doneCh <- ApprovalExpired:
+			default:
+			}
+		}
+		am.mu.Unlock()
+	}()
+
+	return req.ID, nil
+}
+
+// WaitForResolution blocks until the approval is resolved or context is cancelled.
+func (am *ApprovalManager) WaitForResolution(ctx context.Context, id string) (ApprovalStatus, error) {
+	am.mu.RLock()
+	req, ok := am.pending[id]
+	am.mu.RUnlock()
+	if !ok {
+		return ApprovalDenied, fmt.Errorf("approval %q not found", id)
+	}
+
+	select {
+	case status := <-req.doneCh:
+		return status, nil
+	case <-ctx.Done():
+		return ApprovalDenied, ctx.Err()
+	}
 }

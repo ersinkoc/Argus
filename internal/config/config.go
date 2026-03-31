@@ -26,6 +26,34 @@ type Config struct {
 	Rewrite      RewriteConfig      `json:"rewrite,omitempty"`
 	SlowQuery    SlowQueryConfig    `json:"slow_query,omitempty"`
 	PlanAnalysis PlanAnalysisConfig `json:"plan_analysis,omitempty"`
+	Gateway      GatewayConfig      `json:"gateway,omitempty"`
+}
+
+// GatewayConfig configures the SQL Gateway HTTP API.
+type GatewayConfig struct {
+	Enabled         bool               `json:"enabled"`
+	APIKeys         []APIKeyConfig     `json:"api_keys,omitempty"`
+	MaxResultRows   int64              `json:"max_result_rows,omitempty"`
+	ApprovalTimeout string             `json:"approval_timeout,omitempty"`
+	WebhookURL      string             `json:"webhook_url,omitempty"`
+	WebhookHeaders  map[string]string  `json:"webhook_headers,omitempty"`
+	RequireApproval RequireApprovalCfg `json:"require_approval,omitempty"`
+}
+
+// APIKeyConfig defines an API key for gateway authentication.
+type APIKeyConfig struct {
+	Key       string   `json:"key"`
+	Username  string   `json:"username"`
+	Roles     []string `json:"roles,omitempty"`
+	Database  string   `json:"database,omitempty"`
+	RateLimit float64  `json:"rate_limit,omitempty"`
+	Enabled   bool     `json:"enabled"`
+}
+
+// RequireApprovalCfg defines which queries need approval in gateway mode.
+type RequireApprovalCfg struct {
+	RiskLevelGTE string   `json:"risk_level_gte,omitempty"`
+	Commands     []string `json:"commands,omitempty"`
 }
 
 type ServerConfig struct {
@@ -406,6 +434,10 @@ func expandEnvInConfig(cfg *Config) {
 	cfg.Rewrite.ForceWhere = ExpandEnvValue(cfg.Rewrite.ForceWhere)
 	cfg.SlowQuery.Threshold = ExpandEnvValue(cfg.SlowQuery.Threshold)
 	cfg.PlanAnalysis.Timeout = ExpandEnvValue(cfg.PlanAnalysis.Timeout)
+	cfg.Gateway.WebhookURL = ExpandEnvValue(cfg.Gateway.WebhookURL)
+	for i := range cfg.Gateway.APIKeys {
+		cfg.Gateway.APIKeys[i].Key = ExpandEnvValue(cfg.Gateway.APIKeys[i].Key)
+	}
 }
 
 // ExpandEnvValue replaces $ENV{VAR} patterns with environment variable values.
