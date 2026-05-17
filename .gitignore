@@ -43,3 +43,5 @@ plan.html
 *.key
 *.crt
 .env
+
+.dfmt/

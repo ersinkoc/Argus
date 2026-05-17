@@ -24,7 +24,7 @@ make cross-all                          # cross-compile linux/darwin/windows
 - Database WAF: SQLi detection, schema enumeration blocking, system command blocking
 - 15 policy condition types including sql_injection, plan_cost_gte, require_where, max_joins, max_tables
 - SQL Gateway: HTTP API for query submission with approval workflow and allowlist
-- 1319 unit tests, 86% coverage (22 packages)
+- 1718 unit tests, 100% coverage (22 packages)
 - 171 E2E tests across 4 scripts: PG + MySQL CRUD, transactions, bulk data, error resilience, admin API, concurrent burst
 
 ### Key Packages (22 packages)
@@ -55,7 +55,7 @@ make cross-all                          # cross-compile linux/darwin/windows
 
 ### Pipeline Flow
 ```
-Command → Inspect → Cost → Policy (14 conditions + SQLi detection) → Rate Limit
+Command → Inspect → Cost → Policy (15 conditions + SQLi detection) → Rate Limit
   → Anomaly → Approval (critical) → Forward → PII Auto-Mask
   → Result → Latency → Slow Query → Record → Audit → Broadcast
 ```
@@ -111,74 +111,33 @@ All rules in that file are hard overrides. They govern:
 
 ### Language & Tooling
 
-<!-- Uncomment and fill the relevant block -->
-
-<!-- GO -->
-<!--
-- Language: Go
-- Min version: 1.22+
+- Language: Go 1.22+
 - Build: `go build ./...`
-- Lint: `go vet ./... && staticcheck ./...`
-- Test: `go test ./... -count=1 -short`
-- Dependency policy: [strict-zero | minimal | standard]
--->
-
-<!-- TYPESCRIPT -->
-<!--
-- Language: TypeScript
-- Runtime: Node.js 22+ / Bun
-- Build: `npx tsc --noEmit`
-- Lint: `npx eslint . --quiet`
-- Test: `npm test`
-- Module system: ESM / CJS / dual
--->
-
-<!-- RUST -->
-<!--
-- Language: Rust
-- Edition: 2021
-- Build: `cargo build`
-- Lint: `cargo clippy -- -D warnings`
-- Test: `cargo test`
--->
-
-<!-- PYTHON -->
-<!--
-- Language: Python
-- Min version: 3.11+
-- Lint: `ruff check .` or `flake8`
-- Type check: `mypy .`
-- Test: `pytest`
--->
-
-<!-- PHP -->
-<!--
-- Language: PHP
-- Min version: 8.2+
-- Lint: `php -l <files>`
-- Test: `phpunit` or manual
--->
+- Lint: `go vet ./...`
+- Test: `go test ./... -count=1`
+- Coverage: `go test ./... -coverprofile=c.out && go tool cover -html=c.out`
 
 ### Architecture Notes
 
-<!-- Describe the project's architecture constraints, e.g.: -->
-<!-- - Single binary output -->
-<!-- - Monorepo structure -->
-<!-- - Microservice boundaries -->
-<!-- - Specific patterns to follow (CQRS, hexagonal, etc.) -->
+- Zero external dependencies — stdlib only, no CGO, single binary
+- 4 database protocol handlers: PostgreSQL, MySQL, MSSQL, MongoDB
+- Streaming masking pipeline: O(1) memory per row
+- Policy engine with LRU decision cache (60s TTL) and hot-reload
+- Async audit logging via buffered channel (drops on overflow)
+- Connection pools with circuit breakers protecting backend connections
+- SQLi detection via string literal removal + pattern matching in `policy/matcher.go`
 
 ### Dependency Policy
 
-<!-- Options: -->
-<!-- - ZERO: No external dependencies allowed -->
-<!-- - MINIMAL: External deps require explicit justification -->
-<!-- - STANDARD: Use well-maintained packages freely -->
-<!-- - List any banned or preferred packages -->
+- ZERO: No external dependencies allowed — stdlib only
+- All code must compile with `go build ./...` without network access
 
 ### Known Gotchas
 
-<!-- List anything an AI agent would likely get wrong, e.g.: -->
-<!-- - "Don't use X library v3, we're pinned to v2 because of Y" -->
-<!-- - "The `config` package has a global singleton, don't create new instances" -->
-<!-- - "Tests require Docker running for integration suite" -->
-<!-- - "CI uses Node 20, not 22 — don't use 22-only APIs" -->
+- `config` package uses `$ENV{VAR}` expansion and `ARGUS_*` env overrides
+- Policy evaluation is cached — call `engine.InvalidateCache()` after policy file reload
+- Rate limiter buckets auto-cleaned every 5 minutes (prevents memory leaks)
+- `RequestApproval()` blocks until approved, denied, or timeout — use `SubmitForApproval()` for non-blocking
+- WebSocket Origin validation enabled — set `gateway.allowed_origins` for cross-origin requests
+- Admin API accepts token via `Authorization: Bearer <token>` header only (query string deprecated)
+
