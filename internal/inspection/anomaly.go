@@ -6,6 +6,14 @@ import (
 	"time"
 )
 
+const (
+	// maxTablesPerUser limits the number of tables tracked per user profile
+	// to prevent memory exhaustion attacks
+	maxTablesPerUser = 1000
+	// maxProfiles limits the total number of user profiles to prevent memory exhaustion
+	maxProfiles = 10000
+)
+
 // AnomalyDetector tracks query patterns per user and flags anomalies.
 // It learns a baseline of normal behavior (query types, tables, frequency)
 // and alerts when patterns deviate significantly.
@@ -53,6 +61,20 @@ func (d *AnomalyDetector) Record(username string, cmdType CommandType, tables []
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
+	// Enforce profile limit to prevent memory exhaustion
+	if len(d.profiles) >= maxProfiles {
+		// Evict oldest profile
+		var oldest string
+		var oldestTime time.Time
+		for name, p := range d.profiles {
+			if oldestTime.IsZero() || p.lastSeen.Before(oldestTime) {
+				oldest = name
+				oldestTime = p.lastSeen
+			}
+		}
+		delete(d.profiles, oldest)
+	}
+
 	p, ok := d.profiles[username]
 	if !ok {
 		p = &userProfile{
@@ -65,7 +87,10 @@ func (d *AnomalyDetector) Record(username string, cmdType CommandType, tables []
 
 	p.commandCounts[cmdType]++
 	for _, t := range tables {
-		p.tableCounts[t]++
+		// Enforce table limit per user to prevent memory exhaustion
+		if len(p.tableCounts) < maxTablesPerUser {
+			p.tableCounts[t]++
+		}
 	}
 	p.hourCounts[ts.Hour()]++
 	p.totalQueries++

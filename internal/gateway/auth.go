@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"crypto/subtle"
 	"net/http"
 	"sync"
 )
@@ -36,16 +37,18 @@ func (s *APIKeyStore) Add(key *APIKey) {
 }
 
 // Validate checks an API key and returns the associated identity.
-// Returns nil if invalid or disabled.
+// Uses constant-time comparison to prevent timing attacks.
 func (s *APIKeyStore) Validate(key string) *APIKey {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	k, ok := s.keys[key]
-	if !ok || !k.Enabled {
-		return nil
+	// Use constant-time comparison to prevent timing attacks
+	for _, k := range s.keys {
+		if k.Enabled && subtle.ConstantTimeCompare([]byte(k.Key), []byte(key)) == 1 {
+			return k
+		}
 	}
-	return k
+	return nil
 }
 
 // Count returns the number of registered keys.

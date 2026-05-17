@@ -111,10 +111,14 @@ func partialTC(value []byte) []byte {
 	if len(s) < 2 {
 		return []byte("***")
 	}
-	// Show last 2 digits
+	// Show last 2 digits, mask rest
 	last2 := s[len(s)-2:]
-	masked := strings.Repeat("*", len(s)-2) + last2
-	return []byte(masked)
+	masked := make([]byte, len(s))
+	for i := 0; i < len(s)-2; i++ {
+		masked[i] = '*'
+	}
+	copy(masked[len(s)-2:], last2)
+	return masked
 }
 
 func hashValue(value []byte) []byte {

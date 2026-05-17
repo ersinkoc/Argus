@@ -256,17 +256,103 @@ func countJoinsUpper(upper string) int {
 	return strings.Count(upper, " JOIN ")
 }
 
+// normalizeSQL strips inline comments (/* ... */) and line comments (--),
+// removes string literals, and collapses all whitespace to defeat obfuscation.
+// Order matters: strip comments first, then remove string literals.
+func normalizeSQL(s string) string {
+	// Strip /* ... */ comments
+	for {
+		start := strings.Index(s, "/*")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(s[start+2:], "*/")
+		if end == -1 {
+			break
+		}
+		s = s[:start] + " " + s[start+2+end+2:]
+	}
+
+	// Strip -- line comments (must be followed by whitespace or end)
+	for {
+		idx := strings.Index(s, "--")
+		if idx == -1 {
+			break
+		}
+		// Find end of line or end of string
+		end := idx + 2
+		for end < len(s) && s[end] != '\n' && s[end] != '\r' {
+			end++
+		}
+		s = s[:idx] + " " + s[end:]
+	}
+
+	// Remove string literals to prevent quoting-based bypass
+	s = removeStringLiterals(s)
+
+	// Collapse whitespace (tabs, newlines, multiple spaces → single space)
+	var b strings.Builder
+	b.Grow(len(s))
+	prevSpace := false
+	for _, c := range s {
+		if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+			if !prevSpace {
+				b.WriteByte(' ')
+				prevSpace = true
+			}
+		} else {
+			b.WriteRune(c)
+			prevSpace = false
+		}
+	}
+	return b.String()
+}
+
+// removeStringLiterals replaces SQL string literals with @ placeholder.
+// 'hello' becomes @, '1'='1' becomes @=@ after this processing.
+func removeStringLiterals(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	inQuote := false
+	quoteChar := byte(0)
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !inQuote && (c == '\'' || c == '"') {
+			inQuote = true
+			quoteChar = c
+			b.WriteByte('@')
+		} else if inQuote && c == quoteChar {
+			// Check for escaped quote ('' or "")
+			if i+1 < len(s) && s[i+1] == quoteChar {
+				i++
+			} else {
+				inQuote = false
+			}
+		} else if !inQuote {
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
+}
+
 // detectSQLInjection checks for common SQL injection patterns.
 func detectSQLInjection(sql string) bool {
 	return detectSQLInjectionUpper(strings.ToUpper(sql))
 }
 
 func detectSQLInjectionUpper(upper string) bool {
+	// Check for comment-based termination BEFORE normalization removes string literals
+	// This detects '; -- and '; # where the comment hides the rest of the query
+	if strings.Contains(upper, "'--") || strings.Contains(upper, "'#") ||
+		strings.Contains(upper, "\"--") || strings.Contains(upper, "\"#") {
+		return true
+	}
+
 	// Normalize: strip inline comments and collapse whitespace to defeat obfuscation.
 	// Catches OR/**/1=1, OR\t1=1, OR\n1=1, etc.
 	upper = normalizeSQL(upper)
 
-	// Tautology patterns: OR 1=1, OR 'a'='a', OR true
+	// Tautology patterns: OR 1=1, OR @=@ (after string literal removal), OR true
 	for _, pattern := range sqliTautologyPatterns {
 		if strings.Contains(upper, pattern) {
 			return true
@@ -281,12 +367,6 @@ func detectSQLInjectionUpper(upper string) bool {
 		if selectAfter {
 			return true
 		}
-	}
-
-	// Comment-based termination: '; -- or '; #
-	if (strings.Contains(upper, "'--") || strings.Contains(upper, "'#") ||
-		strings.Contains(upper, "\"--") || strings.Contains(upper, "\"#")) {
-		return true
 	}
 
 	// Stacked queries with dangerous commands after semicolon
@@ -331,45 +411,16 @@ func detectSQLInjectionUpper(upper string) bool {
 	return false
 }
 
-// normalizeSQL strips inline comments (/* ... */) and collapses all whitespace
-// to single spaces. This defeats obfuscation techniques like OR/**/1=1.
-func normalizeSQL(s string) string {
-	// Strip /* ... */ comments
-	for {
-		start := strings.Index(s, "/*")
-		if start == -1 {
-			break
-		}
-		end := strings.Index(s[start+2:], "*/")
-		if end == -1 {
-			break
-		}
-		s = s[:start] + " " + s[start+2+end+2:]
-	}
-	// Collapse whitespace (tabs, newlines, multiple spaces → single space)
-	var b strings.Builder
-	b.Grow(len(s))
-	prevSpace := false
-	for _, c := range s {
-		if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
-			if !prevSpace {
-				b.WriteByte(' ')
-				prevSpace = true
-			}
-		} else {
-			b.WriteRune(c)
-			prevSpace = false
-		}
-	}
-	return b.String()
-}
-
 // sqliTautologyPatterns are common tautology injection patterns.
+// After string literal removal, '1'='1' becomes @=@, 'a'='a' becomes @=@, etc.
 var sqliTautologyPatterns = []string{
-	"OR 1=1", "OR '1'='1'", "OR 'A'='A'", "OR TRUE",
+	"OR 1=1", "OR @=@", "OR TRUE", "OR FALSE",
 	"OR 1 =1", "OR 1= 1", "OR 1 = 1",
 	"OR ''='", "OR \"\"=\"",
 	"' OR '1", "' OR '", "\" OR \"",
+	"OR 1>0", "OR 1<2", "OR 1>=1", "OR 1<=1",
+	"OR NULL=NULL", "OR 0=0",
+	"AND 1=1", "AND @=@", "AND TRUE", "AND FALSE",
 }
 
 func matchWorkHours(t time.Time, hoursRange string) bool {

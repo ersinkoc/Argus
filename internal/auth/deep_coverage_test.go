@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"testing"
@@ -77,9 +79,9 @@ func TestSSOValidateTokenInvalidParts(t *testing.T) {
 }
 
 func TestSSOValidateTokenInvalidPayload(t *testing.T) {
-	p := NewSSOProvider(SSOConfig{})
-	// Valid-ish header, garbage payload, garbage sig
-	header := base64.URLEncoding.EncodeToString([]byte(`{"alg":"none"}`))
+	p := NewSSOProvider(SSOConfig{Secret: "test-secret"})
+	// Valid header with secret configured, garbage payload, garbage sig
+	header := base64.URLEncoding.EncodeToString([]byte(`{"alg":"HS256"}`))
 	token := header + ".!!!invalid!!!." + base64.URLEncoding.EncodeToString([]byte("x"))
 	_, err := p.ValidateToken(token)
 	if err == nil {
@@ -88,10 +90,14 @@ func TestSSOValidateTokenInvalidPayload(t *testing.T) {
 }
 
 func TestSSOValidateTokenInvalidJSON(t *testing.T) {
-	p := NewSSOProvider(SSOConfig{})
-	header := base64.URLEncoding.EncodeToString([]byte(`{"alg":"none"}`))
+	p := NewSSOProvider(SSOConfig{Secret: "test-secret"})
+	header := base64.URLEncoding.EncodeToString([]byte(`{"alg":"HS256"}`))
 	payload := base64.URLEncoding.EncodeToString([]byte(`not json`))
-	token := header + "." + payload + "." + base64.URLEncoding.EncodeToString([]byte("x"))
+	// Create a token with invalid signature
+	h := hmac.New(sha256.New, []byte("test-secret"))
+	h.Write([]byte(header + "." + payload))
+	sig := base64.URLEncoding.EncodeToString(h.Sum(nil))
+	token := header + "." + payload + "." + sig
 	_, err := p.ValidateToken(token)
 	if err == nil {
 		t.Error("invalid JSON claims should fail")
@@ -113,12 +119,16 @@ func TestSSOValidateTokenInvalidSignatureEncoding(t *testing.T) {
 }
 
 func TestSSOValidateTokenNoExpiry(t *testing.T) {
-	p := NewSSOProvider(SSOConfig{})
-	header := base64.URLEncoding.EncodeToString([]byte(`{"alg":"none"}`))
+	p := NewSSOProvider(SSOConfig{Secret: "test-secret"})
+	header := base64.URLEncoding.EncodeToString([]byte(`{"alg":"HS256"}`))
 	claims := JWTClaims{Subject: "user1"} // no expiry
 	claimsJSON, _ := json.Marshal(claims)
 	payload := base64.URLEncoding.EncodeToString(claimsJSON)
-	token := header + "." + payload + "." + base64.URLEncoding.EncodeToString([]byte("x"))
+	// Create valid signature
+	h := hmac.New(sha256.New, []byte("test-secret"))
+	h.Write([]byte(header + "." + payload))
+	sig := base64.URLEncoding.EncodeToString(h.Sum(nil))
+	token := header + "." + payload + "." + sig
 
 	result, err := p.ValidateToken(token)
 	if err != nil {

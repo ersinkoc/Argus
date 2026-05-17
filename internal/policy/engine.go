@@ -181,10 +181,11 @@ func (e *Engine) cacheKey(ctx *Context) string {
 
 // decisionCache is a bounded LRU-like cache for policy decisions.
 type decisionCache struct {
-	entries map[string]*cacheEntry
-	mu      sync.RWMutex
-	maxSize int
-	ttl     time.Duration
+	entries      map[string]*cacheEntry
+	mu           sync.RWMutex
+	maxSize      int
+	ttl          time.Duration
+	lastCleanup  time.Time
 }
 
 type cacheEntry struct {
@@ -194,9 +195,10 @@ type cacheEntry struct {
 
 func newDecisionCache(maxSize int, ttl time.Duration) *decisionCache {
 	return &decisionCache{
-		entries: make(map[string]*cacheEntry, maxSize),
-		maxSize: maxSize,
-		ttl:     ttl,
+		entries:     make(map[string]*cacheEntry, maxSize),
+		maxSize:     maxSize,
+		ttl:         ttl,
+		lastCleanup: time.Now(),
 	}
 }
 
@@ -217,6 +219,17 @@ func (c *decisionCache) get(key string) (*Decision, bool) {
 func (c *decisionCache) set(key string, d *Decision) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	// Periodic cleanup of expired entries (every TTL interval)
+	if time.Since(c.lastCleanup) > c.ttl {
+		now := time.Now()
+		for k, v := range c.entries {
+			if now.After(v.expiry) {
+				delete(c.entries, k)
+			}
+		}
+		c.lastCleanup = time.Now()
+	}
 
 	// Evict if full (simple: clear half)
 	if len(c.entries) >= c.maxSize {

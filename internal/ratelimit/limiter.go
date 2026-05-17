@@ -1,6 +1,7 @@
 package ratelimit
 
 import (
+	"context"
 	"sync"
 	"time"
 )
@@ -12,6 +13,7 @@ type Limiter struct {
 	rate    float64 // tokens per second
 	burst   int     // max tokens
 	cleanup time.Duration
+	stopCh  chan struct{}
 }
 
 type bucket struct {
@@ -20,14 +22,38 @@ type bucket struct {
 }
 
 // NewLimiter creates a rate limiter.
-// rate: queries per second allowed. burst: max burst size.
 func NewLimiter(rate float64, burst int) *Limiter {
 	return &Limiter{
 		buckets: make(map[string]*bucket),
 		rate:    rate,
 		burst:   burst,
 		cleanup: 5 * time.Minute,
+		stopCh:  make(chan struct{}),
 	}
+}
+
+// StartCleanupRunner starts a background goroutine that periodically cleans up stale buckets.
+// It automatically stops when the given context is cancelled.
+func (l *Limiter) StartCleanupRunner(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(l.cleanup)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				l.Cleanup()
+			case <-ctx.Done():
+				return
+			case <-l.stopCh:
+				return
+			}
+		}
+	}()
+}
+
+// Stop stops the cleanup runner.
+func (l *Limiter) Stop() {
+	close(l.stopCh)
 }
 
 // Allow checks if a request is allowed for the given key.

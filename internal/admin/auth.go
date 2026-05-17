@@ -2,6 +2,7 @@ package admin
 
 import (
 	"crypto/subtle"
+	"log"
 	"net/http"
 	"strings"
 )
@@ -9,7 +10,7 @@ import (
 // AuthMiddleware provides token-based authentication for admin API endpoints.
 // If no token is configured, all requests are allowed.
 type AuthMiddleware struct {
-	token      string
+	token       string
 	publicPaths map[string]bool // paths that don't require auth
 }
 
@@ -43,8 +44,11 @@ func (a *AuthMiddleware) Wrap(next http.Handler) http.Handler {
 		// Check Authorization header
 		auth := r.Header.Get("Authorization")
 		if auth == "" {
-			// Also check query parameter for WebSocket
+			// DEPRECATED: Query parameter auth is only for WebSocket convenience.
+			// Tokens in URLs are logged, cached, and exposed in Referrer headers.
+			// Prefer using Authorization header instead.
 			if qToken := r.URL.Query().Get("token"); qToken != "" {
+				log.Printf("[argus] WARNING: query string token auth is deprecated for %s", r.URL.Path)
 				auth = "Bearer " + qToken
 			}
 		}

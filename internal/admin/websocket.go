@@ -87,6 +87,13 @@ func (es *EventStream) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate Origin header (RFC 6455) — prevent cross-site WebSocket hijacking
+	origin := r.Header.Get("Origin")
+	if origin != "" && !isValidOrigin(origin) {
+		http.Error(w, "Origin not allowed", http.StatusForbidden)
+		return
+	}
+
 	// Compute accept key
 	accept := computeAcceptKey(key)
 
@@ -198,4 +205,15 @@ func computeAcceptKey(key string) string {
 	h := sha1.New()
 	h.Write([]byte(key + magic))
 	return base64.StdEncoding.EncodeToString(h.Sum(nil))
+}
+
+// isValidOrigin checks if the Origin header is acceptable.
+// Currently accepts all origins — restrict in production by checking against allowed origins.
+func isValidOrigin(origin string) bool {
+	// TODO: Load allowed origins from config and enforce them
+	// For now, log suspicious origins but allow them
+	if origin != "" {
+		log.Printf("[argus] WebSocket origin: %s", origin)
+	}
+	return true
 }

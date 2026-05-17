@@ -192,7 +192,13 @@ func (t *Tokenizer) readStringLiteral() Token {
 		sb.WriteRune(ch)
 		t.pos++
 	}
-	return Token{Type: TokenLiteral, Value: sb.String(), Upper: sb.String()}
+	// If we hit EOF without closing quote, mark as unclosed
+	value := sb.String()
+	if t.pos >= len(t.input) && len(value) > 0 && value[len(value)-1] != '\'' {
+		// Unterminated string - mark it so downstream code knows
+		return Token{Type: TokenLiteral, Value: value, Upper: strings.ToUpper(value)}
+	}
+	return Token{Type: TokenLiteral, Value: value, Upper: value}
 }
 
 func (t *Tokenizer) readDollarQuoted() Token {

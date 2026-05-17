@@ -506,6 +506,19 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("pool: max_connections_per_target must be positive")
 	}
 
+	// Admin auth token validation when admin is enabled
+	if cfg.Admin.Enabled {
+		if len(cfg.Admin.AuthToken) < 32 {
+			return fmt.Errorf("admin.auth_token must be at least 32 characters for security")
+		}
+	}
+
+	// Circuit breaker threshold validation
+	if cfg.Pool.CircuitBreakerThreshold == 0 {
+		// Default to safe value if not specified
+		cfg.Pool.CircuitBreakerThreshold = 5
+	}
+
 	// Cross-reference validation
 	// Check routing default target exists
 	if cfg.Routing.DefaultTarget != "" && len(cfg.Targets) > 0 {

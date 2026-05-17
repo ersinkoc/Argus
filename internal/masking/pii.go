@@ -73,7 +73,7 @@ func NewPIIDetector() *PIIDetector {
 			category:    "email",
 		},
 		{
-			regex:       regexp.MustCompile(`^\+?[0-9]{10,15}$`),
+			regex:       regexp.MustCompile(`^\+?[1-9][0-9]{9,14}$`),
 			transformer: "partial_phone",
 			category:    "phone",
 		},
@@ -90,7 +90,7 @@ func NewPIIDetector() *PIIDetector {
 			validate:    tcKimlikCheck,
 		},
 		{
-			regex:       regexp.MustCompile(`^[A-Z]{2}[0-9]{2}[A-Z0-9]{4,30}$`),
+			regex:       regexp.MustCompile(`^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$`),
 			transformer: "partial_iban",
 			category:    "iban",
 		},

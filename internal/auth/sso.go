@@ -56,16 +56,18 @@ func (p *SSOProvider) ValidateToken(token string) (*JWTClaims, error) {
 	}
 
 	// Verify signature (HMAC-SHA256)
-	if p.cfg.Secret != "" {
-		signatureInput := parts[0] + "." + parts[1]
-		expectedSig := hmacSHA256([]byte(p.cfg.Secret), []byte(signatureInput))
-		actualSig, err := base64URLDecode(parts[2])
-		if err != nil {
-			return nil, fmt.Errorf("invalid JWT signature encoding: %w", err)
-		}
-		if !hmac.Equal(expectedSig, actualSig) {
-			return nil, fmt.Errorf("JWT signature verification failed")
-		}
+	// If no secret configured, reject all tokens (prevents security bypass)
+	if p.cfg.Secret == "" {
+		return nil, fmt.Errorf("JWT validation not configured: secret is required")
+	}
+	signatureInput := parts[0] + "." + parts[1]
+	expectedSig := hmacSHA256([]byte(p.cfg.Secret), []byte(signatureInput))
+	actualSig, err := base64URLDecode(parts[2])
+	if err != nil {
+		return nil, fmt.Errorf("invalid JWT signature encoding: %w", err)
+	}
+	if !hmac.Equal(expectedSig, actualSig) {
+		return nil, fmt.Errorf("JWT signature verification failed")
 	}
 
 	// Decode payload

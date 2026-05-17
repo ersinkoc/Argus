@@ -432,6 +432,9 @@ func (h *Handler) WriteError(ctx context.Context, client net.Conn, code string, 
 }
 
 func (h *Handler) Close() error {
+	if h.stmtStore != nil {
+		h.stmtStore = nil
+	}
 	return nil
 }
 

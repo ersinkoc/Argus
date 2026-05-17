@@ -71,7 +71,9 @@ func (am *ApprovalManager) OnNotify(fn func(*ApprovalRequest)) {
 func (am *ApprovalManager) RequestApproval(ctx context.Context, req *ApprovalRequest) (ApprovalStatus, error) {
 	if req.ID == "" {
 		b := make([]byte, 8)
-		rand.Read(b)
+		if _, err := rand.Read(b); err != nil {
+			return ApprovalDenied, fmt.Errorf("failed to generate approval ID: %w", err)
+		}
 		req.ID = hex.EncodeToString(b)
 	}
 	req.Status = ApprovalPending
@@ -124,7 +126,11 @@ func (am *ApprovalManager) Approve(id, approver string) error {
 	delete(am.pending, id)
 	am.mu.Unlock()
 
-	req.doneCh <- ApprovalApproved
+	// Non-blocking send to prevent deadlock if waiter already timed out
+	select {
+	case req.doneCh <- ApprovalApproved:
+	default:
+	}
 	return nil
 }
 
@@ -143,7 +149,10 @@ func (am *ApprovalManager) Deny(id, approver, reason string) error {
 	delete(am.pending, id)
 	am.mu.Unlock()
 
-	req.doneCh <- ApprovalDenied
+	select {
+	case req.doneCh <- ApprovalDenied:
+	default:
+	}
 	return nil
 }
 
@@ -179,7 +188,9 @@ func (am *ApprovalManager) Get(id string) *ApprovalRequest {
 func (am *ApprovalManager) SubmitForApproval(req *ApprovalRequest) (string, error) {
 	if req.ID == "" {
 		b := make([]byte, 8)
-		rand.Read(b)
+		if _, err := rand.Read(b); err != nil {
+			return "", fmt.Errorf("failed to generate approval ID: %w", err)
+		}
 		req.ID = hex.EncodeToString(b)
 	}
 	req.Status = ApprovalPending
