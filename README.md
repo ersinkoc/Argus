@@ -614,7 +614,7 @@ bash scripts/e2e-realworld.sh   # Real-world E2E (45 tests)
 bash scripts/e2e-extra-scenarios.sh  # Extra scenarios (63 tests)
 ```
 
-Current: **1319 unit tests + 171 E2E**, **86% coverage** (22 packages).
+Current: **1718 unit tests**, **99.4% coverage** (22 packages).
 
 ---
 
