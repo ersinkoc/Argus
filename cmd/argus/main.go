@@ -6,7 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -41,13 +41,16 @@ func main() {
 		os.Exit(0)
 	}
 
-	log.SetPrefix("[argus] ")
-	log.SetFlags(log.LstdFlags | log.Lmsgprefix)
+	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})
+	slog.SetDefault(slog.New(handler))
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	if err := run(context.Background(), *configPath, *validateOnly, sigCh, os.Stdout); err != nil {
-		log.Fatalf("%v", err)
+		slog.Error("fatal", "error", err)
+		os.Exit(1)
 	}
 }
 
@@ -64,8 +67,7 @@ func run(ctx context.Context, configPath string, validateOnly bool, sigCh <-chan
 		return nil
 	}
 
-	log.Printf("Argus — The Hundred-Eyed Database Guardian")
-	log.Printf("Version: %s (built %s)", version, buildTime)
+	slog.Info("starting", "version", version, "build_time", buildTime)
 	fmt.Fprint(output, core.StartupBanner(cfg, version))
 
 	auditLevel := audit.ParseLogLevel(cfg.Audit.Level)
@@ -79,11 +81,10 @@ func run(ctx context.Context, configPath string, validateOnly bool, sigCh <-chan
 	policyLoader := policy.NewLoader(cfg.Policy.Files, cfg.Policy.ReloadInterval)
 	if len(cfg.Policy.Files) > 0 {
 		if err := policyLoader.Load(); err != nil {
-			log.Printf("Warning: failed to load policies: %v", err)
+			slog.Warn("failed to load policies", "error", err)
 		} else {
 			ps := policyLoader.Current()
-			log.Printf("Policies loaded: %d file(s), %d role(s), %d rule(s)",
-				len(cfg.Policy.Files), len(ps.Roles), len(ps.Policies))
+			slog.Info("policies loaded", "files", len(cfg.Policy.Files), "roles", len(ps.Roles), "rules", len(ps.Policies))
 		}
 	}
 
@@ -100,7 +101,7 @@ func run(ctx context.Context, configPath string, validateOnly bool, sigCh <-chan
 
 	if cfg.Session.MaxPerUser > 0 {
 		proxy.SetSessionLimiter(session.NewConcurrencyLimiter(cfg.Session.MaxPerUser))
-		log.Printf("Session limit: %d per user", cfg.Session.MaxPerUser)
+		slog.Info("session limit set", "max_per_user", cfg.Session.MaxPerUser)
 	}
 
 	setupRewriter(cfg, proxy)
@@ -114,8 +115,8 @@ func run(ctx context.Context, configPath string, validateOnly bool, sigCh <-chan
 
 	reloadFn := makeReloadFn(policyLoader, policyEngine)
 
-	log.Println("Argus is ready.")
-	log.Println("\"Know who connects. Control what they do. Protect what they see.\"")
+	slog.Info("argus is ready")
+	slog.Info("know who connects, control what they do, protect what they see")
 
 	waitForSignals(sigCh, reloadFn)
 	gracefulShutdown(ctx, proxy, adminServer, policyLoader, webhookWriter, queryRecorder, auditLogger)
@@ -151,11 +152,11 @@ func setupQueryRecorder(cfg *config.Config, proxy *core.Proxy) *audit.QueryRecor
 	}
 	qr, err := audit.NewQueryRecorder(cfg.Audit.RecordFile)
 	if err != nil {
-		log.Printf("Warning: query recorder failed: %v", err)
+		slog.Warn("query recorder failed", "error", err)
 		return nil
 	}
 	proxy.SetQueryRecorder(qr)
-	log.Printf("Query recording enabled: %s", cfg.Audit.RecordFile)
+	slog.Info("query recording enabled", "path", cfg.Audit.RecordFile)
 	return qr
 }
 
@@ -169,7 +170,7 @@ func setupWebhook(cfg *config.Config, auditLogger *audit.Logger) *audit.WebhookW
 	})
 	auditLogger.AddWriter(ww)
 	ww.Start()
-	log.Printf("SIEM webhook enabled: %s", cfg.Audit.WebhookURL)
+	slog.Info("siem webhook enabled", "url", cfg.Audit.WebhookURL)
 	return ww
 }
 
@@ -180,11 +181,11 @@ func setupRewriter(cfg *config.Config, proxy *core.Proxy) {
 	rw := inspection.NewRewriter()
 	if cfg.Rewrite.MaxLimit > 0 {
 		rw.SetMaxLimit(cfg.Rewrite.MaxLimit)
-		log.Printf("Query rewrite: auto-LIMIT %d", cfg.Rewrite.MaxLimit)
+		slog.Info("query rewrite: auto-LIMIT", "max_limit", cfg.Rewrite.MaxLimit)
 	}
 	if cfg.Rewrite.ForceWhere != "" {
 		rw.SetForceWhere(cfg.Rewrite.ForceWhere)
-		log.Printf("Query rewrite: force WHERE %s", cfg.Rewrite.ForceWhere)
+		slog.Info("query rewrite: force WHERE", "condition", cfg.Rewrite.ForceWhere)
 	}
 	proxy.SetRewriter(rw)
 }
@@ -195,11 +196,11 @@ func setupSlowQueryLogger(cfg *config.Config, proxy *core.Proxy, auditLogger *au
 	}
 	threshold, err := time.ParseDuration(cfg.SlowQuery.Threshold)
 	if err != nil {
-		log.Printf("Warning: invalid slow_query threshold: %v", err)
+		slog.Warn("invalid slow_query threshold", "error", err)
 		return
 	}
 	proxy.SetSlowQueryLogger(audit.NewSlowQueryLogger(threshold, auditLogger))
-	log.Printf("Slow query threshold: %s", threshold)
+	slog.Info("slow query threshold configured", "threshold", threshold)
 }
 
 func makeOnReloadFn(policyEngine *policy.Engine, auditLogger *audit.Logger) func() {
@@ -214,13 +215,13 @@ func makeOnReloadFn(policyEngine *policy.Engine, auditLogger *audit.Logger) func
 
 func makeReloadFn(policyLoader *policy.Loader, policyEngine *policy.Engine) func() {
 	return func() {
-		log.Println("Reloading policies...")
+		slog.Info("reloading policies...")
 		if err := policyLoader.Load(); err != nil {
-			log.Printf("Policy reload failed: %v", err)
+			slog.Error("policy reload failed", "error", err)
 			return
 		}
 		policyEngine.InvalidateCache()
-		log.Println("Policies reloaded successfully")
+		slog.Info("policies reloaded successfully")
 	}
 }
 
@@ -322,7 +323,7 @@ func setupAdmin(cfg *config.Config, proxy *core.Proxy, policyLoader *policy.Load
 	srv.OnPolicyReload(makePolicyReloadFn(policyLoader, policyEngine))
 
 	if cfg.Admin.AuthToken != "" {
-		srv.SetAuthToken(cfg.Admin.AuthToken)
+		srv.SetAuthToken(cfg.Admin.AuthToken, cfg.Admin.AllowedSources...)
 	}
 
 	srv.SetApprovalProvider(proxy.ApprovalManager())
@@ -377,7 +378,7 @@ func setupGateway(cfg *config.Config, srv *admin.Server, policyEngine *policy.En
 		))
 	}
 	srv.SetGateway(gw, gw.APIKeyStore().Middleware)
-	log.Printf("SQL Gateway enabled with %d API key(s)", gw.APIKeyStore().Count())
+	slog.Info("sql gateway enabled", "api_keys", gw.APIKeyStore().Count())
 }
 
 func setupTestRunner(cfg *config.Config) {
@@ -416,7 +417,7 @@ func waitForSignals(sigCh <-chan os.Signal, reloadFn func()) {
 			reloadFn()
 			continue
 		}
-		log.Printf("Received signal %v, initiating graceful shutdown...", sig)
+		slog.Info("received shutdown signal", "signal", sig)
 		break
 	}
 }
@@ -444,9 +445,9 @@ func gracefulShutdown(ctx context.Context, proxy *core.Proxy, adminServer *admin
 
 	select {
 	case <-done:
-		log.Println("Graceful shutdown complete.")
+		slog.Info("graceful shutdown complete")
 	case <-shutdownCtx.Done():
-		log.Println("Shutdown timed out, forcing exit.")
+		slog.Warn("shutdown timed out, forcing exit")
 	}
 }
 

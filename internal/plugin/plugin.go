@@ -2,7 +2,7 @@ package plugin
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 )
 
@@ -58,7 +58,7 @@ func (r *Registry) Register(p Plugin) error {
 	}
 
 	r.plugins[name] = p
-	log.Printf("[argus] plugin registered: %s (type: %s)", name, p.Type())
+	slog.Info("plugin registered", "name", name, "type", p.Type())
 	return nil
 }
 
@@ -123,7 +123,7 @@ func (r *Registry) CloseAll() {
 
 	for name, p := range r.plugins {
 		if err := p.Close(); err != nil {
-			log.Printf("[argus] plugin %s close error: %v", name, err)
+			slog.Error("plugin close error", "name", name, "error", err)
 		}
 	}
 }

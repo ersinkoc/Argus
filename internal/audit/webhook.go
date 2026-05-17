@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -125,7 +125,7 @@ func (w *WebhookWriter) flush() {
 
 	req, err := http.NewRequest("POST", w.url, bytes.NewReader(payload))
 	if err != nil {
-		log.Printf("[argus] webhook request error: %v", err)
+		slog.Error("webhook request error", "error", err)
 		return
 	}
 
@@ -137,7 +137,7 @@ func (w *WebhookWriter) flush() {
 
 	resp, err := w.client.Do(req)
 	if err != nil {
-		log.Printf("[argus] webhook send error (%d events): %v", len(events), err)
+		slog.Error("webhook send error", "event_count", len(events), "error", err)
 		return
 	}
 	// Drain and close body to enable HTTP connection reuse
@@ -145,7 +145,7 @@ func (w *WebhookWriter) flush() {
 	resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		log.Printf("[argus] webhook returned %d (%d events)", resp.StatusCode, len(events))
+		slog.Warn("webhook returned error", "status", resp.StatusCode, "event_count", len(events))
 	}
 }
 

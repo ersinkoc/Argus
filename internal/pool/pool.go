@@ -3,7 +3,7 @@ package pool
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -77,7 +77,7 @@ func (p *Pool) warmup() {
 	for i := 0; i < p.minIdle; i++ {
 		conn, err := p.createConn(context.Background())
 		if err != nil {
-			log.Printf("[argus] pool warmup failed for %s: %v", p.target, err)
+			slog.Error("pool warmup failed", "target", p.target, "error", err)
 			return
 		}
 		p.mu.Lock()
@@ -86,7 +86,7 @@ func (p *Pool) warmup() {
 		p.mu.Unlock()
 	}
 	if p.minIdle > 0 {
-		log.Printf("[argus] pool warmup: %d idle connections for %s", p.minIdle, p.target)
+		slog.Info("pool warmup complete", "target", p.target, "idle_connections", p.minIdle)
 	}
 }
 
@@ -130,7 +130,7 @@ func (p *Pool) Acquire(ctx context.Context) (*Conn, error) {
 		if !isConnAlive(conn.conn) {
 			conn.Close()
 			p.total--
-			log.Printf("[argus] pool: discarded stale idle connection to %s", p.target)
+			slog.Warn("discarded stale idle connection", "target", p.target)
 			continue
 		}
 
@@ -294,7 +294,7 @@ func (p *Pool) checkHealth() {
 	if err != nil {
 		p.mu.Lock()
 		if p.healthy {
-			log.Printf("[argus] target %s is now unhealthy: %v", p.target, err)
+			slog.Warn("target is now unhealthy", "target", p.target, "error", err)
 		}
 		p.healthy = false
 		p.mu.Unlock()
@@ -310,7 +310,7 @@ func (p *Pool) checkHealth() {
 
 	p.mu.Lock()
 	if !p.healthy {
-		log.Printf("[argus] target %s is now healthy", p.target)
+		slog.Info("target is now healthy", "target", p.target)
 	}
 	p.healthy = true
 	p.mu.Unlock()

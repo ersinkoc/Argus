@@ -3,7 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -250,9 +250,10 @@ type RotationConfig struct {
 }
 
 type AdminConfig struct {
-	Enabled   bool   `json:"enabled"`
-	Address   string `json:"address"`
-	AuthToken string `json:"auth_token"`
+	Enabled       bool     `json:"enabled"`
+	Address       string   `json:"address"`
+	AuthToken     string   `json:"auth_token"`
+	AllowedSources []string `json:"allowed_sources,omitempty"` // CIDR ranges, e.g. ["10.0.0.0/8", "192.168.1.0/24"]
 }
 
 type MetricsConfig struct {
@@ -454,7 +455,7 @@ func ExpandEnvValue(s string) string {
 		varName := s[start+5 : start+end]
 		envVal, ok := os.LookupEnv(varName)
 		if !ok {
-			log.Printf("[argus] WARNING: $ENV{%s} references unset environment variable", varName)
+			slog.Warn("$ENV{} references unset environment variable", "var", varName)
 		}
 		s = s[:start] + envVal + s[start+end+1:]
 	}

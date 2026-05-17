@@ -2,7 +2,7 @@ package core
 
 import (
 	"crypto/tls"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -87,9 +87,9 @@ func (r *CertReloader) watchLoop() {
 		select {
 		case <-ticker.C:
 			if err := r.reload(); err != nil {
-				log.Printf("[argus] certificate reload failed: %v", err)
+				slog.Error("certificate reload failed", "error", err)
 			} else {
-				log.Println("[argus] TLS certificates reloaded")
+				slog.Info("tls certificates reloaded")
 			}
 		case <-r.stopCh:
 			return

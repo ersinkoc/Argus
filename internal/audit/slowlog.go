@@ -1,7 +1,7 @@
 package audit
 
 import (
-	"log"
+	"log/slog"
 	"time"
 )
 
@@ -34,8 +34,11 @@ func (s *SlowQueryLogger) Check(event Event, duration time.Duration) bool {
 		s.logger.Log(event)
 	}
 
-	log.Printf("[argus] SLOW QUERY (%v): session=%s user=%s sql=%s",
-		duration, event.SessionID, event.Username, truncate(event.Command, 100))
+	slog.Warn("slow query detected",
+		"duration", duration,
+		"session", event.SessionID,
+		"user", event.Username,
+		"sql", truncate(event.Command, 100))
 
 	return true
 }

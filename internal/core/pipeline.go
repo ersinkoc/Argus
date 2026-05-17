@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"strings"
 	"time"
@@ -190,7 +190,7 @@ func (p *Proxy) Start() error {
 
 // Stop gracefully stops the proxy with connection draining.
 func (p *Proxy) Stop() {
-	log.Println("[argus] shutting down...")
+	slog.Info("shutting down...")
 
 	// Stop rate limiter cleanup goroutine
 	if p.rlCleanupStop != nil {
@@ -205,7 +205,7 @@ func (p *Proxy) Stop() {
 	// Drain active sessions — wait for in-flight queries
 	activeSessions := p.sessionManager.ActiveSessions()
 	if len(activeSessions) > 0 {
-		log.Printf("[argus] draining %d active session(s)...", len(activeSessions))
+		slog.Info("draining active sessions", "count", len(activeSessions))
 		deadline := time.After(10 * time.Second)
 		ticker := time.NewTicker(500 * time.Millisecond)
 		defer ticker.Stop()
@@ -216,7 +216,7 @@ func (p *Proxy) Stop() {
 			case <-deadline:
 				remaining := p.sessionManager.Count()
 				if remaining > 0 {
-					log.Printf("[argus] drain timeout: force-closing %d session(s)", remaining)
+					slog.Warn("drain timeout: force-closing sessions", "count", remaining)
 					for _, s := range p.sessionManager.ActiveSessions() {
 						p.sessionManager.Kill(s.ID)
 					}
@@ -224,7 +224,7 @@ func (p *Proxy) Stop() {
 				break drain
 			case <-ticker.C:
 				if p.sessionManager.Count() == 0 {
-					log.Println("[argus] all sessions drained")
+					slog.Info("all sessions drained")
 					break drain
 				}
 			}
@@ -239,7 +239,7 @@ func (p *Proxy) Stop() {
 		pl.Close()
 	}
 
-	log.Println("[argus] shutdown complete")
+	slog.Info("shutdown complete")
 }
 
 // SessionManager returns the session manager.
@@ -271,12 +271,12 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 
 	remoteAddr, ok := clientConn.RemoteAddr().(*net.TCPAddr)
 	if !ok {
-		log.Printf("[argus] non-TCP connection from %v", clientConn.RemoteAddr())
+		slog.Warn("non-TCP connection", "remote", clientConn.RemoteAddr())
 		return
 	}
 	handler := p.router.GetHandler(protocolName)
 	if handler == nil {
-		log.Printf("[argus] no handler for protocol %q", protocolName)
+		slog.Warn("no handler for protocol", "protocol", protocolName)
 		return
 	}
 
@@ -292,7 +292,7 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 		target = p.cfg.ResolveTarget("")
 	}
 	if target == nil {
-		log.Printf("[argus] no target configured for protocol %s", protocolName)
+		slog.Error("no target configured for protocol", "protocol", protocolName)
 		handler.WriteError(context.Background(), clientConn, "08001", "No target database configured")
 		return
 	}
@@ -316,7 +316,7 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 		var d net.Dialer
 		conn, err := d.DialContext(dialCtx, "tcp", target.Address())
 		if err != nil {
-			log.Printf("[argus] failed to connect to backend %s: %v", target.Name, err)
+			slog.Error("failed to connect to backend", "target", target.Name, "error", err)
 			metrics.Global.ConnectionsFailed.Add(1)
 			handler.WriteError(context.Background(), clientConn, "08001", "Cannot connect to database")
 			return
@@ -326,14 +326,14 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 	} else {
 		// Pool connection for client-speaks-first protocols (PostgreSQL)
 		if pl == nil {
-			log.Printf("[argus] no pool for target %q", target.Name)
+			slog.Error("no pool for target", "target", target.Name)
 			handler.WriteError(context.Background(), clientConn, "08001", "No connection pool for target")
 			return
 		}
 		var err error
 		poolConn, err = pl.Acquire(context.Background())
 		if err != nil {
-			log.Printf("[argus] failed to acquire backend connection for %s: %v", target.Name, err)
+			slog.Error("failed to acquire backend connection", "target", target.Name, "error", err)
 			metrics.Global.ConnectionsFailed.Add(1)
 			handler.WriteError(context.Background(), clientConn, "08001", "Cannot connect to database")
 			return
@@ -359,7 +359,7 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 			Action:    "block",
 			Error:     err.Error(),
 		})
-		log.Printf("[argus] handshake failed: %v", err)
+		slog.Error("handshake failed", "error", err)
 		return
 	}
 
@@ -368,8 +368,7 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 	// Re-resolve target based on database name (logged for future reconnect support)
 	if sessionInfo.Database != "" {
 		if newTarget := p.cfg.ResolveTarget(sessionInfo.Database); newTarget != nil && newTarget.Name != target.Name {
-			log.Printf("[argus] session %s: database %q routes to target %q (connected to %q)",
-				"pending", sessionInfo.Database, newTarget.Name, target.Name)
+			slog.Info("database routing change", "session_id", "pending", "database", sessionInfo.Database, "new_target", newTarget.Name, "current_target", target.Name)
 		}
 	}
 
@@ -406,8 +405,7 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 		Action:    "allow",
 	})
 
-	log.Printf("[argus] session %s: user=%s db=%s from=%s",
-		sess.ID[:8], sess.Username, sess.Database, remoteAddr.IP)
+	slog.Info("session opened", "session_id", sess.ID[:8], "user", sess.Username, "database", sess.Database, "client_ip", remoteAddr.IP)
 
 	// Command loop
 	p.commandLoop(ctx, sess, handler, clientConn, backendNetConn)
@@ -424,7 +422,7 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 	})
 
 	cmdCount, _, _ := sess.Stats()
-	log.Printf("[argus] session %s closed (commands=%d)", sess.ID[:8], cmdCount)
+	slog.Info("session closed", "session_id", sess.ID[:8], "commands", cmdCount)
 }
 
 func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler protocol.Handler, client, backend net.Conn) {
@@ -614,7 +612,7 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 
 			// Forward command to backend
 			if err := handler.ForwardCommand(ctx, rawMsg, backend); err != nil {
-				log.Printf("[argus] forward error: %v", err)
+				slog.Error("forward error", "error", err)
 				return
 			}
 
@@ -643,7 +641,7 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 			// Read and forward result
 			stats, err := handler.ReadAndForwardResult(ctx, backend, client, pipeline)
 			if err != nil {
-				log.Printf("[argus] result forward error: %v", err)
+				slog.Error("result forward error", "error", err)
 				handler.WriteError(ctx, client, "08006", fmt.Sprintf("Backend error: %v", err))
 				return
 			}

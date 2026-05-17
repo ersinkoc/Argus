@@ -2,7 +2,7 @@ package audit
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -118,7 +118,7 @@ func CompactLogs(dir string, cfg CompactionConfig) (*CompactionResult, error) {
 		result.DeletedFiles++
 		result.DeletedNames = append(result.DeletedNames, lf.name)
 		result.FreedBytes += lf.size
-		log.Printf("[argus] compacted audit log: %s (%.1f KB)", lf.name, float64(lf.size)/1024)
+		slog.Info("compacted audit log", "file", lf.name, "size_kb", float64(lf.size)/1024)
 	}
 
 	return result, nil

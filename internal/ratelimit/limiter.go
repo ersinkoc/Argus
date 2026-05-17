@@ -53,7 +53,10 @@ func (l *Limiter) StartCleanupRunner(ctx context.Context) {
 
 // Stop stops the cleanup runner.
 func (l *Limiter) Stop() {
-	close(l.stopCh)
+	if l.stopCh != nil {
+		close(l.stopCh)
+		l.stopCh = nil
+	}
 }
 
 // Allow checks if a request is allowed for the given key.

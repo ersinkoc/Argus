@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"sync"
@@ -119,7 +119,7 @@ func (es *EventStream) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	client := &wsClient{conn: conn}
 	es.add(client)
-	log.Printf("[argus] WebSocket client connected (%d total)", es.Count())
+	slog.Info("WebSocket client connected", "total", es.Count())
 
 	// Read loop (handle ping/pong/close)
 	go es.readLoop(client, bufrw)
@@ -213,7 +213,7 @@ func isValidOrigin(origin string) bool {
 	// TODO: Load allowed origins from config and enforce them
 	// For now, log suspicious origins but allow them
 	if origin != "" {
-		log.Printf("[argus] WebSocket origin: %s", origin)
+		slog.Info("WebSocket origin", "origin", origin)
 	}
 	return true
 }

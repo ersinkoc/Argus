@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"sync"
 
@@ -58,11 +58,7 @@ func (l *Listener) Start() error {
 		return fmt.Errorf("listen on %s: %w", l.cfg.Address, err)
 	}
 
-	tlsStr := ""
-	if l.cfg.TLS.Enabled {
-		tlsStr = " [TLS]"
-	}
-	log.Printf("[argus] listening on %s (protocol: %s)%s", l.cfg.Address, l.cfg.Protocol, tlsStr)
+	slog.Info("listening", "address", l.cfg.Address, "protocol", l.cfg.Protocol, "tls", l.cfg.TLS.Enabled)
 
 	l.wg.Add(1)
 	go l.acceptLoop()
@@ -89,7 +85,7 @@ func (l *Listener) acceptLoop() {
 			case <-l.ctx.Done():
 				return
 			default:
-				log.Printf("[argus] accept error: %v", err)
+				slog.Warn("accept error", "error", err)
 				continue
 			}
 		}
@@ -98,7 +94,7 @@ func (l *Listener) acceptLoop() {
 		select {
 		case l.connSem <- struct{}{}:
 		default:
-			log.Printf("[argus] connection limit reached (%d), rejecting %v", maxConcurrentConns, conn.RemoteAddr())
+			slog.Warn("connection limit reached, rejecting", "limit", maxConcurrentConns, "remote", conn.RemoteAddr())
 			conn.Close()
 			continue
 		}
@@ -109,7 +105,7 @@ func (l *Listener) acceptLoop() {
 			defer func() { <-l.connSem }()
 			defer func() {
 				if r := recover(); r != nil {
-					log.Printf("[argus] panic in connection handler: %v", r)
+					slog.Error("panic in connection handler", "panic", r)
 				}
 			}()
 			if l.handler != nil {

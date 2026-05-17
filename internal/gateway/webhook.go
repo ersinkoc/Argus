@@ -3,7 +3,7 @@ package gateway
 import (
 	"bytes"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -46,7 +46,7 @@ func (w *WebhookNotifier) Notify(payload ApprovalWebhookPayload) {
 
 		req, err := http.NewRequest("POST", w.url, bytes.NewReader(body))
 		if err != nil {
-			log.Printf("[argus] gateway webhook request error: %v", err)
+			slog.Error("gateway webhook request error", "error", err)
 			return
 		}
 
@@ -58,13 +58,13 @@ func (w *WebhookNotifier) Notify(payload ApprovalWebhookPayload) {
 
 		resp, err := w.client.Do(req)
 		if err != nil {
-			log.Printf("[argus] gateway webhook send error: %v", err)
+			slog.Error("gateway webhook send error", "error", err)
 			return
 		}
 		resp.Body.Close()
 
 		if resp.StatusCode >= 400 {
-			log.Printf("[argus] gateway webhook returned %d", resp.StatusCode)
+			slog.Warn("gateway webhook returned error", "status", resp.StatusCode)
 		}
 	}()
 }

@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -146,7 +146,7 @@ func (l *Logger) writeLoop() {
 		select {
 		case event := <-l.eventCh:
 			if err := encoder.Encode(event); err != nil {
-				log.Printf("[argus] audit write error: %v", err)
+				slog.Error("audit write error", "error", err)
 			}
 		case <-l.closeCh:
 			// Drain remaining events
@@ -154,7 +154,7 @@ func (l *Logger) writeLoop() {
 				select {
 				case event := <-l.eventCh:
 					if err := encoder.Encode(event); err != nil {
-						log.Printf("[argus] audit write error: %v", err)
+						slog.Error("audit write error", "error", err)
 					}
 				default:
 					return

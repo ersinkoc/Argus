@@ -3,7 +3,7 @@ package pool
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -227,7 +227,7 @@ func (p *SharedPool) checkHealth() {
 	if err != nil {
 		p.mu.Lock()
 		if p.healthy {
-			log.Printf("[argus] shared pool target %s is unhealthy: %v", p.target, err)
+			slog.Warn("shared pool target is unhealthy", "target", p.target, "error", err)
 		}
 		p.healthy = false
 		p.mu.Unlock()
@@ -236,7 +236,7 @@ func (p *SharedPool) checkHealth() {
 	conn.Close()
 	p.mu.Lock()
 	if !p.healthy {
-		log.Printf("[argus] shared pool target %s is healthy again", p.target)
+		slog.Info("shared pool target is healthy again", "target", p.target)
 	}
 	p.healthy = true
 	p.mu.Unlock()

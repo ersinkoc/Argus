@@ -3,7 +3,7 @@ package policy
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"sync"
 	"time"
@@ -117,11 +117,11 @@ func (l *Loader) watchLoop() {
 		select {
 		case <-ticker.C:
 			if l.filesChanged() {
-				log.Println("[argus] policy files changed, reloading...")
+				slog.Info("policy files changed, reloading...")
 				if err := l.Load(); err != nil {
-					log.Printf("[argus] policy reload failed: %v (keeping current policies)", err)
+					slog.Error("policy reload failed", "error", err, "msg", "keeping current policies")
 				} else {
-					log.Println("[argus] policies reloaded successfully")
+					slog.Info("policies reloaded successfully")
 					if l.onReload != nil {
 						l.onReload()
 					}

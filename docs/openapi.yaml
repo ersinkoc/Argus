@@ -1,0 +1,590 @@
+openapi: 3.0.3
+info:
+  title: Argus Database Firewall API
+  description: |
+    Argus is a database firewall and access proxy that provides SQL injection detection,
+    policy-based access control, PII masking, anomaly detection, and approval workflows.
+
+    Authentication:
+    - Admin API: Bearer token via `Authorization` header
+    - Gateway API: API key via `X-API-Key` header
+  version: 1.0.0
+  contact:
+    name: Argus Support
+
+servers:
+  - url: http://localhost:9091
+    description: Admin API server
+
+tags:
+  - name: Health
+    description: Health and readiness endpoints
+  - name: Admin
+    description: Admin API endpoints
+  - name: Gateway
+    description: SQL Gateway endpoints
+  - name: Metrics
+    description: Metrics endpoint
+
+paths:
+  /healthz:
+    get:
+      tags: [Health]
+      summary: Basic health check
+      description: Returns health status. Always 200 if the server is running.
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  uptime:
+                    type: string
+                    example: "2h15m30s"
+                  version:
+                    type: string
+                    example: "dev"
+
+  /livez:
+    get:
+      tags: [Health]
+      summary: Liveness probe
+      description: Returns 200 if the process is alive. For Kubernetes liveness probes.
+      responses:
+        '200':
+          description: Alive
+
+  /ready:
+  /readyz:
+    get:
+      tags: [Health]
+      summary: Readiness probe
+      description: Returns 200 if at least one backend target is healthy. Returns 503 if no targets are available.
+      responses:
+        '200':
+          description: Ready
+        '503':
+          description: Not ready (no healthy targets)
+
+  /metrics:
+    get:
+      tags: [Metrics]
+      summary: Prometheus metrics
+      description: Returns Prometheus-formatted metrics for monitoring.
+      responses:
+        '200':
+          description: Metrics in Prometheus text format
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  # Admin API
+
+  /api/stats:
+    get:
+      tags: [Admin]
+      summary: System statistics
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: System stats
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/sessions:
+    get:
+      tags: [Admin]
+      summary: List active sessions
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of active sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Session'
+
+  /api/sessions/kill:
+    post:
+      tags: [Admin]
+      summary: Kill a session
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session killed
+
+  /api/policies/reload:
+    post:
+      tags: [Admin]
+      summary: Reload policies
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Policies reloaded
+
+  /api/policies/dryrun:
+    post:
+      tags: [Admin]
+      summary: Dry run policy evaluation
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: username
+          in: query
+          schema:
+            type: string
+        - name: database
+          in: query
+          schema:
+            type: string
+        - name: sql
+          in: query
+          schema:
+            type: string
+        - name: client_ip
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Policy decision
+
+  /api/policies/validate:
+    post:
+      tags: [Admin]
+      summary: Validate policies
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Validation result
+
+  /api/approvals:
+    get:
+      tags: [Admin]
+      summary: List pending approvals
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of pending approvals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ApprovalRequest'
+
+  /api/approvals/approve:
+    post:
+      tags: [Admin]
+      summary: Approve a request
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: approver
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Approved
+
+  /api/approvals/deny:
+    post:
+      tags: [Admin]
+      summary: Deny a request
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: approver
+          in: query
+          schema:
+            type: string
+        - name: reason
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Denied
+
+  /api/audit/search:
+    get:
+      tags: [Admin]
+      summary: Search audit logs
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: session_id
+          in: query
+          schema:
+            type: string
+        - name: username
+          in: query
+          schema:
+            type: string
+        - name: database
+          in: query
+          schema:
+            type: string
+        - name: event_type
+          in: query
+          schema:
+            type: string
+        - name: action
+          in: query
+          schema:
+            type: string
+        - name: command_type
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: start
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: end
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Audit entries
+
+  /api/audit/export:
+    get:
+      tags: [Admin]
+      summary: Export audit logs as CSV
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: session_id
+          in: query
+          schema:
+            type: string
+        - name: username
+          in: query
+          schema:
+            type: string
+        - name: database
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: CSV file download
+          content:
+            text/csv:
+              schema:
+                type: string
+
+  /api/pool/health:
+    get:
+      tags: [Admin]
+      summary: Pool health status
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Pool health
+        '503':
+          description: Unhealthy targets exist
+
+  /api/health/deep:
+    get:
+      tags: [Admin]
+      summary: Deep health check (pings all targets)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Per-target latency results
+
+  /api/dashboard:
+    get:
+      tags: [Admin]
+      summary: Dashboard data
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Dashboard JSON
+
+  /api/classify:
+    get:
+      tags: [Admin]
+      summary: Classify columns for PII
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: columns
+          in: query
+          schema:
+            type: string
+        - name: column
+          in: query
+          schema:
+            type: string
+          allowEmptyValue: true
+      responses:
+        '200':
+          description: Classification results
+
+  /api/plugins:
+    get:
+      tags: [Admin]
+      summary: List loaded plugins
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Plugin list
+
+  # Gateway API
+
+  /api/gateway/query:
+    post:
+      tags: [Gateway]
+      summary: Execute SQL query
+      security:
+        - APIKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryRequest'
+      responses:
+        '200':
+          description: Query result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryResponse'
+
+  /api/gateway/approve:
+    post:
+      tags: [Gateway]
+      summary: Approve a pending query
+      security:
+        - APIKeyAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                approval_id:
+                  type: string
+                approver:
+                  type: string
+                type:
+                  type: string
+                  enum: [one_time, time_window]
+                duration:
+                  type: string
+      responses:
+        '200':
+          description: Approval result
+
+  /api/gateway/allowlist:
+    get:
+      tags: [Gateway]
+      summary: List allowlist entries
+      security:
+        - APIKeyAuth: []
+      responses:
+        '200':
+          description: Allowlist entries
+    delete:
+      tags: [Gateway]
+      summary: Remove allowlist entry
+      security:
+        - APIKeyAuth: []
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Removed
+
+  /api/gateway/status:
+    get:
+      tags: [Gateway]
+      summary: Check approval status
+      security:
+        - APIKeyAuth: []
+      parameters:
+        - name: approval_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Status
+
+  /api/gateway/dryrun:
+    post:
+      tags: [Gateway]
+      summary: Preview policy decision
+      security:
+        - APIKeyAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryRequest'
+      responses:
+        '200':
+          description: Policy decision preview
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Token
+    APIKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    Session:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        database:
+          type: string
+        client_ip:
+          type: string
+        connected_at:
+          type: string
+          format: date-time
+        last_activity:
+          type: string
+          format: date-time
+        command_count:
+          type: integer
+        bytes_received:
+          type: integer
+        bytes_sent:
+          type: integer
+
+    ApprovalRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        session_id:
+          type: string
+        username:
+          type: string
+        database:
+          type: string
+        sql:
+          type: string
+        risk_level:
+          type: string
+        policy_name:
+          type: string
+        status:
+          type: string
+          enum: [pending, approved, denied, expired]
+        requested_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: string
+          format: date-time
+        resolved_by:
+          type: string
+        reason:
+          type: string
+
+    QueryRequest:
+      type: object
+      required:
+        - sql
+      properties:
+        sql:
+          type: string
+        username:
+          type: string
+        database:
+          type: string
+        client_ip:
+          type: string
+
+    QueryResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, blocked, masked, error, pending_approval]
+        columns:
+          type: array
+          items:
+            type: string
+        rows:
+          type: array
+          items:
+            type: array
+        row_count:
+          type: integer
+        duration:
+          type: string
+        fingerprint:
+          type: string
+        approval_id:
+          type: string
+        masked_cols:
+          type: array
+          items:
+            type: string
+        policy:
+          type: string

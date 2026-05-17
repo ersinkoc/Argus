@@ -1,6 +1,7 @@
 package ratelimit
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -96,4 +97,33 @@ func BenchmarkLimiterAllow(b *testing.B) {
 	for b.Loop() {
 		limiter.Allow("user1")
 	}
+}
+
+func TestStartCleanupRunner(t *testing.T) {
+	limiter := NewLimiter(1, 10)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	limiter.Allow("user1")
+	limiter.Allow("user2")
+	if limiter.Stats() != 2 {
+		t.Errorf("stats = %d, want 2", limiter.Stats())
+	}
+
+	limiter.StartCleanupRunner(ctx)
+	time.Sleep(50 * time.Millisecond)
+
+	if limiter.Stats() != 2 {
+		t.Errorf("stats = %d, want 2 (no cleanup yet)", limiter.Stats())
+	}
+
+	cancel()
+	time.Sleep(10 * time.Millisecond)
+	// After cancel, goroutine should stop (no panic)
+}
+
+func TestStop(t *testing.T) {
+	limiter := NewLimiter(1, 10)
+
+	limiter.StartCleanupRunner(context.Background())
+	limiter.Stop()
 }

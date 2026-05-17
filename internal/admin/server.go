@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"path/filepath"
 	"runtime"
@@ -46,6 +46,7 @@ type Server struct {
 	dryRunFn       DryRunFunc
 	configData     func() ([]byte, error)
 	authToken      string
+	allowedSources []string
 	validateFn     func() (any, error)
 	classifyFn     func([]string) any
 	pluginListFn   func() any
@@ -78,9 +79,10 @@ func NewServer(provider SessionProvider, addr string) *Server {
 	}
 }
 
-// SetAuthToken sets the bearer token for admin API authentication.
-func (s *Server) SetAuthToken(token string) {
+// SetAuthToken sets the bearer token and allowed source IPs for admin API authentication.
+func (s *Server) SetAuthToken(token string, allowedSources ...string) {
 	s.authToken = token
+	s.allowedSources = allowedSources
 }
 
 // OnPolicyReload sets the callback for policy reload requests.
@@ -140,6 +142,9 @@ func (s *Server) Start() error {
 	var handler http.Handler = mux
 	if s.authToken != "" {
 		handler = NewAuthMiddleware(s.authToken).Wrap(mux)
+			if len(s.allowedSources) > 0 {
+				handler = NewAuthMiddleware(s.authToken).WithAllowedSources(s.allowedSources).Wrap(mux)
+			}
 	}
 
 	s.server = &http.Server{
@@ -149,11 +154,11 @@ func (s *Server) Start() error {
 		WriteTimeout: 10 * time.Second,
 	}
 
-	log.Printf("[argus] admin/metrics server on %s", s.addr)
+	slog.Info("admin/metrics server started", "addr", s.addr)
 
 	go func() {
 		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("[argus] admin server error: %v", err)
+			slog.Error("admin server error", "error", err)
 		}
 	}()
 
@@ -837,9 +842,9 @@ func (s *Server) handleAuditExport(w http.ResponseWriter, r *http.Request) {
 
 	count, err := audit.ExportCSV(s.auditLogPath, w, filter)
 	if err != nil {
-		log.Printf("[argus] CSV export error: %v", err)
+		slog.Error("CSV export error", "error", err)
 	}
-	log.Printf("[argus] CSV export: %d events exported", count)
+	slog.Info("CSV export completed", "count", count)
 }
 
 func (s *Server) handlePoolHealth(w http.ResponseWriter, r *http.Request) {
