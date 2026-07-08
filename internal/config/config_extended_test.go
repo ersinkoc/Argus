@@ -58,6 +58,17 @@ func TestValidateCrossReference(t *testing.T) {
 			t.Errorf("should pass: %v", err)
 		}
 	})
+
+	t.Run("mongodb listener matches mongodb target", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Server.Listeners = []ListenerConfig{{Address: ":17017", Protocol: "mongodb"}}
+		cfg.Targets = []Target{{Name: "mongo", Host: "localhost", Port: 27017, Protocol: "mongodb"}}
+		cfg.Routing.DefaultTarget = "mongo"
+		err := Validate(cfg)
+		if err != nil {
+			t.Errorf("should pass: %v", err)
+		}
+	})
 }
 
 func TestTargetAddress(t *testing.T) {

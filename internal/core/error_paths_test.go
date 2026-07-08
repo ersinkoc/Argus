@@ -133,6 +133,7 @@ func TestProxyStopDrainTimeout(t *testing.T) {
 	defer logger.Close()
 
 	proxy := NewProxy(cfg, policy.NewEngine(loader), logger)
+	proxy.SetDrainTimeout(50 * time.Millisecond)
 	proxy.Start()
 
 	proxyAddr := proxy.listeners[0].listener.Addr().String()

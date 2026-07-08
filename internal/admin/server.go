@@ -35,24 +35,26 @@ type DryRunFunc func(username, database, sql, clientIP string) (any, error)
 
 // Server is the admin/metrics HTTP server.
 type Server struct {
-	provider       SessionProvider
-	addr           string
-	server         *http.Server
-	policyReloadFn func() error
-	EventStream    *EventStream
-	approvalFn     ApprovalProvider
-	auditLogPath   string
-	recordFile     string
-	dryRunFn       DryRunFunc
-	configData     func() ([]byte, error)
-	authToken      string
-	allowedSources []string
-	validateFn     func() (any, error)
-	classifyFn     func([]string) any
-	pluginListFn   func() any
+	provider           SessionProvider
+	addr               string
+	server             *http.Server
+	policyReloadFn     func() error
+	EventStream        *EventStream
+	approvalFn         ApprovalProvider
+	auditLogPath       string
+	recordFile         string
+	dryRunFn           DryRunFunc
+	configData         func() ([]byte, error)
+	authToken          string
+	allowedSources     []string
+	validateFn         func() (any, error)
+	classifyFn         func([]string) any
+	pluginListFn       func() any
 	onSessionKill      func(sessionID string)
 	gatewayHandler     GatewayHandler
 	gatewayMiddleware  func(http.Handler) http.Handler
+	enableAdminRoutes  bool
+	enableMetricRoutes bool
 }
 
 // GatewayHandler is the interface for gateway HTTP handlers.
@@ -73,16 +75,39 @@ func (s *Server) SetGateway(gw GatewayHandler, middleware func(http.Handler) htt
 // NewServer creates a new admin server.
 func NewServer(provider SessionProvider, addr string) *Server {
 	return &Server{
-		provider:    provider,
-		addr:        addr,
-		EventStream: NewEventStream(),
+		provider:           provider,
+		addr:               addr,
+		EventStream:        NewEventStream(),
+		enableAdminRoutes:  true,
+		enableMetricRoutes: true,
 	}
+}
+
+// SetRouteModes controls which route groups are exposed by this server.
+func (s *Server) SetRouteModes(enableAdminRoutes, enableMetricRoutes bool) {
+	s.enableAdminRoutes = enableAdminRoutes
+	s.enableMetricRoutes = enableMetricRoutes
+}
+
+// Addr returns the configured listen address.
+func (s *Server) Addr() string {
+	return s.addr
+}
+
+// RouteModes returns whether admin and metric routes are enabled on this server.
+func (s *Server) RouteModes() (bool, bool) {
+	return s.enableAdminRoutes, s.enableMetricRoutes
 }
 
 // SetAuthToken sets the bearer token and allowed source IPs for admin API authentication.
 func (s *Server) SetAuthToken(token string, allowedSources ...string) {
 	s.authToken = token
 	s.allowedSources = allowedSources
+}
+
+// SetAllowedOrigins configures the WebSocket/browser origin allowlist.
+func (s *Server) SetAllowedOrigins(origins ...string) {
+	s.EventStream.SetAllowedOrigins(origins)
 }
 
 // OnPolicyReload sets the callback for policy reload requests.
@@ -93,38 +118,42 @@ func (s *Server) OnPolicyReload(fn func() error) {
 // Start begins serving the admin/metrics endpoints.
 func (s *Server) Start() error {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", s.handleHealth)
-	mux.HandleFunc("/metrics", s.handleMetrics)
-	mux.HandleFunc("/api/sessions", s.handleSessions)
-	mux.HandleFunc("/api/sessions/kill", s.handleSessionKill)
-	mux.HandleFunc("/api/policies/reload", s.handlePolicyReload)
-	mux.HandleFunc("/api/stats", s.handleStats)
-	mux.HandleFunc("/api/events/ws", s.EventStream.HandleWebSocket)
-	mux.HandleFunc("/api/approvals", s.handleApprovals)
-	mux.HandleFunc("/api/approvals/approve", s.handleApprovalAction)
-	mux.HandleFunc("/api/approvals/deny", s.handleApprovalDeny)
-	mux.HandleFunc("/api/audit/search", s.handleAuditSearch)
-	mux.HandleFunc("/api/audit/replay", s.handleReplay)
-	mux.HandleFunc("/api/audit/fingerprints", s.handleFingerprints)
-	mux.HandleFunc("/api/policies/dryrun", s.handleDryRun)
-	mux.HandleFunc("/api/config/export", s.handleConfigExport)
-	mux.HandleFunc("/api/audit/compact", s.handleCompact)
-	mux.HandleFunc("/api/policies/validate", s.handlePolicyValidate)
-	mux.HandleFunc("/api/audit/export", s.handleAuditExport)
-	mux.HandleFunc("/api/pool/health", s.handlePoolHealth)
-	mux.HandleFunc("/api/health/deep", s.handleDeepHealth)
-	mux.HandleFunc("/api/dashboard", s.handleDashboard)
-	mux.HandleFunc("/api/classify", s.handleClassify)
-	mux.HandleFunc("/api/plugins", s.handlePlugins)
-	mux.HandleFunc("/ui", HandleDashboardUI)
-	mux.HandleFunc("/ui/test", HandleTestRunnerUI)
-	mux.HandleFunc("/api/test/run", handleTestRun)
-	mux.HandleFunc("/ready", s.handleReady)
-	mux.HandleFunc("/readyz", s.handleReady) // Kubernetes readiness probe alias
-	mux.HandleFunc("/livez", s.handleLive)
+	if s.enableMetricRoutes {
+		mux.HandleFunc("/healthz", s.handleHealth)
+		mux.HandleFunc("/metrics", s.handleMetrics)
+		mux.HandleFunc("/ready", s.handleReady)
+		mux.HandleFunc("/readyz", s.handleReady) // Kubernetes readiness probe alias
+		mux.HandleFunc("/livez", s.handleLive)
+	}
+	if s.enableAdminRoutes {
+		mux.HandleFunc("/api/sessions", s.handleSessions)
+		mux.HandleFunc("/api/sessions/kill", s.handleSessionKill)
+		mux.HandleFunc("/api/policies/reload", s.handlePolicyReload)
+		mux.HandleFunc("/api/stats", s.handleStats)
+		mux.HandleFunc("/api/events/ws", s.EventStream.HandleWebSocket)
+		mux.HandleFunc("/api/approvals", s.handleApprovals)
+		mux.HandleFunc("/api/approvals/approve", s.handleApprovalAction)
+		mux.HandleFunc("/api/approvals/deny", s.handleApprovalDeny)
+		mux.HandleFunc("/api/audit/search", s.handleAuditSearch)
+		mux.HandleFunc("/api/audit/replay", s.handleReplay)
+		mux.HandleFunc("/api/audit/fingerprints", s.handleFingerprints)
+		mux.HandleFunc("/api/policies/dryrun", s.handleDryRun)
+		mux.HandleFunc("/api/config/export", s.handleConfigExport)
+		mux.HandleFunc("/api/audit/compact", s.handleCompact)
+		mux.HandleFunc("/api/policies/validate", s.handlePolicyValidate)
+		mux.HandleFunc("/api/audit/export", s.handleAuditExport)
+		mux.HandleFunc("/api/pool/health", s.handlePoolHealth)
+		mux.HandleFunc("/api/health/deep", s.handleDeepHealth)
+		mux.HandleFunc("/api/dashboard", s.handleDashboard)
+		mux.HandleFunc("/api/classify", s.handleClassify)
+		mux.HandleFunc("/api/plugins", s.handlePlugins)
+		mux.HandleFunc("/ui", HandleDashboardUI)
+		mux.HandleFunc("/ui/test", HandleTestRunnerUI)
+		mux.HandleFunc("/api/test/run", handleTestRun)
+	}
 
 	// Gateway endpoints (with optional API key middleware)
-	if s.gatewayHandler != nil {
+	if s.enableAdminRoutes && s.gatewayHandler != nil {
 		wrapGW := func(h http.HandlerFunc) http.Handler {
 			var handler http.Handler = h
 			if s.gatewayMiddleware != nil {
@@ -142,9 +171,9 @@ func (s *Server) Start() error {
 	var handler http.Handler = mux
 	if s.authToken != "" {
 		handler = NewAuthMiddleware(s.authToken).Wrap(mux)
-			if len(s.allowedSources) > 0 {
-				handler = NewAuthMiddleware(s.authToken).WithAllowedSources(s.allowedSources).Wrap(mux)
-			}
+		if len(s.allowedSources) > 0 {
+			handler = NewAuthMiddleware(s.authToken).WithAllowedSources(s.allowedSources).Wrap(mux)
+		}
 	}
 
 	s.server = &http.Server{
@@ -617,29 +646,29 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 	dashboard := map[string]any{
 		"overview": map[string]any{
-			"uptime":           formatUptime(time.Since(startTime)),
-			"version":          Version,
-			"active_sessions":  sm.Count(),
-			"goroutines":       runtime.NumGoroutine(),
-			"memory_mb":        memStats.Alloc / 1024 / 1024,
-			"healthy_targets":  healthyTargets,
+			"uptime":            formatUptime(time.Since(startTime)),
+			"version":           Version,
+			"active_sessions":   sm.Count(),
+			"goroutines":        runtime.NumGoroutine(),
+			"memory_mb":         memStats.Alloc / 1024 / 1024,
+			"healthy_targets":   healthyTargets,
 			"unhealthy_targets": unhealthyTargets,
 		},
 		"traffic": map[string]any{
-			"total_connections": m.ConnectionsTotal.Load(),
+			"total_connections":  m.ConnectionsTotal.Load(),
 			"failed_connections": m.ConnectionsFailed.Load(),
-			"total_commands":    m.CommandsTotal.Load(),
-			"blocked_commands":  m.CommandsBlocked.Load(),
-			"masked_results":   m.CommandsMasked.Load(),
-			"total_rows":       m.ResultRowsTotal.Load(),
+			"total_commands":     m.CommandsTotal.Load(),
+			"blocked_commands":   m.CommandsBlocked.Load(),
+			"masked_results":     m.CommandsMasked.Load(),
+			"total_rows":         m.ResultRowsTotal.Load(),
 		},
 		"pool": map[string]any{
 			"active_connections": totalActive,
 			"idle_connections":   totalIdle,
-			"wait_p50_us":       histSnap.P50,
-			"wait_p95_us":       histSnap.P95,
-			"wait_p99_us":       histSnap.P99,
-			"targets":           poolStats,
+			"wait_p50_us":        histSnap.P50,
+			"wait_p95_us":        histSnap.P95,
+			"wait_p99_us":        histSnap.P99,
+			"targets":            poolStats,
 		},
 		"policy": map[string]any{
 			"evaluations":  m.PolicyEvals.Load(),

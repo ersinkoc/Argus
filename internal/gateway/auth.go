@@ -60,14 +60,11 @@ func (s *APIKeyStore) Count() int {
 
 // Middleware returns HTTP middleware that validates X-API-Key headers
 // and injects the resolved APIKey into the request context.
-// Falls through to the next handler if no X-API-Key is present
-// (allowing admin bearer token auth to handle it).
 func (s *APIKeyStore) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		apiKey := r.Header.Get("X-API-Key")
 		if apiKey == "" {
-			// No API key — fall through to bearer token auth
-			next.ServeHTTP(w, r)
+			http.Error(w, `{"error":"missing API key"}`, http.StatusUnauthorized)
 			return
 		}
 

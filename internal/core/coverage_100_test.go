@@ -273,6 +273,7 @@ func TestListenerConnectionLimitReached(t *testing.T) {
 		time.Sleep(2 * time.Second)
 		conn.Close()
 	})
+	l.SetConnectionLimit(1)
 
 	if err := l.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -280,9 +281,6 @@ func TestListenerConnectionLimitReached(t *testing.T) {
 	defer l.Stop()
 
 	addr := l.listener.Addr().String()
-
-	// Fill the semaphore by replacing it with a small one
-	l.connSem = make(chan struct{}, 1)
 
 	// First connection should succeed and fill the semaphore
 	conn1, err := net.DialTimeout("tcp", addr, time.Second)
@@ -353,7 +351,7 @@ func TestProxyStartWithMySQLTarget(t *testing.T) {
 		{Name: "mysql-test", Protocol: "mysql", Host: "127.0.0.1", Port: 1},
 	}
 	cfg.Routing.DefaultTarget = "mysql-test"
-	cfg.Pool.MinIdleConnections = 5 // should be overridden to 0 for mysql
+	cfg.Pool.MinIdleConnections = 5                 // should be overridden to 0 for mysql
 	cfg.Pool.HealthCheckInterval = 30 * time.Second // should be overridden to 0 for mysql
 
 	ps := &policy.PolicySet{Defaults: policy.DefaultsConfig{Action: "allow"}, Roles: map[string]policy.Role{}}
@@ -450,6 +448,7 @@ func TestProxyStopDrainDeadlineForceClose(t *testing.T) {
 	defer logger.Close()
 
 	proxy := NewProxy(cfg, policy.NewEngine(loader), logger)
+	proxy.SetDrainTimeout(50 * time.Millisecond)
 	proxy.Start()
 
 	// Inject a session that will NOT be removed (to trigger force-close deadline)
@@ -475,11 +474,10 @@ func TestProxyStopDrainDeadlineForceClose(t *testing.T) {
 		close(done)
 	}()
 
-	// Wait up to 15s (the drain timeout is 10s)
 	select {
 	case <-done:
 		// success
-	case <-time.After(15 * time.Second):
+	case <-time.After(2 * time.Second):
 		t.Error("Stop() timed out")
 	}
 	clientConn.Close()
@@ -571,7 +569,7 @@ func TestProxyHandleConnectionNoPool(t *testing.T) {
 	defer proxy.Stop()
 
 	// Remove the pool to simulate "no pool for target"
-	delete(proxy.pools, "pg-np")
+	proxy.removePool("pg-np")
 
 	proxyAddr := proxy.listeners[0].listener.Addr().String()
 	conn, _ := net.DialTimeout("tcp", proxyAddr, time.Second)
@@ -873,19 +871,19 @@ func buildMySQLGreeting() []byte {
 	payload := []byte{
 		10, // protocol version
 	}
-	payload = append(payload, []byte("5.7.38")...) // server version
-	payload = append(payload, 0)                    // null terminator
-	payload = append(payload, 1, 0, 0, 0)          // connection id
-	payload = append(payload, []byte("abcdefgh")...) // auth plugin data part 1
-	payload = append(payload, 0)                    // filler
-	payload = append(payload, 0xFF, 0xF7)           // capability flags lower
-	payload = append(payload, 33)                   // character set (utf8)
-	payload = append(payload, 2, 0)                 // status flags
-	payload = append(payload, 0xFF, 0x81)           // capability flags upper
-	payload = append(payload, 21)                   // length of auth plugin data
-	payload = append(payload, make([]byte, 10)...)  // reserved
+	payload = append(payload, []byte("5.7.38")...)       // server version
+	payload = append(payload, 0)                         // null terminator
+	payload = append(payload, 1, 0, 0, 0)                // connection id
+	payload = append(payload, []byte("abcdefgh")...)     // auth plugin data part 1
+	payload = append(payload, 0)                         // filler
+	payload = append(payload, 0xFF, 0xF7)                // capability flags lower
+	payload = append(payload, 33)                        // character set (utf8)
+	payload = append(payload, 2, 0)                      // status flags
+	payload = append(payload, 0xFF, 0x81)                // capability flags upper
+	payload = append(payload, 21)                        // length of auth plugin data
+	payload = append(payload, make([]byte, 10)...)       // reserved
 	payload = append(payload, []byte("123456789012")...) // auth plugin data part 2
-	payload = append(payload, 0)                    // null terminator
+	payload = append(payload, 0)                         // null terminator
 	payload = append(payload, []byte("mysql_native_password")...)
 	payload = append(payload, 0) // null terminator
 
@@ -901,9 +899,9 @@ func buildMySQLGreeting() []byte {
 
 func buildMySQLOK() []byte {
 	payload := []byte{
-		0x00, // OK header
-		0x00, // affected rows
-		0x00, // last insert id
+		0x00,       // OK header
+		0x00,       // affected rows
+		0x00,       // last insert id
 		0x02, 0x00, // server status
 		0x00, 0x00, // warning count
 	}
@@ -1408,15 +1406,15 @@ func TestListenerAcceptErrorNotDone(t *testing.T) {
 		conn.Close()
 	})
 
-	if err := l.Start(); err != nil {
-		t.Fatalf("Start: %v", err)
+	realListener, err := net.Listen("tcp", cfg.Address)
+	if err != nil {
+		t.Fatalf("Listen: %v", err)
 	}
-
-	realListener := l.listener
 	faultCh := make(chan struct{}, 1)
 	faultCh <- struct{}{}
-	fl := &faultyListener{Listener: realListener, faultOnce: faultCh}
-	l.listener = fl
+	l.listener = &faultyListener{Listener: realListener, faultOnce: faultCh}
+	l.wg.Add(1)
+	go l.acceptLoop()
 
 	time.Sleep(100 * time.Millisecond)
 

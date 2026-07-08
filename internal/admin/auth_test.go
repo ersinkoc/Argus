@@ -88,18 +88,17 @@ func TestAuthMiddlewareValidToken(t *testing.T) {
 	}
 }
 
-func TestAuthMiddlewareQueryParam(t *testing.T) {
+func TestAuthMiddlewareQueryParamRejected(t *testing.T) {
 	auth := NewAuthMiddleware("secret-token")
 	handler := auth.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	// WebSocket-style query param auth
 	req := httptest.NewRequest("GET", "/api/events/ws?token=secret-token", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("query param token: status = %d, want 200", w.Code)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("query param token: status = %d, want 401", w.Code)
 	}
 }

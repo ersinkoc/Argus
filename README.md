@@ -1,7 +1,7 @@
 # Argus
 
 [![CI](https://github.com/ersinkoc/argus/actions/workflows/ci.yml/badge.svg)](https://github.com/ersinkoc/argus/actions/workflows/ci.yml)
-[![Go](https://img.shields.io/badge/Go-1.23+-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-green.svg)](#)
 

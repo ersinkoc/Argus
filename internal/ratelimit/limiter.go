@@ -17,8 +17,8 @@ type Limiter struct {
 }
 
 type bucket struct {
-	tokens    float64
-	lastFill  time.Time
+	tokens   float64
+	lastFill time.Time
 }
 
 // NewLimiter creates a rate limiter.
@@ -35,6 +35,10 @@ func NewLimiter(rate float64, burst int) *Limiter {
 // StartCleanupRunner starts a background goroutine that periodically cleans up stale buckets.
 // It automatically stops when the given context is cancelled.
 func (l *Limiter) StartCleanupRunner(ctx context.Context) {
+	l.mu.Lock()
+	stopCh := l.stopCh
+	l.mu.Unlock()
+
 	go func() {
 		ticker := time.NewTicker(l.cleanup)
 		defer ticker.Stop()
@@ -44,7 +48,7 @@ func (l *Limiter) StartCleanupRunner(ctx context.Context) {
 				l.Cleanup()
 			case <-ctx.Done():
 				return
-			case <-l.stopCh:
+			case <-stopCh:
 				return
 			}
 		}
@@ -53,6 +57,8 @@ func (l *Limiter) StartCleanupRunner(ctx context.Context) {
 
 // Stop stops the cleanup runner.
 func (l *Limiter) Stop() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	if l.stopCh != nil {
 		close(l.stopCh)
 		l.stopCh = nil

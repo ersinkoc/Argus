@@ -11,9 +11,9 @@ import (
 // AuthMiddleware provides token-based authentication for admin API endpoints.
 // If no token is configured, all requests are allowed.
 type AuthMiddleware struct {
-	token         string
-	publicPaths   map[string]bool // paths that don't require auth
-	allowedSources []net.IPNet    // IP ranges allowed to access admin API
+	token          string
+	publicPaths    map[string]bool // paths that don't require auth
+	allowedSources []net.IPNet     // IP ranges allowed to access admin API
 }
 
 // NewAuthMiddleware creates an auth middleware with the given bearer token.
@@ -68,16 +68,6 @@ func (a *AuthMiddleware) Wrap(next http.Handler) http.Handler {
 
 		// Check Authorization header
 		auth := r.Header.Get("Authorization")
-		if auth == "" {
-			// DEPRECATED: Query parameter auth is only for WebSocket convenience.
-			// Tokens in URLs are logged, cached, and exposed in Referrer headers.
-			// Prefer using Authorization header instead.
-			if qToken := r.URL.Query().Get("token"); qToken != "" {
-				slog.Warn("query string token auth is deprecated", "path", r.URL.Path)
-				auth = "Bearer " + qToken
-			}
-		}
-
 		if auth == "" || !strings.HasPrefix(auth, "Bearer ") {
 			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			return

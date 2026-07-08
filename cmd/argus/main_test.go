@@ -170,6 +170,120 @@ func writeTestConfig(t *testing.T, extra map[string]any) string {
 	return path
 }
 
+func newSetupAdminDeps(t *testing.T) (*config.Config, *core.Proxy, *policy.Loader, *policy.Engine, *audit.Logger) {
+	t.Helper()
+	cfg := config.DefaultConfig()
+	cfg.Server.Listeners = nil
+	cfg.Targets = nil
+	cfg.Audit.Outputs = nil
+	cfg.Admin.Address = "127.0.0.1:0"
+	cfg.Metrics.Address = "127.0.0.1:0"
+
+	loader := policy.NewLoader(nil, 0)
+	loader.SetCurrent(&policy.PolicySet{Defaults: policy.DefaultsConfig{Action: "allow"}, Roles: map[string]policy.Role{}})
+	engine := policy.NewEngine(loader)
+	logger := audit.NewLogger(10, audit.LevelMinimal, 4096)
+	logger.Start()
+	proxy := core.NewProxy(cfg, engine, logger)
+	return cfg, proxy, loader, engine, logger
+}
+
+func TestSetupAdminDisabled(t *testing.T) {
+	cfg, proxy, loader, engine, logger := newSetupAdminDeps(t)
+	defer logger.Close()
+	cfg.Admin.Enabled = false
+	cfg.Metrics.Enabled = false
+	servers := setupAdmin(cfg, proxy, loader, engine, logger)
+	if servers != nil {
+		t.Fatalf("expected no servers, got %d", len(servers))
+	}
+}
+
+func TestSetupAdminMetricsOnly(t *testing.T) {
+	cfg, proxy, loader, engine, logger := newSetupAdminDeps(t)
+	defer logger.Close()
+	cfg.Admin.Enabled = false
+	cfg.Metrics.Enabled = true
+	cfg.Metrics.Address = "127.0.0.1:0"
+	servers := setupAdmin(cfg, proxy, loader, engine, logger)
+	defer gracefulShutdown(context.Background(), proxy, servers, loader, nil, nil, logger)
+	if len(servers) != 1 {
+		t.Fatalf("expected 1 server, got %d", len(servers))
+	}
+	if servers[0].Addr() != cfg.Metrics.Address {
+		t.Fatalf("metrics-only server addr = %q, want %q", servers[0].Addr(), cfg.Metrics.Address)
+	}
+	adminRoutes, metricRoutes := servers[0].RouteModes()
+	if adminRoutes {
+		t.Fatal("metrics-only server should not enable admin routes")
+	}
+	if !metricRoutes {
+		t.Fatal("metrics-only server should enable metric routes")
+	}
+}
+
+func TestSetupAdminRejectsShortAuthToken(t *testing.T) {
+	cfg, proxy, loader, engine, logger := newSetupAdminDeps(t)
+	defer logger.Close()
+	cfg.Admin.Enabled = true
+	cfg.Admin.AuthToken = "short-token"
+	cfg.Metrics.Enabled = false
+	servers := setupAdmin(cfg, proxy, loader, engine, logger)
+	if len(servers) != 1 || servers[0] != nil {
+		t.Fatal("admin setup should refuse to start server with short token")
+	}
+}
+
+func TestSetupAdminAdminOnly(t *testing.T) {
+	cfg, proxy, loader, engine, logger := newSetupAdminDeps(t)
+	defer logger.Close()
+	cfg.Admin.Enabled = true
+	cfg.Admin.AuthToken = "12345678901234567890123456789012"
+	cfg.Metrics.Enabled = false
+	cfg.Admin.Address = "127.0.0.1:0"
+	servers := setupAdmin(cfg, proxy, loader, engine, logger)
+	defer gracefulShutdown(context.Background(), proxy, servers, loader, nil, nil, logger)
+	if len(servers) != 1 {
+		t.Fatalf("expected 1 server, got %d", len(servers))
+	}
+	if servers[0].Addr() != cfg.Admin.Address {
+		t.Fatalf("admin-only server addr = %q, want %q", servers[0].Addr(), cfg.Admin.Address)
+	}
+	adminRoutes, metricRoutes := servers[0].RouteModes()
+	if !adminRoutes {
+		t.Fatal("admin-only server should enable admin routes")
+	}
+	if metricRoutes {
+		t.Fatal("admin-only server should not enable metric routes")
+	}
+}
+
+func TestSetupAdminSeparateAddresses(t *testing.T) {
+	cfg, proxy, loader, engine, logger := newSetupAdminDeps(t)
+	defer logger.Close()
+	cfg.Admin.Enabled = true
+	cfg.Admin.AuthToken = "12345678901234567890123456789012"
+	cfg.Metrics.Enabled = true
+	cfg.Admin.Address = "127.0.0.1:0"
+	cfg.Metrics.Address = "localhost:0"
+	servers := setupAdmin(cfg, proxy, loader, engine, logger)
+	defer gracefulShutdown(context.Background(), proxy, servers, loader, nil, nil, logger)
+	if len(servers) != 2 {
+		t.Fatalf("expected 2 servers, got %d", len(servers))
+	}
+	if servers[0].Addr() != cfg.Admin.Address || servers[1].Addr() != cfg.Metrics.Address {
+		t.Fatalf("unexpected split addresses: got %q and %q", servers[0].Addr(), servers[1].Addr())
+	}
+	adminRoutes0, metricRoutes0 := servers[0].RouteModes()
+	adminRoutes1, metricRoutes1 := servers[1].RouteModes()
+	if !adminRoutes0 || metricRoutes0 {
+		t.Fatal("first split server should be admin-only")
+	}
+	if adminRoutes1 || !metricRoutes1 {
+		t.Fatal("second split server should be metrics-only")
+	}
+}
+
 func TestRunValidateOnly(t *testing.T) {
 	cfgPath := writeTestConfig(t, nil)
 	var buf bytes.Buffer
@@ -276,8 +390,8 @@ func TestRunWithAuditFileOutput(t *testing.T) {
 	auditPath := filepath.Join(dir, "audit.log")
 	cfgPath := writeTestConfig(t, map[string]any{
 		"audit": map[string]any{
-			"level":   "standard",
-			"outputs": []any{map[string]any{"type": "file", "path": auditPath}},
+			"level":          "standard",
+			"outputs":        []any{map[string]any{"type": "file", "path": auditPath}},
 			"buffer_size":    10,
 			"sql_max_length": 100,
 		},
@@ -705,11 +819,11 @@ func TestRunWithGatewayWebhookAndPII(t *testing.T) {
 		"metrics": map[string]any{"enabled": true, "address": ":0"},
 		"admin":   map[string]any{"enabled": false},
 		"audit": map[string]any{
-			"level":            "standard",
-			"outputs":          []any{},
-			"buffer_size":      10,
-			"sql_max_length":   100,
-			"pii_auto_detect":  true,
+			"level":           "standard",
+			"outputs":         []any{},
+			"buffer_size":     10,
+			"sql_max_length":  100,
+			"pii_auto_detect": true,
 		},
 		"gateway": map[string]any{
 			"enabled":          true,

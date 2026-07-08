@@ -16,13 +16,13 @@ const maxConcurrentConns = 10000
 
 // Listener manages TCP listeners for incoming connections.
 type Listener struct {
-	cfg       config.ListenerConfig
-	listener  net.Listener
-	handler   func(net.Conn)
-	wg        sync.WaitGroup
-	ctx       context.Context
-	cancel    context.CancelFunc
-	connSem   chan struct{} // connection semaphore
+	cfg      config.ListenerConfig
+	listener net.Listener
+	handler  func(net.Conn)
+	wg       sync.WaitGroup
+	ctx      context.Context
+	cancel   context.CancelFunc
+	connSem  chan struct{} // connection semaphore
 }
 
 // NewListener creates a new TCP listener.
@@ -39,6 +39,14 @@ func NewListener(cfg config.ListenerConfig) *Listener {
 // OnConnection sets the handler for new connections.
 func (l *Listener) OnConnection(handler func(net.Conn)) {
 	l.handler = handler
+}
+
+// SetConnectionLimit sets the listener connection limit.
+// It must be called before Start.
+func (l *Listener) SetConnectionLimit(limit int) {
+	if limit > 0 {
+		l.connSem = make(chan struct{}, limit)
+	}
 }
 
 // Start begins listening for connections.

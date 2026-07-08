@@ -37,6 +37,23 @@ func TestHandleWebSocketNoKey(t *testing.T) {
 	}
 }
 
+func TestEventStreamOriginValidation(t *testing.T) {
+	es := NewEventStream()
+	if !es.isValidOrigin("") {
+		t.Fatal("empty Origin should be allowed for non-browser clients")
+	}
+	if es.isValidOrigin("https://admin.example.com") {
+		t.Fatal("unexpected origin should be rejected when allowlist is empty")
+	}
+	es.SetAllowedOrigins([]string{"https://admin.example.com"})
+	if !es.isValidOrigin("https://admin.example.com") {
+		t.Fatal("configured origin should be allowed")
+	}
+	if es.isValidOrigin("https://evil.example.com") {
+		t.Fatal("unconfigured origin should be rejected")
+	}
+}
+
 // --- Full WebSocket: connect, broadcast, close ---
 
 func TestWebSocketFullFlow(t *testing.T) {

@@ -5,14 +5,15 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/ersinkoc/argus/internal/audit"
 	"github.com/ersinkoc/argus/internal/config"
 	"github.com/ersinkoc/argus/internal/policy"
-	"github.com/ersinkoc/argus/internal/session"
 	pgcodec "github.com/ersinkoc/argus/internal/protocol/pg"
+	"github.com/ersinkoc/argus/internal/session"
 )
 
 // TestProxyQueryRecorderPath tests the query recorder code path.
@@ -304,11 +305,11 @@ func TestProxyHighCostQueryBroadcast(t *testing.T) {
 
 	proxy := NewProxy(cfg, policy.NewEngine(loader), logger)
 
-	eventReceived := false
+	var eventReceived atomic.Bool
 	proxy.SetOnEvent(func(event any) {
 		if m, ok := event.(map[string]any); ok {
 			if m["type"] == "high_cost_query" || m["type"] == "command" {
-				eventReceived = true
+				eventReceived.Store(true)
 			}
 		}
 	})
@@ -342,7 +343,7 @@ func TestProxyHighCostQueryBroadcast(t *testing.T) {
 	pgcodec.WriteMessage(conn, &pgcodec.Message{Type: pgcodec.MsgTerminate, Payload: nil})
 	time.Sleep(50 * time.Millisecond)
 
-	if !eventReceived {
+	if !eventReceived.Load() {
 		t.Log("event broadcast path exercised (event type may differ)")
 	}
 }

@@ -3,7 +3,7 @@ BUILD_TIME := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME)
 BINARY := argus
 
-.PHONY: all build test clean lint run bench cover validate
+.PHONY: all build test test-compile test-short test-full test-verbose test-race test-e2e test-stress clean lint run bench cover validate
 
 all: lint test build
 
@@ -11,12 +11,21 @@ build:
 	go build -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/argus/
 	@echo "Built $(BINARY) $(VERSION)"
 
-test:
+test: test-full
+
+test-compile:
+	go test ./... -run '^$$' -count=1
+
+test-short:
+	go test ./... -short -count=1 -timeout 60s
+
+test-full:
 	go test ./... -count=1 -timeout 60s
 
 test-verbose:
 	go test ./... -count=1 -timeout 60s -v
 
+# Race is kept as a separate lane from the default suite.
 test-race:
 	go test ./... -count=1 -timeout 120s -race
 
@@ -68,6 +77,10 @@ docker-logs:
 
 docker-status:
 	docker compose ps
+
+test-e2e: e2e
+
+test-stress: e2e-stress
 
 e2e: docker-up
 	@echo "Running E2E basic tests..."

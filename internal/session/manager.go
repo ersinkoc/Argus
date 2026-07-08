@@ -11,20 +11,20 @@ import (
 
 // Session represents an active client session.
 type Session struct {
-	ID            string
-	Username      string
-	Database      string
-	ClientIP      net.IP
-	Roles         []string
-	AuthMethod    string
-	StartTime     time.Time
-	LastActivity  time.Time
-	CommandCount  int64
-	BytesIn       int64
-	BytesOut      int64
-	ClientConn    net.Conn
-	BackendConn   net.Conn
-	Parameters    map[string]string
+	ID           string
+	Username     string
+	Database     string
+	ClientIP     net.IP
+	Roles        []string
+	AuthMethod   string
+	StartTime    time.Time
+	LastActivity time.Time
+	CommandCount int64
+	BytesIn      int64
+	BytesOut     int64
+	ClientConn   net.Conn
+	BackendConn  net.Conn
+	Parameters   map[string]string
 
 	mu sync.Mutex
 }
@@ -99,6 +99,14 @@ func NewManager(idleTimeout, maxDuration time.Duration) *Manager {
 // The string argument is the reason: "idle_timeout" or "max_duration".
 func (m *Manager) OnTimeout(fn func(*Session, string)) {
 	m.onTimeout = fn
+}
+
+// SetCheckInterval sets how often the timeout checker runs.
+// It must be called before Start.
+func (m *Manager) SetCheckInterval(interval time.Duration) {
+	if interval > 0 {
+		m.checkInterval = interval
+	}
 }
 
 // Start begins the background timeout checker.

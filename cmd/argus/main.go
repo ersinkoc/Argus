@@ -76,6 +76,7 @@ func run(ctx context.Context, configPath string, validateOnly bool, sigCh <-chan
 	if err := setupAuditOutputs(auditLogger, cfg); err != nil {
 		return err
 	}
+	webhookWriter := setupWebhook(cfg, auditLogger)
 	auditLogger.Start()
 
 	policyLoader := policy.NewLoader(cfg.Policy.Files, cfg.Policy.ReloadInterval)
@@ -97,7 +98,6 @@ func run(ctx context.Context, configPath string, validateOnly bool, sigCh <-chan
 	proxy := core.NewProxy(cfg, policyEngine, auditLogger)
 
 	queryRecorder := setupQueryRecorder(cfg, proxy)
-	webhookWriter := setupWebhook(cfg, auditLogger)
 
 	if cfg.Session.MaxPerUser > 0 {
 		proxy.SetSessionLimiter(session.NewConcurrencyLimiter(cfg.Session.MaxPerUser))
@@ -111,7 +111,7 @@ func run(ctx context.Context, configPath string, validateOnly bool, sigCh <-chan
 		return fmt.Errorf("failed to start proxy: %w", err)
 	}
 
-	adminServer := setupAdmin(cfg, proxy, policyLoader, policyEngine, auditLogger)
+	adminServers := setupAdmin(cfg, proxy, policyLoader, policyEngine, auditLogger)
 
 	reloadFn := makeReloadFn(policyLoader, policyEngine)
 
@@ -119,7 +119,7 @@ func run(ctx context.Context, configPath string, validateOnly bool, sigCh <-chan
 	slog.Info("know who connects, control what they do, protect what they see")
 
 	waitForSignals(sigCh, reloadFn)
-	gracefulShutdown(ctx, proxy, adminServer, policyLoader, webhookWriter, queryRecorder, auditLogger)
+	gracefulShutdown(ctx, proxy, adminServers, policyLoader, webhookWriter, queryRecorder, auditLogger)
 
 	return nil
 }
@@ -314,47 +314,63 @@ func makeEventBroadcast(srv *admin.Server) func(any) {
 	}
 }
 
-func setupAdmin(cfg *config.Config, proxy *core.Proxy, policyLoader *policy.Loader, policyEngine *policy.Engine, auditLogger *audit.Logger) *admin.Server {
-	if !cfg.Metrics.Enabled {
+func setupAdmin(cfg *config.Config, proxy *core.Proxy, policyLoader *policy.Loader, policyEngine *policy.Engine, auditLogger *audit.Logger) []*admin.Server {
+	if !cfg.Admin.Enabled && !cfg.Metrics.Enabled {
 		return nil
 	}
 
-	srv := admin.NewServer(proxy, cfg.Metrics.Address)
-	srv.OnPolicyReload(makePolicyReloadFn(policyLoader, policyEngine))
-
-	if cfg.Admin.AuthToken != "" {
-		srv.SetAuthToken(cfg.Admin.AuthToken, cfg.Admin.AllowedSources...)
-	}
-
-	srv.SetApprovalProvider(proxy.ApprovalManager())
-	proxy.SetOnEvent(makeEventBroadcast(srv))
-	srv.SetDryRunFunc(makeDryRunFunc(policyEngine))
-	srv.SetConfigExporter(makeConfigExporter(cfg))
-
-	for _, out := range cfg.Audit.Outputs {
-		if out.Type == "file" && out.Path != "" {
-			srv.SetAuditLogPath(out.Path)
-			break
+	newServer := func(addr string, enableAdminRoutes, enableMetricRoutes bool) *admin.Server {
+		if enableAdminRoutes && len(cfg.Admin.AuthToken) < 32 {
+			slog.Error("admin enabled without secure auth token")
+			return nil
 		}
+		srv := admin.NewServer(proxy, addr)
+		srv.SetRouteModes(enableAdminRoutes, enableMetricRoutes)
+		srv.OnPolicyReload(makePolicyReloadFn(policyLoader, policyEngine))
+
+		if enableAdminRoutes {
+			if cfg.Admin.AuthToken != "" {
+				srv.SetAuthToken(cfg.Admin.AuthToken, cfg.Admin.AllowedSources...)
+			}
+			srv.SetAllowedOrigins(cfg.Admin.AllowedOrigins...)
+			srv.SetApprovalProvider(proxy.ApprovalManager())
+			proxy.SetOnEvent(makeEventBroadcast(srv))
+			srv.SetDryRunFunc(makeDryRunFunc(policyEngine))
+			srv.SetConfigExporter(makeConfigExporter(cfg))
+			srv.SetPolicyValidator(makePolicyValidator(policyLoader))
+			srv.SetClassifyFunc(makeClassifyFunc())
+			srv.SetPluginListFunc(makePluginListFunc())
+			srv.SetOnSessionKill(makeSessionKillFn(auditLogger))
+			for _, out := range cfg.Audit.Outputs {
+				if out.Type == "file" && out.Path != "" {
+					srv.SetAuditLogPath(out.Path)
+					break
+				}
+			}
+			if cfg.Audit.RecordFile != "" {
+				srv.SetRecordFile(cfg.Audit.RecordFile)
+			}
+			if cfg.Gateway.Enabled {
+				setupGateway(cfg, srv, policyEngine, auditLogger, proxy)
+			}
+			setupTestRunner(cfg)
+		}
+
+		srv.Start()
+		return srv
 	}
-	if cfg.Audit.RecordFile != "" {
-		srv.SetRecordFile(cfg.Audit.RecordFile)
+
+	if cfg.Admin.Enabled && cfg.Metrics.Enabled && cfg.Admin.Address != cfg.Metrics.Address {
+		adminSrv := newServer(cfg.Admin.Address, true, false)
+		metricsSrv := newServer(cfg.Metrics.Address, false, true)
+		return []*admin.Server{adminSrv, metricsSrv}
 	}
 
-	srv.SetPolicyValidator(makePolicyValidator(policyLoader))
-	srv.SetClassifyFunc(makeClassifyFunc())
-	srv.SetPluginListFunc(makePluginListFunc())
-	srv.SetOnSessionKill(makeSessionKillFn(auditLogger))
-
-	if cfg.Gateway.Enabled {
-		setupGateway(cfg, srv, policyEngine, auditLogger, proxy)
+	addr := cfg.Admin.Address
+	if !cfg.Admin.Enabled {
+		addr = cfg.Metrics.Address
 	}
-
-	setupTestRunner(cfg)
-
-	srv.Start()
-
-	return srv
+	return []*admin.Server{newServer(addr, cfg.Admin.Enabled, cfg.Metrics.Enabled)}
 }
 
 func setupGateway(cfg *config.Config, srv *admin.Server, policyEngine *policy.Engine, auditLogger *audit.Logger, proxy *core.Proxy) {
@@ -422,15 +438,17 @@ func waitForSignals(sigCh <-chan os.Signal, reloadFn func()) {
 	}
 }
 
-func gracefulShutdown(ctx context.Context, proxy *core.Proxy, adminServer *admin.Server, policyLoader *policy.Loader, webhookWriter *audit.WebhookWriter, queryRecorder *audit.QueryRecorder, auditLogger *audit.Logger) {
+func gracefulShutdown(ctx context.Context, proxy *core.Proxy, adminServers []*admin.Server, policyLoader *policy.Loader, webhookWriter *audit.WebhookWriter, queryRecorder *audit.QueryRecorder, auditLogger *audit.Logger) {
 	shutdownCtx, shutdownCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer shutdownCancel()
 
 	done := make(chan struct{})
 	go func() {
 		proxy.Stop()
-		if adminServer != nil {
-			adminServer.Stop()
+		for _, adminServer := range adminServers {
+			if adminServer != nil {
+				adminServer.Stop()
+			}
 		}
 		policyLoader.Stop()
 		if webhookWriter != nil {

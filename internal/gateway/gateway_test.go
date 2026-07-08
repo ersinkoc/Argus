@@ -269,13 +269,16 @@ func TestAPIKeyMiddleware(t *testing.T) {
 		t.Errorf("status = %d, want 403", w2.Code)
 	}
 
-	// Without key (falls through)
+	// Without key
 	called = false
 	req3 := httptest.NewRequest("GET", "/test", nil)
 	w3 := httptest.NewRecorder()
 	handler.ServeHTTP(w3, req3)
-	if !called {
-		t.Error("handler should be called on fallthrough (no key)")
+	if called {
+		t.Error("handler should not be called without an API key")
+	}
+	if w3.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", w3.Code)
 	}
 }
 

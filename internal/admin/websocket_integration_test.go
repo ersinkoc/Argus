@@ -97,6 +97,88 @@ func TestWebSocketHandshake(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 }
 
+func TestWebSocketForbiddenOrigin(t *testing.T) {
+	es := NewEventStream()
+	es.SetAllowedOrigins([]string{"https://admin.example.com"})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ws", es.HandleWebSocket)
+
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	defer ln.Close()
+
+	srv := &http.Server{Handler: mux}
+	go srv.Serve(ln)
+	defer srv.Close()
+
+	conn, err := net.DialTimeout("tcp", ln.Addr().String(), 2*time.Second)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	key := "dGhlIHNhbXBsZSBub25jZQ=="
+	req := fmt.Sprintf("GET /ws HTTP/1.1\r\n"+
+		"Host: localhost\r\n"+
+		"Origin: https://evil.example.com\r\n"+
+		"Upgrade: websocket\r\n"+
+		"Connection: Upgrade\r\n"+
+		"Sec-WebSocket-Key: %s\r\n"+
+		"Sec-WebSocket-Version: 13\r\n\r\n", key)
+	conn.Write([]byte(req))
+
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	reader := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(reader, nil)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusForbidden)
+	}
+}
+
+func TestWebSocketAllowedOrigin(t *testing.T) {
+	es := NewEventStream()
+	es.SetAllowedOrigins([]string{"https://admin.example.com"})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ws", es.HandleWebSocket)
+
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	defer ln.Close()
+
+	srv := &http.Server{Handler: mux}
+	go srv.Serve(ln)
+	defer srv.Close()
+
+	conn, err := net.DialTimeout("tcp", ln.Addr().String(), 2*time.Second)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	key := "dGhlIHNhbXBsZSBub25jZQ=="
+	req := fmt.Sprintf("GET /ws HTTP/1.1\r\n"+
+		"Host: localhost\r\n"+
+		"Origin: https://admin.example.com\r\n"+
+		"Upgrade: websocket\r\n"+
+		"Connection: Upgrade\r\n"+
+		"Sec-WebSocket-Key: %s\r\n"+
+		"Sec-WebSocket-Version: 13\r\n\r\n", key)
+	conn.Write([]byte(req))
+
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	reader := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(reader, nil)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	if resp.StatusCode != http.StatusSwitchingProtocols {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusSwitchingProtocols)
+	}
+}
+
 func TestWebSocketBadUpgrade(t *testing.T) {
 	es := NewEventStream()
 

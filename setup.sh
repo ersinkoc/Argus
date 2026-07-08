@@ -68,8 +68,8 @@ SUDO=""
 if [[ "$(id -u)" -ne 0 ]] && cmd_exists sudo; then SUDO="sudo"; fi
 
 # ── Go install ────────────────────────────────────────────────────────────────
-MIN_GO="1.21"
-GO_LATEST="1.23.4"   # update as needed
+MIN_GO="1.24"
+GO_LATEST="1.24.0"   # update as needed
 
 go_version() {
   go version 2>/dev/null | grep -oP 'go\K[0-9]+\.[0-9]+(\.[0-9]+)?' || true

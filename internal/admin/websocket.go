@@ -15,8 +15,9 @@ import (
 
 // EventStream manages WebSocket clients for live event streaming.
 type EventStream struct {
-	mu      sync.RWMutex
-	clients map[*wsClient]struct{}
+	mu             sync.RWMutex
+	clients        map[*wsClient]struct{}
+	allowedOrigins map[string]struct{}
 }
 
 type wsClient struct {
@@ -27,7 +28,20 @@ type wsClient struct {
 // NewEventStream creates a new event stream manager.
 func NewEventStream() *EventStream {
 	return &EventStream{
-		clients: make(map[*wsClient]struct{}),
+		clients:        make(map[*wsClient]struct{}),
+		allowedOrigins: make(map[string]struct{}),
+	}
+}
+
+// SetAllowedOrigins replaces the WebSocket/browser origin allowlist.
+func (es *EventStream) SetAllowedOrigins(origins []string) {
+	es.mu.Lock()
+	defer es.mu.Unlock()
+	es.allowedOrigins = make(map[string]struct{}, len(origins))
+	for _, origin := range origins {
+		if origin != "" {
+			es.allowedOrigins[origin] = struct{}{}
+		}
 	}
 }
 
@@ -89,7 +103,7 @@ func (es *EventStream) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	// Validate Origin header (RFC 6455) — prevent cross-site WebSocket hijacking
 	origin := r.Header.Get("Origin")
-	if origin != "" && !isValidOrigin(origin) {
+	if !es.isValidOrigin(origin) {
 		http.Error(w, "Origin not allowed", http.StatusForbidden)
 		return
 	}
@@ -208,12 +222,18 @@ func computeAcceptKey(key string) string {
 }
 
 // isValidOrigin checks if the Origin header is acceptable.
-// Currently accepts all origins — restrict in production by checking against allowed origins.
-func isValidOrigin(origin string) bool {
-	// TODO: Load allowed origins from config and enforce them
-	// For now, log suspicious origins but allow them
-	if origin != "" {
-		slog.Info("WebSocket origin", "origin", origin)
+// Empty Origin is allowed for non-browser clients. Browser-originated requests
+// must match the configured allowlist exactly.
+func (es *EventStream) isValidOrigin(origin string) bool {
+	if origin == "" {
+		return true
 	}
-	return true
+
+	es.mu.RLock()
+	defer es.mu.RUnlock()
+	_, allowed := es.allowedOrigins[origin]
+	if !allowed {
+		slog.Warn("WebSocket origin rejected", "origin", origin)
+	}
+	return allowed
 }

@@ -18,13 +18,19 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.24'
 
       - name: Build
         run: go build ./...
 
+      - name: Compile tests
+        run: make test-compile
+
       - name: Test
-        run: go test ./... -count=1 -timeout 60s -race
+        run: make test-full
+
+      - name: Race smoke
+        run: make test-race
 
       - name: Vet
         run: go vet ./...
@@ -45,7 +51,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.24'
 
       - name: Build
         env:
@@ -128,7 +134,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.24'
 
       - name: Build Argus
         run: go build -o argus ./cmd/argus/

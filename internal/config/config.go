@@ -67,13 +67,13 @@ type ListenerConfig struct {
 }
 
 type TLSConfig struct {
-	Enabled        bool   `json:"enabled"`
-	CertFile       string `json:"cert_file"`
-	KeyFile        string `json:"key_file"`
-	CAFile         string `json:"ca_file"`
-	Verify         bool   `json:"verify"`
-	ClientAuth     bool   `json:"client_auth"`      // require client certificate (mTLS)
-	ClientCAFile   string `json:"client_ca_file"`   // CA to verify client certs
+	Enabled      bool   `json:"enabled"`
+	CertFile     string `json:"cert_file"`
+	KeyFile      string `json:"key_file"`
+	CAFile       string `json:"ca_file"`
+	Verify       bool   `json:"verify"`
+	ClientAuth   bool   `json:"client_auth"`    // require client certificate (mTLS)
+	ClientCAFile string `json:"client_ca_file"` // CA to verify client certs
 }
 
 type Target struct {
@@ -131,7 +131,7 @@ type PoolConfig struct {
 	ConnectionMaxLifetime      time.Duration `json:"connection_max_lifetime"`
 	ConnectionTimeout          time.Duration `json:"connection_timeout"`
 	HealthCheckInterval        time.Duration `json:"health_check_interval"`
-	CircuitBreakerThreshold    int           `json:"circuit_breaker_threshold,omitempty"`    // failures before open, default 5
+	CircuitBreakerThreshold    int           `json:"circuit_breaker_threshold,omitempty"`     // failures before open, default 5
 	CircuitBreakerResetTimeout time.Duration `json:"circuit_breaker_reset_timeout,omitempty"` // default 30s
 }
 
@@ -181,9 +181,9 @@ func (p *PoolConfig) UnmarshalJSON(data []byte) error {
 }
 
 type SessionConfig struct {
-	IdleTimeout       time.Duration `json:"idle_timeout"`
-	MaxDuration       time.Duration `json:"max_duration"`
-	MaxPerUser        int           `json:"max_per_user,omitempty"` // 0 = unlimited
+	IdleTimeout time.Duration `json:"idle_timeout"`
+	MaxDuration time.Duration `json:"max_duration"`
+	MaxPerUser  int           `json:"max_per_user,omitempty"` // 0 = unlimited
 }
 
 type RewriteConfig struct {
@@ -229,18 +229,18 @@ func (s *SessionConfig) UnmarshalJSON(data []byte) error {
 }
 
 type AuditConfig struct {
-	Level        string         `json:"level"`
-	Outputs      []AuditOutput  `json:"outputs"`
-	BufferSize   int            `json:"buffer_size"`
-	SQLMaxLength int            `json:"sql_max_length"`
-	RecordFile   string         `json:"record_file,omitempty"` // forensic query recording
+	Level         string        `json:"level"`
+	Outputs       []AuditOutput `json:"outputs"`
+	BufferSize    int           `json:"buffer_size"`
+	SQLMaxLength  int           `json:"sql_max_length"`
+	RecordFile    string        `json:"record_file,omitempty"` // forensic query recording
 	PIIAutoDetect bool          `json:"pii_auto_detect"`       // auto-detect PII columns
-	WebhookURL   string         `json:"webhook_url,omitempty"` // SIEM webhook endpoint
+	WebhookURL    string        `json:"webhook_url,omitempty"` // SIEM webhook endpoint
 }
 
 type AuditOutput struct {
-	Type     string         `json:"type"`
-	Path     string         `json:"path,omitempty"`
+	Type     string          `json:"type"`
+	Path     string          `json:"path,omitempty"`
 	Rotation *RotationConfig `json:"rotation,omitempty"`
 }
 
@@ -250,10 +250,11 @@ type RotationConfig struct {
 }
 
 type AdminConfig struct {
-	Enabled       bool     `json:"enabled"`
-	Address       string   `json:"address"`
-	AuthToken     string   `json:"auth_token"`
+	Enabled        bool     `json:"enabled"`
+	Address        string   `json:"address"`
+	AuthToken      string   `json:"auth_token"`
 	AllowedSources []string `json:"allowed_sources,omitempty"` // CIDR ranges, e.g. ["10.0.0.0/8", "192.168.1.0/24"]
+	AllowedOrigins []string `json:"allowed_origins,omitempty"` // exact WebSocket/browser origins, e.g. ["https://admin.example.com"]
 }
 
 type MetricsConfig struct {
@@ -338,7 +339,7 @@ func ResolvePolicyPaths(cfg *Config, configPath string) {
 // applyEnvOverrides applies ARGUS_ prefixed environment variables.
 func applyEnvOverrides(cfg *Config) {
 	envMap := map[string]func(string){
-		"ARGUS_AUDIT_LEVEL":    func(v string) { cfg.Audit.Level = v },
+		"ARGUS_AUDIT_LEVEL": func(v string) { cfg.Audit.Level = v },
 		"ARGUS_AUDIT_BUFFER_SIZE": func(v string) {
 			if n, err := strconv.Atoi(v); err == nil {
 				cfg.Audit.BufferSize = n
@@ -351,7 +352,7 @@ func applyEnvOverrides(cfg *Config) {
 		"ARGUS_ADMIN_ENABLED": func(v string) {
 			cfg.Admin.Enabled = v == "true" || v == "1"
 		},
-		"ARGUS_ADMIN_ADDRESS":   func(v string) { cfg.Admin.Address = v },
+		"ARGUS_ADMIN_ADDRESS":    func(v string) { cfg.Admin.Address = v },
 		"ARGUS_ADMIN_AUTH_TOKEN": func(v string) { cfg.Admin.AuthToken = v },
 		"ARGUS_POOL_MAX_CONNECTIONS_PER_TARGET": func(v string) {
 			if n, err := strconv.Atoi(v); err == nil {
@@ -472,7 +473,7 @@ func Validate(cfg *Config) error {
 		if l.Address == "" {
 			return fmt.Errorf("listener[%d]: address is required", i)
 		}
-		validProtocols := map[string]bool{"postgresql": true, "mysql": true, "mssql": true, "auto": true}
+		validProtocols := map[string]bool{"postgresql": true, "mysql": true, "mssql": true, "mongodb": true, "auto": true}
 		if l.Protocol != "" && !validProtocols[l.Protocol] {
 			return fmt.Errorf("listener[%d]: unsupported protocol %q", i, l.Protocol)
 		}

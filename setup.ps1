@@ -51,8 +51,8 @@ function Test-Cmd { param($c) return [bool](Get-Command $c -ErrorAction Silently
 # ---------------------------------------------------------------------------
 # Version requirements
 # ---------------------------------------------------------------------------
-$MIN_GO     = [Version]"1.21.0"
-$GO_LATEST  = "1.23.4"
+$MIN_GO     = [Version]"1.24.0"
+$GO_LATEST  = "1.24.0"
 $MIN_DOCKER = [Version]"24.0.0"
 
 function Get-GoVersion {

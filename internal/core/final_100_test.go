@@ -19,15 +19,15 @@ import (
 
 // mockHandler implements protocol.Handler for precise control in tests.
 type mockHandler struct {
-	name              string
-	readCommandFunc   func(ctx context.Context, client net.Conn) (*inspection.Command, []byte, error)
-	forwardFunc       func(ctx context.Context, rawMsg []byte, backend net.Conn) error
-	readResultFunc    func(ctx context.Context, backend, client net.Conn, pipeline *masking.Pipeline) (*protocol.ResultStats, error)
-	writeErrorFunc    func(ctx context.Context, client net.Conn, code, message string) error
-	rebuildQueryFunc  func(rawMsg []byte, newSQL string) []byte
+	name             string
+	readCommandFunc  func(ctx context.Context, client net.Conn) (*inspection.Command, []byte, error)
+	forwardFunc      func(ctx context.Context, rawMsg []byte, backend net.Conn) error
+	readResultFunc   func(ctx context.Context, backend, client net.Conn, pipeline *masking.Pipeline) (*protocol.ResultStats, error)
+	writeErrorFunc   func(ctx context.Context, client net.Conn, code, message string) error
+	rebuildQueryFunc func(rawMsg []byte, newSQL string) []byte
 }
 
-func (m *mockHandler) Name() string { return m.name }
+func (m *mockHandler) Name() string                    { return m.name }
 func (m *mockHandler) DetectProtocol(peek []byte) bool { return false }
 func (m *mockHandler) Handshake(ctx context.Context, client, backend net.Conn) (*session.Info, error) {
 	return nil, nil
@@ -325,6 +325,7 @@ func TestProxyStartSessionTimeoutCallbackFires(t *testing.T) {
 	defer logger.Close()
 
 	proxy := NewProxy(cfg, policy.NewEngine(loader), logger)
+	proxy.SetSessionCheckInterval(50 * time.Millisecond)
 
 	// Start the proxy (registers the OnTimeout callback at lines 140-150)
 	if err := proxy.Start(); err != nil {
@@ -345,9 +346,9 @@ func TestProxyStartSessionTimeoutCallbackFires(t *testing.T) {
 	sess.LastActivity = time.Now().Add(-1 * time.Hour)
 	sess.StartTime = time.Now().Add(-1 * time.Hour)
 
-	// Wait for the session manager's 30s ticker to fire checkTimeouts
-	deadline := time.After(35 * time.Second)
-	ticker := time.NewTicker(500 * time.Millisecond)
+	// Wait for the session manager's timeout checker to fire.
+	deadline := time.After(2 * time.Second)
+	ticker := time.NewTicker(25 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		select {

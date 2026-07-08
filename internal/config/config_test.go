@@ -86,6 +86,11 @@ func TestValidate(t *testing.T) {
 		{"no listeners", func(c *Config) { c.Server.Listeners = nil }, true},
 		{"empty address", func(c *Config) { c.Server.Listeners[0].Address = "" }, true},
 		{"bad protocol", func(c *Config) { c.Server.Listeners[0].Protocol = "oracle" }, true},
+		{"mongodb protocol allowed", func(c *Config) {
+			c.Server.Listeners[0].Protocol = "mongodb"
+			c.Targets = []Target{{Name: "mongo", Host: "localhost", Port: 27017, Protocol: "mongodb"}}
+			c.Routing.DefaultTarget = "mongo"
+		}, false},
 		{"tls without cert", func(c *Config) {
 			c.Server.Listeners[0].TLS.Enabled = true
 		}, true},

@@ -12,6 +12,10 @@
       {
         "address": ":11433",
         "protocol": "mssql"
+      },
+      {
+        "address": ":17017",
+        "protocol": "mongodb"
       }
     ]
   },
@@ -33,6 +37,12 @@
       "protocol": "mssql",
       "host": "mssql",
       "port": 1433
+    },
+    {
+      "name": "mongodb",
+      "protocol": "mongodb",
+      "host": "mongodb",
+      "port": 27017
     }
   ],
   "routing": {

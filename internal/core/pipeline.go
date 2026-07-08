@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ersinkoc/argus/internal/audit"
@@ -24,24 +25,26 @@ import (
 
 // Proxy is the main Argus proxy engine.
 type Proxy struct {
-	cfg             *config.Config
-	router          *Router
-	sessionManager  *session.Manager
-	policyEngine    *policy.Engine
-	auditLogger     *audit.Logger
-	pools           map[string]*pool.Pool
-	rateLimiters    map[string]*ratelimit.Limiter
-	listeners       []*Listener
-	piiDetector     *masking.PIIDetector
-	anomalyDetector *inspection.AnomalyDetector
-	approvalManager *ApprovalManager
-	queryRecorder   *audit.QueryRecorder
-	slowQueryLogger *audit.SlowQueryLogger
-	rewriter        *inspection.Rewriter
-	sessionLimiter  *session.ConcurrencyLimiter
+	cfg               *config.Config
+	router            *Router
+	sessionManager    *session.Manager
+	policyEngine      *policy.Engine
+	auditLogger       *audit.Logger
+	pools             map[string]*pool.Pool
+	poolsMu           sync.RWMutex
+	rateLimiters      map[string]*ratelimit.Limiter
+	listeners         []*Listener
+	piiDetector       *masking.PIIDetector
+	anomalyDetector   *inspection.AnomalyDetector
+	approvalManager   *ApprovalManager
+	queryRecorder     *audit.QueryRecorder
+	slowQueryLogger   *audit.SlowQueryLogger
+	rewriter          *inspection.Rewriter
+	sessionLimiter    *session.ConcurrencyLimiter
 	onEvent           func(any) // broadcast callback (e.g. WebSocket)
 	rlCleanupStop     chan struct{}
 	rlCleanupInterval time.Duration // default 5 min; override in tests
+	drainTimeout      time.Duration // default 10s; override in tests
 }
 
 // NewProxy creates a new proxy engine.
@@ -83,6 +86,19 @@ func (p *Proxy) SetRewriter(r *inspection.Rewriter) {
 // SetSessionLimiter sets the per-user concurrent session limiter.
 func (p *Proxy) SetSessionLimiter(l *session.ConcurrencyLimiter) {
 	p.sessionLimiter = l
+}
+
+// SetSessionCheckInterval sets how often session timeouts are checked.
+// It must be called before Start.
+func (p *Proxy) SetSessionCheckInterval(interval time.Duration) {
+	p.sessionManager.SetCheckInterval(interval)
+}
+
+// SetDrainTimeout sets how long Stop waits for active sessions to drain.
+func (p *Proxy) SetDrainTimeout(timeout time.Duration) {
+	if timeout > 0 {
+		p.drainTimeout = timeout
+	}
 }
 
 // ApprovalManager returns the approval manager.
@@ -134,7 +150,9 @@ func (p *Proxy) Start() error {
 		}
 
 		pl.Start()
+		p.poolsMu.Lock()
 		p.pools[target.Name] = pl
+		p.poolsMu.Unlock()
 	}
 
 	// Start session manager
@@ -206,7 +224,11 @@ func (p *Proxy) Stop() {
 	activeSessions := p.sessionManager.ActiveSessions()
 	if len(activeSessions) > 0 {
 		slog.Info("draining active sessions", "count", len(activeSessions))
-		deadline := time.After(10 * time.Second)
+		drainTimeout := p.drainTimeout
+		if drainTimeout <= 0 {
+			drainTimeout = 10 * time.Second
+		}
+		deadline := time.After(drainTimeout)
 		ticker := time.NewTicker(500 * time.Millisecond)
 		defer ticker.Stop()
 
@@ -235,7 +257,13 @@ func (p *Proxy) Stop() {
 	p.sessionManager.Stop()
 
 	// Close pools
+	p.poolsMu.RLock()
+	pools := make([]*pool.Pool, 0, len(p.pools))
 	for _, pl := range p.pools {
+		pools = append(pools, pl)
+	}
+	p.poolsMu.RUnlock()
+	for _, pl := range pools {
 		pl.Close()
 	}
 
@@ -249,6 +277,8 @@ func (p *Proxy) SessionManager() *session.Manager {
 
 // PoolStats returns stats for all pools.
 func (p *Proxy) PoolStats() map[string]pool.PoolStats {
+	p.poolsMu.RLock()
+	defer p.poolsMu.RUnlock()
 	stats := make(map[string]pool.PoolStats)
 	for name, pl := range p.pools {
 		stats[name] = pl.Stats()
@@ -256,9 +286,21 @@ func (p *Proxy) PoolStats() map[string]pool.PoolStats {
 	return stats
 }
 
-// Pools returns the connection pools (for gateway use).
+// Pools returns a snapshot of the connection pools (for gateway use).
 func (p *Proxy) Pools() map[string]*pool.Pool {
-	return p.pools
+	p.poolsMu.RLock()
+	defer p.poolsMu.RUnlock()
+	pools := make(map[string]*pool.Pool, len(p.pools))
+	for name, pl := range p.pools {
+		pools[name] = pl
+	}
+	return pools
+}
+
+func (p *Proxy) removePool(name string) {
+	p.poolsMu.Lock()
+	delete(p.pools, name)
+	p.poolsMu.Unlock()
 }
 
 // AnomalyDetector returns the anomaly detector.
@@ -303,7 +345,9 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 	// and pool connections have already consumed the greeting.
 	var backendNetConn net.Conn
 	var poolConn *pool.Conn
+	p.poolsMu.RLock()
 	pl := p.pools[target.Name]
+	p.poolsMu.RUnlock()
 
 	if protocolName == "mysql" || protocolName == "mssql" {
 		// Fresh connection for server-speaks-first protocols
@@ -507,8 +551,8 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 			Timestamp:   time.Now(),
 			CommandType: cmd.Type,
 			RiskLevel:   cmd.RiskLevel,
-			RawSQL:   cmd.Raw,
-			HasWhere: cmd.HasWhere,
+			RawSQL:      cmd.Raw,
+			HasWhere:    cmd.HasWhere,
 			CostScore:   costEstimate.Score,
 			PlanCost:    planCost,
 		}
