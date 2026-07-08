@@ -30,6 +30,7 @@ kubectl -n argus rollout status deployment/argus
 | `service.yaml` | ClusterIP Services: PG (5432), MySQL (3306), admin (9090), metrics (9091) |
 | `hpa.yaml` | HPA: 2–8 replicas based on CPU/memory |
 | `pdb.yaml` | PodDisruptionBudget: minAvailable=1 |
+| `networkpolicy.yaml` | Ingress + egress restrictions for proxy, admin, metrics |
 | `kustomization.yaml` | Kustomize entry point |
 
 ## Image Pinning
@@ -74,23 +75,12 @@ Encrypt the secret with `kubeseal` before committing the sealed manifest.
 
 ## Network Policy (recommended)
 
-Restrict inbound traffic to argus pods:
+`k8s/networkpolicy.yaml` restricts ingress and egress traffic:
 
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: argus-ingress
-  namespace: argus
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: argus
-  ingress:
-    - ports:
-        - port: 15432   # PG proxy
-        - port: 13306   # MySQL proxy
-```
+- **Ingress**: proxy ports open to any namespace; admin API (9090) restricted to `monitoring`/`ops`; metrics (9091) restricted to `monitoring`
+- **Egress**: DNS allowed; DB backends allowed on the cluster pod CIDR; SIEM webhook allowed on port 443
+
+> Adjust the egress `ipBlock` CIDR to match your cluster's pod/service network before deploying.
 
 ## Connecting Applications
 

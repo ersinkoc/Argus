@@ -1,0 +1,74 @@
+## Ingress: restrict which pods/namespaces can reach Argus proxy, admin, and metrics ports.
+## Egress: restrict outbound traffic to database backends, DNS, and optional SIEM webhook.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: argus
+  namespace: argus
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: argus
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Client apps connecting through the proxy
+    - from:
+        - namespaceSelector: {}       # any namespace in the cluster
+      ports:
+        - protocol: TCP
+          port: 15432                  # PostgreSQL proxy
+        - protocol: TCP
+          port: 13306                  # MySQL proxy
+    # Admin API — restrict to ops/monitoring namespaces
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ops
+      ports:
+        - protocol: TCP
+          port: 9090                   # Admin API / dashboard
+    # Metrics — restrict to Prometheus / monitoring
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9091                   # Prometheus metrics
+  egress:
+    # Allow DNS resolution
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allow outbound to database backends (adjust CIDR or podSelector as needed)
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8          # adjust to your cluster pod/service CIDR
+      ports:
+        - protocol: TCP
+          port: 5432                   # PostgreSQL
+        - protocol: TCP
+          port: 3306                   # MySQL
+        - protocol: TCP
+          port: 1433                   # MSSQL
+        - protocol: TCP
+          port: 27017                  # MongoDB
+    # Allow SIEM webhook if configured
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0           # wide open — restrict to your SIEM endpoint IP
+      ports:
+        - protocol: TCP
+          port: 443

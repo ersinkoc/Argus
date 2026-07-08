@@ -12,6 +12,7 @@ resources:
   - service.yaml
   - hpa.yaml
   - pdb.yaml
+  - networkpolicy.yaml
 
 ## Image tag. Override per environment — in production, pin to an immutable digest:
 ##   images:
