@@ -29,7 +29,7 @@ func TestMakeClientTLSConfigDisabled(t *testing.T) {
 }
 
 func TestMakeClientTLSConfigNoVerify(t *testing.T) {
-	cfg := config.TLSConfig{Enabled: true, Verify: false}
+	cfg := config.TLSConfig{Enabled: true, SkipVerify: true}
 	tlsCfg, err := MakeClientTLSConfig(cfg)
 	if err != nil {
 		t.Fatal(err)

@@ -65,7 +65,7 @@ func MakeClientTLSConfig(cfg config.TLSConfig) (*tls.Config, error) {
 		tlsCfg.RootCAs = pool
 	}
 
-	if !cfg.Verify {
+	if !cfg.BackendVerifyEnabled() {
 		tlsCfg.InsecureSkipVerify = true
 	}
 

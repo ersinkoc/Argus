@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -152,6 +153,36 @@ func TestEnvOverride(t *testing.T) {
 	}
 	if cfg.Metrics.Address != ":8080" {
 		t.Errorf("metrics address = %q, want %q", cfg.Metrics.Address, ":8080")
+	}
+}
+
+func TestTLSConfigDefaultsToVerifyWhenOmitted(t *testing.T) {
+	var tlsCfg TLSConfig
+	if err := json.Unmarshal([]byte(`{"enabled":true}`), &tlsCfg); err != nil {
+		t.Fatal(err)
+	}
+	if !tlsCfg.BackendVerifyEnabled() {
+		t.Fatal("expected backend verify to default to enabled when verify is omitted")
+	}
+}
+
+func TestTLSConfigExplicitVerifyFalseRemainsInsecure(t *testing.T) {
+	var tlsCfg TLSConfig
+	if err := json.Unmarshal([]byte(`{"enabled":true,"verify":false}`), &tlsCfg); err != nil {
+		t.Fatal(err)
+	}
+	if tlsCfg.BackendVerifyEnabled() {
+		t.Fatal("expected explicit verify=false to disable backend verification for compatibility")
+	}
+}
+
+func TestTLSConfigSkipVerifyOverridesVerify(t *testing.T) {
+	var tlsCfg TLSConfig
+	if err := json.Unmarshal([]byte(`{"enabled":true,"verify":true,"skip_verify":true}`), &tlsCfg); err != nil {
+		t.Fatal(err)
+	}
+	if tlsCfg.BackendVerifyEnabled() {
+		t.Fatal("expected skip_verify=true to disable backend verification")
 	}
 }
 

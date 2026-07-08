@@ -218,16 +218,26 @@ func TestMakeClientTLSConfig_WithCA(t *testing.T) {
 	}
 }
 
+func TestMakeClientTLSConfig_DefaultsToVerify(t *testing.T) {
+	cfg, err := MakeClientTLSConfig(config.TLSConfig{Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.InsecureSkipVerify {
+		t.Error("expected InsecureSkipVerify=false when verify is omitted")
+	}
+}
+
 func TestMakeClientTLSConfig_InsecureSkipVerify(t *testing.T) {
 	cfg, err := MakeClientTLSConfig(config.TLSConfig{
-		Enabled: true,
-		Verify:  false,
+		Enabled:    true,
+		SkipVerify: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !cfg.InsecureSkipVerify {
-		t.Error("expected InsecureSkipVerify=true when verify=false")
+		t.Error("expected InsecureSkipVerify=true when skip_verify=true")
 	}
 }
 

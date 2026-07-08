@@ -72,8 +72,49 @@ type TLSConfig struct {
 	KeyFile      string `json:"key_file"`
 	CAFile       string `json:"ca_file"`
 	Verify       bool   `json:"verify"`
+	SkipVerify   bool   `json:"skip_verify,omitempty"`
 	ClientAuth   bool   `json:"client_auth"`    // require client certificate (mTLS)
 	ClientCAFile string `json:"client_ca_file"` // CA to verify client certs
+	verifySet    bool
+}
+
+func (t *TLSConfig) UnmarshalJSON(data []byte) error {
+	type Alias struct {
+		Enabled      bool   `json:"enabled"`
+		CertFile     string `json:"cert_file"`
+		KeyFile      string `json:"key_file"`
+		CAFile       string `json:"ca_file"`
+		Verify       *bool  `json:"verify"`
+		SkipVerify   bool   `json:"skip_verify"`
+		ClientAuth   bool   `json:"client_auth"`
+		ClientCAFile string `json:"client_ca_file"`
+	}
+	var a Alias
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	t.Enabled = a.Enabled
+	t.CertFile = a.CertFile
+	t.KeyFile = a.KeyFile
+	t.CAFile = a.CAFile
+	t.SkipVerify = a.SkipVerify
+	t.ClientAuth = a.ClientAuth
+	t.ClientCAFile = a.ClientCAFile
+	if a.Verify != nil {
+		t.Verify = *a.Verify
+		t.verifySet = true
+	}
+	return nil
+}
+
+func (t TLSConfig) BackendVerifyEnabled() bool {
+	if t.SkipVerify {
+		return false
+	}
+	if t.verifySet {
+		return t.Verify
+	}
+	return true
 }
 
 type Target struct {

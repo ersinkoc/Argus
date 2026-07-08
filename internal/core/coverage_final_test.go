@@ -100,7 +100,7 @@ func TestProxyStartWithTLSBackendConfig(t *testing.T) {
 	cfg.Server.Listeners = []config.ListenerConfig{{Address: "127.0.0.1:0", Protocol: "postgresql"}}
 	cfg.Targets = []config.Target{
 		{Name: "tls-target", Protocol: "postgresql", Host: "127.0.0.1", Port: 1,
-			TLS: config.TLSConfig{Enabled: true, Verify: false}},
+			TLS: config.TLSConfig{Enabled: true, SkipVerify: true}},
 	}
 	cfg.Routing.DefaultTarget = "tls-target"
 	cfg.Pool.MinIdleConnections = 0
