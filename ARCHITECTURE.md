@@ -68,12 +68,12 @@
 ### Key Characteristics
 
 - **Zero external dependencies** — stdlib only, no CGO, single ~8MB binary
-- **4 database protocols** — PostgreSQL, MySQL, MSSQL, MongoDB
+- **4 database protocols** — PostgreSQL, MySQL, MSSQL, MongoDB (experimental)
 - **15 policy condition types** including SQL injection detection
 - **8 masking transformers** with PII auto-detection
 - **Streaming architecture** — O(1) memory per row for masking
 - **Async audit logging** — buffered channel, drops on overflow
-- **Policy caching** — LRU with 60s TTL, SHA256 cache keys
+- **Policy caching** — bounded TTL cache with 60s expiry, SHA256 cache keys, and half-map overflow eviction
 
 ---
 
@@ -111,7 +111,7 @@
                                  │
                     ┌────────────▼────────────┐
                     │   5. POLICY EVALUATE    │  Engine.Evaluate()
-                    │   15 condition types    │  LRU cache (60s)
+                    │   15 condition types    │  TTL cache (60s)
                     │   Role-based matching   │  First match wins
                     └────────────┬────────────┘
                                  │
@@ -179,7 +179,7 @@
 6.  Start audit logger goroutine
 7.  Create policy loader (file watcher, 5s interval)
 8.  Load initial policies
-9.  Create policy engine (with LRU cache)
+9.  Create policy engine (with bounded TTL decision cache)
 10. Create proxy (pools, listeners, session manager)
 11. Set query recorder (forensic recording)
 12. Set SIEM webhook writer (batched HTTP POST)
@@ -357,6 +357,10 @@ type ResultStats struct {
 │ Error fmt   │ ErrorResp    │ ERR packet   │ ERROR token  │ BSON error   │
 └─────────────┴──────────────┴──────────────┴──────────────┴──────────────┘
 ```
+
+### MongoDB Maturity
+
+MongoDB support is currently **experimental**. The handler supports port-configured OP_MSG passthrough, command-name extraction from BSON, coarse command classification, protocol metrics, and minimal BSON error responses. It does not yet provide production-parity identity extraction, collection-level policy context, BSON result masking, query rewrite semantics, or E2E coverage equivalent to the SQL protocols.
 
 ### PostgreSQL Wire Format
 
@@ -541,13 +545,13 @@ type AnomalyDetector struct {
 
 ```
 internal/policy/
-├── engine.go       Engine struct, Evaluate(), cache
+├── engine.go       Engine struct, Evaluate(), bounded TTL decision cache
 ├── types.go        PolicySet, Context, Decision, Action
 ├── matcher.go      15 condition matchers + SQL injection detection
 ├── loader.go       File watcher, hot-reload, SetCurrent()
 ├── dryrun.go       Dry-run simulation (DryRun, DryRunJSON)
 ├── validator.go    Policy validation (structure + cross-reference)
-└── cache.go        LRU decision cache (10K entries, 60s TTL)
+└── regex.go        Compiled regex cache for policy condition matching
 ```
 
 ### Evaluation Flow
@@ -1330,6 +1334,17 @@ Standalone packages (not imported by main binary):
   ├── internal/auth          LDAP + SSO providers (planned integration)
   └── internal/cluster       Multi-instance session store (planned)
 ```
+
+### Dependency Guardrails
+
+Production Go files should keep dependencies flowing from orchestration packages toward lower-level packages, not the reverse:
+
+- `cmd/argus`, `internal/core`, `internal/admin`, and `internal/gateway` are application-facing orchestration layers.
+- Lower-level packages such as `internal/config`, `internal/audit`, `internal/inspection`, `internal/policy`, `internal/masking`, `internal/protocol`, `internal/pool`, `internal/session`, `internal/metrics`, and `internal/ratelimit` must not import `internal/core`, `internal/admin`, or `internal/gateway`.
+- `internal/admin` may depend on provider interfaces and read-only status packages, but must not import `internal/core` or `internal/gateway`.
+- Test files are intentionally excluded from the guard so package-level tests can build fixtures without forcing production dependencies.
+
+Run `make dep-guard` to enforce the conservative import rules in `scripts/check-internal-deps.sh` before large package splits.
 
 ### Package Statistics
 

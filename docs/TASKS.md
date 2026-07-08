@@ -76,7 +76,7 @@
 - [x] Time-based rules (work hours, work days)
 - [x] IP-based rules (CIDR ranges, inclusion/exclusion)
 - [x] First-match evaluation order
-- [x] Decision cache (LRU, TTL, invalidation on reload)
+- [x] Decision cache (bounded TTL cache, invalidation on reload)
 - [x] Default action fallback
 - [x] Rate limiting (token bucket per user, policy-driven)
 - [x] Policy inheritance (base + overlay merge)
@@ -226,7 +226,7 @@ All Phase 2 items have been implemented.
 - [x] Certificate rotation without downtime
 
 ## Phase 4 — Extended Platform (Complete)
-- [x] MongoDB wire protocol (OP_MSG, BSON command extraction, 4th protocol)
+- [x] MongoDB wire protocol marked experimental (OP_MSG passthrough, BSON command extraction, 4th protocol; production parity still tracked separately)
 - [x] Web dashboard UI (embedded HTML/CSS/JS, real-time, auto-refresh)
 - [x] Plugin system (TransformerPlugin, AuditWriterPlugin, Registry)
 - [x] Data classification engine (5 levels, 17 rules, custom rules)

@@ -597,7 +597,7 @@ Policy decisions for identical contexts can be cached:
 - Cache key: hash of (username, role, database, command_type, table_list)
 - Cache TTL: configurable, default 60 seconds
 - Cache invalidated on policy reload
-- Cache size: bounded LRU, default 10,000 entries
+- Cache size: bounded map, default 10,000 entries; overflow evicts an arbitrary half of current entries
 
 The cache avoids re-evaluating the same policy rules for repeated query patterns.
 
@@ -1148,7 +1148,7 @@ Observability:
 ### Phase 4 — Extended Platform
 
 - Oracle TNS support (may require Oracle Instant Client)
-- MongoDB wire protocol support
+- MongoDB wire protocol support (experimental until identity extraction, collection-level policy context, BSON result masking, and E2E coverage reach parity with SQL protocols)
 - Web dashboard UI
 - Terraform provider for policy-as-code
 - Kubernetes operator

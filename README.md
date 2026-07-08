@@ -58,9 +58,11 @@ Argus answers all three — and blocks what shouldn't happen:
 - **Audit log tamper protection** — prevent modification of audit/log tables
 
 ### Protocol Support
-- **4 database protocols** — PostgreSQL, MySQL, MSSQL TDS, and MongoDB wire protocols
+- **4 database protocols** — PostgreSQL, MySQL, MSSQL TDS, and experimental MongoDB wire protocol support
 - **Protocol-native proxy** — speaks each database's wire protocol natively, not JDBC/ODBC wrapping
 - **Zero external dependencies** — standard library only, no CGO, single binary (~7.8MB)
+
+> **MongoDB maturity:** MongoDB support is experimental. It currently covers port-configured OP_MSG passthrough, command-name extraction, coarse command classification, metrics, and protocol error responses. It does not yet provide production-parity identity extraction, collection-level policy context, BSON result masking, or MongoDB E2E coverage comparable to PostgreSQL/MySQL/MSSQL.
 
 ### Policy Engine (15 Condition Types)
 
@@ -475,7 +477,7 @@ argus/
 │   │   ├── pg/             # PostgreSQL (Simple + Extended + COPY + SSL)
 │   │   ├── mysql/          # MySQL (COM_QUERY, prepared statements, masking)
 │   │   ├── mssql/          # MSSQL TDS (Pre-Login, Login7, SQL Batch, masking)
-│   │   └── mongodb/        # MongoDB (OP_MSG, BSON command extraction)
+│   │   └── mongodb/        # MongoDB experimental (OP_MSG passthrough, BSON command extraction)
 │   ├── inspection/         # Tokenizer, classifier, fingerprint, anomaly, cost, splitter
 │   ├── policy/             # Engine, matcher (15 conditions), WAF rules, decision cache
 │   ├── masking/            # Streaming pipeline, 8 transformers, PII auto-detection
@@ -504,7 +506,7 @@ argus/
 
 ```
 Client Request
-  → Protocol Decode (PG/MySQL/MSSQL/MongoDB)
+  → Protocol Decode (PG/MySQL/MSSQL; experimental MongoDB)
   → SQL Inspection (tokenize, classify, risk score, fingerprint)
   → Cost Estimation (0-100 heuristic)
   → Policy Evaluation (15 conditions, role/command/table match, cache)

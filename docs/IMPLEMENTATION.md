@@ -65,9 +65,9 @@ This means more specific rules should come before general ones.
 
 Policy decisions for identical contexts are cached:
 
-- **Key**: SHA-256 hash of (username, roles, database, command_type, tables)
-- **TTL**: 60 seconds (configurable)
-- **Size**: bounded at 10,000 entries with 50% eviction on overflow
+- **Key**: SHA-256 hash of the policy-relevant request context, including username, roles, database, command type, tables, client IP, WHERE presence, cost scores, and SQL hash
+- **TTL**: 60 seconds
+- **Size**: bounded at 10,000 entries with arbitrary 50% eviction on overflow
 - **Invalidation**: entire cache cleared on policy file reload
 
 The cache avoids re-evaluating the same rules for repeated query patterns.
@@ -84,8 +84,10 @@ auditChan := make(chan AuditEvent, 10000)
 - If the buffer is full, events are **dropped** (with a counter), never blocking the proxy
 - A dedicated goroutine reads from the channel and writes to output
 - On shutdown, remaining events are drained before closing
+- Each persisted audit event carries `prev_hash` and `hash` fields forming a linear SHA-256 hash chain
+- `audit.VerifyChain(path)` can detect deletion/insertion/modification inside a JSONL audit file after the fact
 
-This ensures the proxy pipeline is never blocked by slow I/O.
+This ensures the proxy pipeline is never blocked by slow I/O while still providing basic tamper-evidence for persisted audit logs.
 
 ## Wire Protocol Details
 

@@ -20,7 +20,7 @@ make cross-all                          # cross-compile linux/darwin/windows
 ## Architecture
 - **Zero external dependencies** — stdlib only, no CGO, single binary (~7.8MB)
 - Config and policy files use JSON format
-- 4 database protocols: PostgreSQL, MySQL, MSSQL, MongoDB
+- 4 database protocols: PostgreSQL, MySQL, MSSQL, MongoDB (experimental)
 - Database WAF: SQLi detection, schema enumeration blocking, system command blocking
 - 15 policy condition types including sql_injection, plan_cost_gte, require_where, max_joins, max_tables
 - SQL Gateway: HTTP API for query submission with approval workflow and allowlist
@@ -74,7 +74,7 @@ Command → Inspect → Cost → Policy (15 conditions + SQLi detection) → Rat
 - Protocol handlers implement `protocol.Handler` interface
 - Masking is streaming — O(1) memory per row
 - Audit logging is async via buffered channel (drops on overflow)
-- Policy evaluation is cached (LRU, 60s TTL) with cache hit/miss counters
+- Policy evaluation is cached in a bounded TTL cache (60s TTL, half-map overflow eviction) with cache hit/miss counters
 - Config supports `$ENV{VAR}` expansion in all string fields and `ARGUS_*` env overrides
 - Rate limiter buckets auto-cleaned every 5 minutes (prevents memory leaks)
 - Webhook writer flushed on graceful shutdown
@@ -120,9 +120,9 @@ All rules in that file are hard overrides. They govern:
 ### Architecture Notes
 
 - Zero external dependencies — stdlib only, no CGO, single binary
-- 4 database protocol handlers: PostgreSQL, MySQL, MSSQL, MongoDB
+- 4 database protocol handlers: PostgreSQL, MySQL, MSSQL, MongoDB (experimental)
 - Streaming masking pipeline: O(1) memory per row
-- Policy engine with LRU decision cache (60s TTL) and hot-reload
+- Policy engine with bounded TTL decision cache (60s TTL) and hot-reload invalidation
 - Async audit logging via buffered channel (drops on overflow)
 - Connection pools with circuit breakers protecting backend connections
 - SQLi detection via string literal removal + pattern matching in `policy/matcher.go`
