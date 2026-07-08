@@ -99,7 +99,9 @@
     "enabled": true,
     "api_keys": [
       {
+        "id": "web-dashboard-primary",
         "key": "$ENV{GATEWAY_API_KEY}",
+        "previous_keys": ["$ENV{GATEWAY_API_KEY_PREVIOUS}"],
         "username": "web_dashboard",
         "roles": ["analyst"],
         "database": "production",

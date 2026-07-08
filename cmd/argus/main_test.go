@@ -40,6 +40,41 @@ func TestMainVersion(t *testing.T) {
 }
 
 // TestMainValidate tests the main() function's --validate flag via subprocess.
+func TestMakeConfigExporterRedactsGatewayKeys(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Admin.AuthToken = "admin-secret"
+	cfg.Gateway.APIKeys = []config.APIKeyConfig{{
+		ID:           "gw-primary",
+		Key:          "current-key",
+		PreviousKeys: []string{"old-key"},
+		Username:     "alice",
+		Enabled:      true,
+	}}
+
+	data, err := makeConfigExporter(cfg)()
+	if err != nil {
+		t.Fatalf("makeConfigExporter error: %v", err)
+	}
+	var exported map[string]any
+	if err := json.Unmarshal(data, &exported); err != nil {
+		t.Fatalf("unmarshal exported config: %v", err)
+	}
+	adminCfg := exported["admin"].(map[string]any)
+	if got := adminCfg["auth_token"]; got != "***REDACTED***" {
+		t.Fatalf("admin token = %v, want redacted", got)
+	}
+	gatewayCfg := exported["gateway"].(map[string]any)
+	apiKeys := gatewayCfg["api_keys"].([]any)
+	first := apiKeys[0].(map[string]any)
+	if got := first["key"]; got != "***REDACTED***" {
+		t.Fatalf("gateway key = %v, want redacted", got)
+	}
+	prev := first["previous_keys"].([]any)
+	if got := prev[0]; got != "***REDACTED***" {
+		t.Fatalf("gateway previous key = %v, want redacted", got)
+	}
+}
+
 func TestMainValidate(t *testing.T) {
 	if os.Getenv("TEST_MAIN_VALIDATE") == "1" {
 		cfgPath := os.Getenv("TEST_CONFIG_PATH")

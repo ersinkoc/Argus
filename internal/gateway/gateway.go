@@ -19,12 +19,13 @@ import (
 
 // QueryRequest is the inbound HTTP request body for gateway queries.
 type QueryRequest struct {
-	SQL      string   `json:"sql"`
-	Username string   `json:"username"`
-	Database string   `json:"database"`
-	ClientIP string   `json:"client_ip,omitempty"`
-	Roles        []string `json:"-"` // injected by auth middleware, not from JSON
-	APIKeyLimit  float64  `json:"-"` // per-key rate limit (queries/sec), 0 = unlimited
+	SQL         string   `json:"sql"`
+	Username    string   `json:"username"`
+	Database    string   `json:"database"`
+	ClientIP    string   `json:"client_ip,omitempty"`
+	Roles       []string `json:"-"` // injected by auth middleware, not from JSON
+	APIKeyID    string   `json:"-"` // resolved key identifier for rate limiting/audit
+	APIKeyLimit float64  `json:"-"` // per-key rate limit (queries/sec), 0 = unlimited
 }
 
 // QueryResponse is the HTTP response for a gateway query.
@@ -62,9 +63,9 @@ type Gateway struct {
 	rateLimiters    map[string]*ratelimit.Limiter
 	rlMu            sync.Mutex
 	onEvent         func(any)
-	webhookNotifier  *WebhookNotifier
-	piiDetector      *masking.PIIDetector
-	cleanupStop      chan struct{}
+	webhookNotifier *WebhookNotifier
+	piiDetector     *masking.PIIDetector
+	cleanupStop     chan struct{}
 
 	// Test hooks (nil in production — defaults to approvalManager methods)
 	submitForApprovalFn func(*core.ApprovalRequest) (string, error)
@@ -119,12 +120,14 @@ func New(deps GatewayDeps) *Gateway {
 
 	for _, keyCfg := range deps.Cfg.Gateway.APIKeys {
 		gw.apiKeyStore.Add(&APIKey{
-			Key:       keyCfg.Key,
-			Username:  keyCfg.Username,
-			Roles:     keyCfg.Roles,
-			Database:  keyCfg.Database,
-			RateLimit: keyCfg.RateLimit,
-			Enabled:   keyCfg.Enabled,
+			ID:           keyCfg.ID,
+			Key:          keyCfg.Key,
+			PreviousKeys: keyCfg.PreviousKeys,
+			Username:     keyCfg.Username,
+			Roles:        keyCfg.Roles,
+			Database:     keyCfg.Database,
+			RateLimit:    keyCfg.RateLimit,
+			Enabled:      keyCfg.Enabled,
 		})
 	}
 	return gw
@@ -160,14 +163,18 @@ func (gw *Gateway) ExecuteQuery(ctx context.Context, req QueryRequest) QueryResp
 
 	// Per-API-key rate limit (before any processing)
 	if req.APIKeyLimit > 0 {
+		limiterKey := req.APIKeyID
+		if limiterKey == "" {
+			limiterKey = req.Username
+		}
 		gw.rlMu.Lock()
-		keyLimiter, ok := gw.rateLimiters["apikey:"+req.Username]
+		keyLimiter, ok := gw.rateLimiters["apikey:"+limiterKey]
 		if !ok {
 			keyLimiter = ratelimit.NewLimiter(req.APIKeyLimit, int(req.APIKeyLimit)+1)
-			gw.rateLimiters["apikey:"+req.Username] = keyLimiter
+			gw.rateLimiters["apikey:"+limiterKey] = keyLimiter
 		}
 		gw.rlMu.Unlock()
-		if !keyLimiter.Allow(req.Username) {
+		if !keyLimiter.Allow(limiterKey) {
 			return QueryResponse{
 				Status:      "blocked",
 				Fingerprint: fingerprint,
