@@ -37,6 +37,7 @@ func (s *Server) RouteInventory() []RouteSpec {
 			RouteSpec{Path: "/api/policies/dryrun", Methods: []string{"POST"}, Group: "admin", RequiresAdminAuth: true},
 			RouteSpec{Path: "/api/config/export", Methods: []string{"GET"}, Group: "admin", RequiresAdminAuth: true},
 			RouteSpec{Path: "/api/audit/compact", Methods: []string{"POST"}, Group: "admin", RequiresAdminAuth: true},
+			RouteSpec{Path: "/api/audit/verify", Methods: []string{"GET"}, Group: "admin", RequiresAdminAuth: true},
 			RouteSpec{Path: "/api/policies/validate", Methods: []string{"GET"}, Group: "admin", RequiresAdminAuth: true},
 			RouteSpec{Path: "/api/audit/export", Methods: []string{"GET"}, Group: "admin", RequiresAdminAuth: true},
 			RouteSpec{Path: "/api/pool/health", Methods: []string{"GET"}, Group: "admin", RequiresAdminAuth: true},

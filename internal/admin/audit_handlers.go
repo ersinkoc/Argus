@@ -182,3 +182,27 @@ func (s *Server) handleAuditExport(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Info("CSV export completed", "count", count)
 }
+
+func (s *Server) handleAuditVerify(w http.ResponseWriter, r *http.Request) {
+	if s.auditLogPath == "" {
+		writeAPIError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "audit log path not configured")
+		return
+	}
+
+	if err := audit.VerifyChain(s.auditLogPath); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]any{
+			"valid": false,
+			"error": err.Error(),
+			"path":  s.auditLogPath,
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"valid": true,
+		"path":  s.auditLogPath,
+	})
+}

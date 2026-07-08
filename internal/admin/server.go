@@ -144,6 +144,7 @@ func (s *Server) Start() error {
 		mux.HandleFunc("/api/policies/dryrun", s.handleDryRun)
 		mux.HandleFunc("/api/config/export", s.handleConfigExport)
 		mux.HandleFunc("/api/audit/compact", s.handleCompact)
+		mux.HandleFunc("/api/audit/verify", s.handleAuditVerify)
 		mux.HandleFunc("/api/policies/validate", s.handlePolicyValidate)
 		mux.HandleFunc("/api/audit/export", s.handleAuditExport)
 		mux.HandleFunc("/api/pool/health", s.handlePoolHealth)
