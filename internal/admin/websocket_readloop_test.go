@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/ersinkoc/argus/internal/testutil"
 )
 
 func TestReadLoopExtendedPayload126(t *testing.T) {
@@ -17,7 +19,7 @@ func TestReadLoopExtendedPayload126(t *testing.T) {
 
 	conn := wsConnect(t, srv.Listener.Addr().String())
 	defer conn.Close()
-	time.Sleep(50 * time.Millisecond)
+	testutil.WaitFor(t, time.Second, func() bool { return es.Count() == 1 }, "client should register")
 
 	// Send a masked text frame with 130-byte payload (triggers 126 extended length)
 	payload := make([]byte, 130)
@@ -36,17 +38,12 @@ func TestReadLoopExtendedPayload126(t *testing.T) {
 	frame = append(frame, masked...)
 	conn.Write(frame)
 
-	time.Sleep(100 * time.Millisecond)
-
-	// Client should still be connected
-	if es.Count() != 1 {
-		t.Errorf("client disconnected after extended payload, count=%d", es.Count())
-	}
+	testutil.WaitFor(t, time.Second, func() bool { return es.Count() == 1 }, "client should stay connected after extended payload")
 
 	// Send close to clean up
 	closeFrame := []byte{0x88, 0x80, 0x00, 0x00, 0x00, 0x00}
 	conn.Write(closeFrame)
-	time.Sleep(100 * time.Millisecond)
+	testutil.WaitFor(t, time.Second, func() bool { return es.Count() == 0 }, "client should deregister after close")
 }
 
 func TestReadLoopPongFrame(t *testing.T) {
@@ -58,21 +55,18 @@ func TestReadLoopPongFrame(t *testing.T) {
 
 	conn := wsConnect(t, srv.Listener.Addr().String())
 	defer conn.Close()
-	time.Sleep(50 * time.Millisecond)
+	testutil.WaitFor(t, time.Second, func() bool { return es.Count() == 1 }, "client should register")
 
 	// Send a pong frame (opcode 0xA) — server should just continue
 	pongFrame := []byte{0x8A, 0x80, 0x00, 0x00, 0x00, 0x00}
 	conn.Write(pongFrame)
-	time.Sleep(100 * time.Millisecond)
 
-	if es.Count() != 1 {
-		t.Errorf("client disconnected after pong, count=%d", es.Count())
-	}
+	testutil.WaitFor(t, time.Second, func() bool { return es.Count() == 1 }, "client should stay connected after pong")
 
 	// Clean up
 	closeFrame := []byte{0x88, 0x80, 0x00, 0x00, 0x00, 0x00}
 	conn.Write(closeFrame)
-	time.Sleep(100 * time.Millisecond)
+	testutil.WaitFor(t, time.Second, func() bool { return es.Count() == 0 }, "client should deregister after close")
 }
 
 func TestReadLoopConnectionDrop(t *testing.T) {
@@ -83,20 +77,12 @@ func TestReadLoopConnectionDrop(t *testing.T) {
 	defer srv.Close()
 
 	conn := wsConnect(t, srv.Listener.Addr().String())
-	time.Sleep(50 * time.Millisecond)
 
-	if es.Count() != 1 {
-		t.Fatalf("expected 1 client, got %d", es.Count())
-	}
+	testutil.WaitFor(t, time.Second, func() bool { return es.Count() == 1 }, "client should register")
 
 	// Drop connection abruptly
 	conn.Close()
-	time.Sleep(200 * time.Millisecond)
-
-	// readLoop should detect and remove the client
-	if es.Count() != 0 {
-		t.Errorf("client not removed after drop, count=%d", es.Count())
-	}
+	testutil.WaitFor(t, time.Second, func() bool { return es.Count() == 0 }, "client should be removed after connection drop")
 }
 
 func TestReadLoopMaskedTextFrame(t *testing.T) {
@@ -108,7 +94,7 @@ func TestReadLoopMaskedTextFrame(t *testing.T) {
 
 	conn := wsConnect(t, srv.Listener.Addr().String())
 	defer conn.Close()
-	time.Sleep(50 * time.Millisecond)
+	testutil.WaitFor(t, time.Second, func() bool { return es.Count() == 1 }, "client should register")
 
 	// Send a short masked text frame (5 bytes payload)
 	payload := []byte("hello")
@@ -123,16 +109,11 @@ func TestReadLoopMaskedTextFrame(t *testing.T) {
 	frame = append(frame, masked...)
 	conn.Write(frame)
 
-	time.Sleep(100 * time.Millisecond)
-
-	// Should still be connected — server ignores text frames from client
-	if es.Count() != 1 {
-		t.Errorf("client disconnected after text frame, count=%d", es.Count())
-	}
+	testutil.WaitFor(t, time.Second, func() bool { return es.Count() == 1 }, "client should stay connected after text frame")
 
 	closeFrame := []byte{0x88, 0x80, 0x00, 0x00, 0x00, 0x00}
 	conn.Write(closeFrame)
-	time.Sleep(100 * time.Millisecond)
+	testutil.WaitFor(t, time.Second, func() bool { return es.Count() == 0 }, "client should deregister after close")
 }
 
 func TestReadLoopUnmaskedFrame(t *testing.T) {
@@ -144,7 +125,7 @@ func TestReadLoopUnmaskedFrame(t *testing.T) {
 
 	conn := wsConnect(t, srv.Listener.Addr().String())
 	defer conn.Close()
-	time.Sleep(50 * time.Millisecond)
+	testutil.WaitFor(t, time.Second, func() bool { return es.Count() == 1 }, "client should register")
 
 	// Send an unmasked text frame (no mask bit)
 	payload := []byte("hi")
@@ -152,12 +133,11 @@ func TestReadLoopUnmaskedFrame(t *testing.T) {
 	frame = append(frame, payload...)
 	conn.Write(frame)
 
-	time.Sleep(100 * time.Millisecond)
+	testutil.WaitFor(t, time.Second, func() bool { return es.Count() == 1 }, "client should stay connected after unmasked frame")
 
-	// Server should handle it (no crash)
 	closeFrame := []byte{0x88, 0x80, 0x00, 0x00, 0x00, 0x00}
 	conn.Write(closeFrame)
-	time.Sleep(100 * time.Millisecond)
+	testutil.WaitFor(t, time.Second, func() bool { return es.Count() == 0 }, "client should deregister after close")
 }
 
 func TestWritePong(t *testing.T) {
@@ -167,6 +147,7 @@ func TestWritePong(t *testing.T) {
 
 	client := &wsClient{conn: c1}
 
+	done := make(chan struct{})
 	go func() {
 		buf := make([]byte, 10)
 		c2.SetReadDeadline(time.Now().Add(time.Second))
@@ -178,10 +159,18 @@ func TestWritePong(t *testing.T) {
 		if n != 2 || buf[0] != 0x8A || buf[1] != 0x00 {
 			t.Errorf("pong frame: got %x", buf[:n])
 		}
+		close(done)
 	}()
 
 	client.writePong()
-	time.Sleep(100 * time.Millisecond)
+	testutil.WaitFor(t, time.Second, func() bool {
+		select {
+		case <-done:
+			return true
+		default:
+			return false
+		}
+	}, "goroutine should receive pong frame")
 }
 
 func TestHandleWebSocketNonHijacker(t *testing.T) {
