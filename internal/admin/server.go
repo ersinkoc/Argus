@@ -158,7 +158,8 @@ func (s *Server) Start() error {
 		mux.HandleFunc("/api/test/run", handleTestRun)
 	}
 
-	// Gateway endpoints (with optional API key middleware)
+	// Gateway endpoints (with optional API key middleware) — registered
+	// outside admin auth so they are authenticated by API key only.
 	if s.enableAdminRoutes && s.gatewayHandler != nil {
 		wrapGW := func(h http.HandlerFunc) http.Handler {
 			var handler http.Handler = h
@@ -177,6 +178,17 @@ func (s *Server) Start() error {
 	var handler http.Handler = mux
 	if s.authToken != "" {
 		auth := NewAuthMiddleware(s.authToken)
+		// Gateway routes skip admin bearer auth — they use their own API key middleware.
+		gatewayPublicPaths := []string{
+			"/api/gateway/query",
+			"/api/gateway/approve",
+			"/api/gateway/allowlist",
+			"/api/gateway/status",
+			"/api/gateway/dryrun",
+		}
+		for _, p := range gatewayPublicPaths {
+			auth.publicPaths[p] = true
+		}
 		if len(s.allowedSources) > 0 {
 			auth = auth.WithAllowedSources(s.allowedSources)
 		}
