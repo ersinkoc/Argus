@@ -72,6 +72,7 @@ func run(ctx context.Context, configPath string, validateOnly bool, sigCh <-chan
 
 	auditLevel := audit.ParseLogLevel(cfg.Audit.Level)
 	auditLogger := audit.NewLogger(cfg.Audit.BufferSize, auditLevel, cfg.Audit.SQLMaxLength)
+	auditLogger.SetOverflowPolicy(audit.ParseOverflowPolicy(cfg.Audit.OverflowPolicy))
 
 	if err := setupAuditOutputs(auditLogger, cfg); err != nil {
 		return err

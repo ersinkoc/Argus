@@ -13,16 +13,35 @@ import (
 	"time"
 )
 
+// OverflowPolicy controls behavior when the audit event channel is full.
+type OverflowPolicy int
+
+const (
+	OverflowDrop  OverflowPolicy = iota // drop the event (default)
+	OverflowBlock                       // block the caller until space frees
+)
+
+// ParseOverflowPolicy parses an overflow policy string.
+func ParseOverflowPolicy(s string) OverflowPolicy {
+	switch s {
+	case "block":
+		return OverflowBlock
+	default:
+		return OverflowDrop
+	}
+}
+
 // Logger is the async audit logger.
 type Logger struct {
-	eventCh    chan Event
-	writers    []io.Writer
-	level      LogLevel
-	sqlMaxLen  int
-	wg         sync.WaitGroup
-	closed     atomic.Bool
-	dropped    atomic.Int64
-	closeCh    chan struct{}
+	eventCh        chan Event
+	writers        []io.Writer
+	level          LogLevel
+	sqlMaxLen      int
+	wg             sync.WaitGroup
+	closed         atomic.Bool
+	dropped        atomic.Int64
+	closeCh        chan struct{}
+	overflowPolicy OverflowPolicy
 }
 
 // NewLogger creates a new audit logger.
@@ -40,6 +59,11 @@ func NewLogger(bufferSize int, level LogLevel, sqlMaxLen int) *Logger {
 		closeCh:   make(chan struct{}),
 	}
 	return l
+}
+
+// SetOverflowPolicy sets the overflow policy.
+func (l *Logger) SetOverflowPolicy(p OverflowPolicy) {
+	l.overflowPolicy = p
 }
 
 // AddWriter adds an output writer (file, stdout, etc.).
@@ -89,10 +113,14 @@ func (l *Logger) Log(event Event) {
 		event.Command = event.Command[:l.sqlMaxLen] + "...[truncated]"
 	}
 
-	select {
-	case l.eventCh <- event:
-	default:
-		l.dropped.Add(1)
+	if l.overflowPolicy == OverflowBlock {
+		l.eventCh <- event
+	} else {
+		select {
+		case l.eventCh <- event:
+		default:
+			l.dropped.Add(1)
+		}
 	}
 }
 

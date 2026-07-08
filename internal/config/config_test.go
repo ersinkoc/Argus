@@ -96,6 +96,8 @@ func TestValidate(t *testing.T) {
 			c.Server.Listeners[0].TLS.Enabled = true
 		}, true},
 		{"bad audit level", func(c *Config) { c.Audit.Level = "debug" }, true},
+		{"bad overflow policy", func(c *Config) { c.Audit.OverflowPolicy = "backpressure" }, true},
+		{"valid overflow policy", func(c *Config) { c.Audit.OverflowPolicy = "block" }, false},
 		{"bad pool max", func(c *Config) { c.Pool.MaxConnectionsPerTarget = 0 }, true},
 		{"mtls without client_ca_file", func(c *Config) {
 			c.Server.Listeners[0].TLS = TLSConfig{

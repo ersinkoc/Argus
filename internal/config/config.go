@@ -270,13 +270,14 @@ func (s *SessionConfig) UnmarshalJSON(data []byte) error {
 }
 
 type AuditConfig struct {
-	Level         string        `json:"level"`
-	Outputs       []AuditOutput `json:"outputs"`
-	BufferSize    int           `json:"buffer_size"`
-	SQLMaxLength  int           `json:"sql_max_length"`
-	RecordFile    string        `json:"record_file,omitempty"` // forensic query recording
-	PIIAutoDetect bool          `json:"pii_auto_detect"`       // auto-detect PII columns
-	WebhookURL    string        `json:"webhook_url,omitempty"` // SIEM webhook endpoint
+	Level          string        `json:"level"`
+	Outputs        []AuditOutput `json:"outputs"`
+	BufferSize     int           `json:"buffer_size"`
+	SQLMaxLength   int           `json:"sql_max_length"`
+	RecordFile     string        `json:"record_file,omitempty"`     // forensic query recording
+	PIIAutoDetect  bool          `json:"pii_auto_detect"`           // auto-detect PII columns
+	WebhookURL     string        `json:"webhook_url,omitempty"`     // SIEM webhook endpoint
+	OverflowPolicy string        `json:"overflow_policy,omitempty"` // "drop" (default) or "block"
 }
 
 type AuditOutput struct {
@@ -543,6 +544,11 @@ func Validate(cfg *Config) error {
 	validLevels := map[string]bool{"minimal": true, "standard": true, "verbose": true}
 	if cfg.Audit.Level != "" && !validLevels[cfg.Audit.Level] {
 		return fmt.Errorf("audit: invalid level %q", cfg.Audit.Level)
+	}
+
+	validOverflows := map[string]bool{"drop": true, "block": true}
+	if cfg.Audit.OverflowPolicy != "" && !validOverflows[cfg.Audit.OverflowPolicy] {
+		return fmt.Errorf("audit: invalid overflow_policy %q", cfg.Audit.OverflowPolicy)
 	}
 
 	if cfg.Pool.MaxConnectionsPerTarget <= 0 {
