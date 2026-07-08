@@ -10,6 +10,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/ersinkoc/argus/internal/testutil"
 )
 
 // --- HandleWebSocket: no upgrade header ---
@@ -70,10 +72,9 @@ func TestWebSocketFullFlow(t *testing.T) {
 	defer conn.Close()
 
 	// Should be registered
-	time.Sleep(50 * time.Millisecond)
-	if es.Count() != 1 {
-		t.Errorf("clients = %d, want 1", es.Count())
-	}
+	testutil.WaitFor(t, time.Second, func() bool {
+		return es.Count() == 1
+	}, "client should register after connect")
 
 	// Broadcast an event
 	es.Broadcast(map[string]string{"type": "test", "data": "hello"})
@@ -96,11 +97,10 @@ func TestWebSocketFullFlow(t *testing.T) {
 	// Send close frame
 	closeFrame := []byte{0x88, 0x80, 0x00, 0x00, 0x00, 0x00} // FIN+close, masked, empty
 	conn.Write(closeFrame)
-	time.Sleep(100 * time.Millisecond)
 
-	if es.Count() != 0 {
-		t.Errorf("clients after close = %d", es.Count())
-	}
+	testutil.WaitFor(t, time.Second, func() bool {
+		return es.Count() == 0
+	}, "client should deregister after close")
 }
 
 // --- WebSocket: ping → pong ---
@@ -116,7 +116,9 @@ func TestWebSocketPingPong(t *testing.T) {
 	conn := wsConnect(t, srv.Listener.Addr().String())
 	defer conn.Close()
 
-	time.Sleep(50 * time.Millisecond)
+	testutil.WaitFor(t, time.Second, func() bool {
+		return es.Count() == 1
+	}, "client should register before ping")
 
 	// Send ping frame (opcode 0x9, masked)
 	pingFrame := []byte{0x89, 0x80, 0x00, 0x00, 0x00, 0x00} // FIN+ping, masked, no payload
@@ -151,11 +153,10 @@ func TestWebSocketBroadcastDisconnected(t *testing.T) {
 
 	// Broadcast should remove the dead client
 	es.Broadcast(map[string]string{"type": "test"})
-	time.Sleep(50 * time.Millisecond)
 
-	if es.Count() != 0 {
-		t.Errorf("dead client should be removed, count = %d", es.Count())
-	}
+	testutil.WaitFor(t, time.Second, func() bool {
+		return es.Count() == 0
+	}, "dead client should be removed after broadcast")
 	c1.Close()
 }
 
