@@ -22,8 +22,6 @@ spec:
         app.kubernetes.io/name: argus
         app.kubernetes.io/component: proxy
       annotations:
-        ## Restart pods when config changes
-        checksum/config: "{{ sha256sum .Values.config }}"
     spec:
       serviceAccountName: argus
       securityContext:
@@ -33,8 +31,8 @@ spec:
         fsGroup: 10001
       containers:
         - name: argus
-          image: ghcr.io/ersinkoc/argus:latest
-          imagePullPolicy: Always
+          image: ghcr.io/ersinkoc/argus
+          imagePullPolicy: IfNotPresent
           args: ["-config", "/etc/argus/argus.json"]
           ports:
             - name: pg-proxy

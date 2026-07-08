@@ -32,6 +32,19 @@ kubectl -n argus rollout status deployment/argus
 | `pdb.yaml` | PodDisruptionBudget: minAvailable=1 |
 | `kustomization.yaml` | Kustomize entry point |
 
+## Image Pinning
+
+The kustomization sets `newTag: v0.1.0` as the default image tag. Before
+production deployment, pin to an immutable digest:
+
+```yaml
+images:
+  - name: ghcr.io/ersinkoc/argus
+    digest: sha256:abc123...
+```
+
+This ensures every deploy runs the exact same image regardless of tag moves.
+
 ## Secrets Management
 
 The `secret.example.yaml` file contains placeholder base64 values and is **not** included in

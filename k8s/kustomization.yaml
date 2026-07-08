@@ -13,9 +13,13 @@ resources:
   - hpa.yaml
   - pdb.yaml
 
+## Image tag. Override per environment — in production, pin to an immutable digest:
+##   images:
+##     - name: ghcr.io/ersinkoc/argus
+##       digest: sha256:abc123...
 images:
   - name: ghcr.io/ersinkoc/argus
-    newTag: latest
+    newTag: v0.1.0
 
 ## Override for a specific environment:
 ## kustomize build k8s/ | kubectl apply -f -
