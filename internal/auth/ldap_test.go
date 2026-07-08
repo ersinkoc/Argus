@@ -1,7 +1,16 @@
 package auth
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
+	"os"
 	"testing"
+	"time"
 )
 
 func TestLDAPProviderDefaults(t *testing.T) {
@@ -53,6 +62,42 @@ func TestLDAPAuthConnectionFail(t *testing.T) {
 	_, err := p.Authenticate("user", "pass")
 	if err == nil {
 		t.Error("unreachable host should fail")
+	}
+}
+
+func TestLDAPTLSDefaultsToVerify(t *testing.T) {
+	cfg := LDAPConfig{UseTLS: true}
+	tlsCfg := cfg.tlsConfig()
+	if tlsCfg.InsecureSkipVerify {
+		t.Error("expected InsecureSkipVerify=false when SkipVerify is omitted")
+	}
+}
+
+func TestLDAPTLSCAFile(t *testing.T) {
+	dir := t.TempDir()
+
+	// Generate a minimal self-signed CA certificate
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	tmpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "test-ca"},
+		NotBefore:             time.Now().Add(-time.Minute),
+		NotAfter:              time.Now().Add(time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCertSign,
+	}
+	der, _ := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+
+	caPath := dir + "/ca.crt"
+	f, _ := os.Create(caPath)
+	pem.Encode(f, &pem.Block{Type: "CERTIFICATE", Bytes: der})
+	f.Close()
+
+	cfg := LDAPConfig{UseTLS: true, CAFile: caPath}
+	tlsCfg := cfg.tlsConfig()
+	if tlsCfg.RootCAs == nil {
+		t.Error("expected non-nil RootCAs when CAFile is set")
 	}
 }
 

@@ -2,8 +2,10 @@ package auth
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -11,17 +13,34 @@ import (
 
 // LDAPConfig configures LDAP/AD authentication.
 type LDAPConfig struct {
-	Host       string `json:"host"`       // ldap.example.com
-	Port       int    `json:"port"`       // 389 or 636 (LDAPS)
-	BaseDN     string `json:"base_dn"`    // dc=example,dc=com
-	BindDN     string `json:"bind_dn"`    // cn=admin,dc=example,dc=com
-	BindPass   string `json:"bind_pass"`  // bind password
-	UserFilter string `json:"user_filter"` // (uid=%s) or (sAMAccountName=%s)
-	GroupDN    string `json:"group_dn"`    // ou=groups,dc=example,dc=com
-	GroupAttr  string `json:"group_attr"`  // memberOf
-	UseTLS     bool   `json:"use_tls"`
-	SkipVerify bool   `json:"skip_verify"`
+	Host       string        `json:"host"`        // ldap.example.com
+	Port       int           `json:"port"`        // 389 or 636 (LDAPS)
+	BaseDN     string        `json:"base_dn"`     // dc=example,dc=com
+	BindDN     string        `json:"bind_dn"`     // cn=admin,dc=example,dc=com
+	BindPass   string        `json:"bind_pass"`   // bind password
+	UserFilter string        `json:"user_filter"` // (uid=%s) or (sAMAccountName=%s)
+	GroupDN    string        `json:"group_dn"`    // ou=groups,dc=example,dc=com
+	GroupAttr  string        `json:"group_attr"`  // memberOf
+	UseTLS     bool          `json:"use_tls"`
+	SkipVerify bool          `json:"skip_verify"`
+	CAFile     string        `json:"ca_file,omitempty"`
 	Timeout    time.Duration `json:"timeout"`
+}
+
+// tlsConfig returns a *tls.Config for LDAP connections. If CAFile is set,
+// the config uses the custom CA pool; otherwise it uses system roots.
+func (c LDAPConfig) tlsConfig() *tls.Config {
+	tlsCfg := &tls.Config{
+		InsecureSkipVerify: c.SkipVerify,
+	}
+	if c.CAFile != "" {
+		if caCert, err := os.ReadFile(c.CAFile); err == nil {
+			if pool := x509.NewCertPool(); pool.AppendCertsFromPEM(caCert) {
+				tlsCfg.RootCAs = pool
+			}
+		}
+	}
+	return tlsCfg
 }
 
 // LDAPProvider authenticates users against LDAP/Active Directory.
@@ -64,10 +83,7 @@ func (p *LDAPProvider) Authenticate(username, password string) ([]string, error)
 	var err error
 
 	if p.cfg.UseTLS {
-		tlsCfg := &tls.Config{
-			InsecureSkipVerify: p.cfg.SkipVerify,
-		}
-		conn, err = tls.DialWithDialer(&net.Dialer{Timeout: p.cfg.Timeout}, "tcp", addr, tlsCfg)
+		conn, err = tls.DialWithDialer(&net.Dialer{Timeout: p.cfg.Timeout}, "tcp", addr, p.cfg.tlsConfig())
 	} else {
 		conn, err = net.DialTimeout("tcp", addr, p.cfg.Timeout)
 	}
@@ -113,8 +129,7 @@ func (p *LDAPProvider) resolveGroups(username string) []string {
 	var err error
 
 	if p.cfg.UseTLS {
-		tlsCfg := &tls.Config{InsecureSkipVerify: p.cfg.SkipVerify}
-		conn, err = tls.DialWithDialer(&net.Dialer{Timeout: p.cfg.Timeout}, "tcp", addr, tlsCfg)
+		conn, err = tls.DialWithDialer(&net.Dialer{Timeout: p.cfg.Timeout}, "tcp", addr, p.cfg.tlsConfig())
 	} else {
 		conn, err = net.DialTimeout("tcp", addr, p.cfg.Timeout)
 	}
@@ -217,8 +232,8 @@ func buildLDAPSearchRequest(msgID int, baseDN, filter, attr string) []byte {
 	// attributes: [attr]
 
 	base := berEncodeOctetString(baseDN)
-	scope := berEncodeEnumerated(2)       // wholeSubtree
-	deref := berEncodeEnumerated(0)       // neverDerefAliases
+	scope := berEncodeEnumerated(2) // wholeSubtree
+	deref := berEncodeEnumerated(0) // neverDerefAliases
 	sizeLimit := berEncodeInteger(100)
 	timeLimit := berEncodeInteger(10)
 	typesOnly := []byte{0x01, 0x01, 0x00} // BOOLEAN FALSE
