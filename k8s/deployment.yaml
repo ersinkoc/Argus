@@ -83,8 +83,6 @@ spec:
             - name: config
               mountPath: /etc/argus
               readOnly: true
-            - name: logs
-              mountPath: /var/log/argus
           livenessProbe:
             httpGet:
               path: /livez
@@ -122,6 +120,4 @@ spec:
                 path: argus.json
               - key: base-policy.json
                 path: policies/base.json
-        - name: logs
-          emptyDir: {}
       terminationGracePeriodSeconds: 30

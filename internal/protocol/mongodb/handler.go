@@ -11,7 +11,8 @@ import (
 	"github.com/ersinkoc/argus/internal/session"
 )
 
-// Handler implements protocol.Handler for MongoDB.
+// Handler implements experimental protocol.Handler support for MongoDB.
+// It supports OP_MSG passthrough and command classification, but not production-parity identity extraction or result masking.
 type Handler struct{}
 
 // New creates a new MongoDB protocol handler.
@@ -156,22 +157,22 @@ func buildErrorBSON(message string) []byte {
 	var buf []byte
 
 	// "ok" : 0.0 (double, type 0x01)
-	buf = append(buf, 0x01)             // type: double
-	buf = append(buf, 'o', 'k', 0x00)  // key: "ok\0"
+	buf = append(buf, 0x01)                   // type: double
+	buf = append(buf, 'o', 'k', 0x00)         // key: "ok\0"
 	buf = append(buf, 0, 0, 0, 0, 0, 0, 0, 0) // 0.0 as float64
 
 	// "errmsg" : message (string, type 0x02)
-	buf = append(buf, 0x02)                                              // type: string
-	buf = append(buf, 'e', 'r', 'r', 'm', 's', 'g', 0x00)              // key: "errmsg\0"
-	strLen := len(message) + 1                                            // string length includes null terminator
+	buf = append(buf, 0x02)                                                              // type: string
+	buf = append(buf, 'e', 'r', 'r', 'm', 's', 'g', 0x00)                                // key: "errmsg\0"
+	strLen := len(message) + 1                                                           // string length includes null terminator
 	buf = append(buf, byte(strLen), byte(strLen>>8), byte(strLen>>16), byte(strLen>>24)) // length (LE)
-	buf = append(buf, []byte(message)...)                                 // value
-	buf = append(buf, 0x00)                                               // null terminator
+	buf = append(buf, []byte(message)...)                                                // value
+	buf = append(buf, 0x00)                                                              // null terminator
 
 	// "code" : 0 (int32, type 0x10)
-	buf = append(buf, 0x10)                       // type: int32
-	buf = append(buf, 'c', 'o', 'd', 'e', 0x00)  // key: "code\0"
-	buf = append(buf, 0, 0, 0, 0)                 // 0 as int32
+	buf = append(buf, 0x10)                     // type: int32
+	buf = append(buf, 'c', 'o', 'd', 'e', 0x00) // key: "code\0"
+	buf = append(buf, 0, 0, 0, 0)               // 0 as int32
 
 	// Document terminator
 	buf = append(buf, 0x00)

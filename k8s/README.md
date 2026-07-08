@@ -9,7 +9,8 @@ kubectl create secret generic argus-secrets --namespace argus \
   --from-literal=DB_PG_PASSWORD='<real-password>' \
   --from-literal=DB_MYSQL_HOST=mysql \
   --from-literal=DB_MYSQL_PASSWORD='<real-password>' \
-  --from-literal=ARGUS_ADMIN_TOKEN='<64-char-random-token>'
+  --from-literal=ARGUS_ADMIN_TOKEN='<64-char-random-token>' \
+  --from-literal=SIEM_WEBHOOK_URL=''
 
 # 2. Apply everything
 kubectl apply -k k8s/
@@ -60,10 +61,11 @@ kubectl create secret generic argus-secrets --namespace argus \
   --from-literal=DB_PG_PASSWORD='<real-password>' \
   --from-literal=DB_MYSQL_HOST=mysql \
   --from-literal=DB_MYSQL_PASSWORD='<real-password>' \
-  --from-literal=ARGUS_ADMIN_TOKEN='<64-char-random-token>'
+  --from-literal=ARGUS_ADMIN_TOKEN='<64-char-random-token>' \
+  --from-literal=SIEM_WEBHOOK_URL=''
 ```
 
-Repeat for any other keys (`SIEM_WEBHOOK_URL`, etc.) as needed.
+Leave `SIEM_WEBHOOK_URL` empty to rely only on cluster stdout log collection, or set it to a durable SIEM/log sink endpoint.
 
 ### Option B — External Secrets Operator
 
@@ -72,6 +74,23 @@ Sync from AWS Secrets Manager / GCP Secret Manager / HashiCorp Vault.
 ### Option C — Sealed Secrets
 
 Encrypt the secret with `kubeseal` before committing the sealed manifest.
+
+## Audit and Query Record Durability
+
+The default Kubernetes manifest uses **stdout audit output** plus optional SIEM webhook shipping:
+
+- Audit events are written to container stdout so the cluster log pipeline can collect and retain them.
+- Set `SIEM_WEBHOOK_URL` in `argus-secrets` to ship audit events directly to a durable SIEM/log sink.
+- Local file audit output and `audit.record_file` are intentionally disabled in the default Deployment because pod files and `emptyDir` volumes are not durable forensic storage.
+- If you require query recording, configure `audit.record_file` only with a durable volume strategy such as a per-pod PVC/StatefulSet or a remote append-only sink; do not rely on `emptyDir` for production forensics.
+
+Example secret update for webhook shipping:
+
+```bash
+kubectl -n argus create secret generic argus-secrets \
+  --from-literal=SIEM_WEBHOOK_URL='https://siem.example.com/argus/audit' \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
 
 ## Network Policy (recommended)
 

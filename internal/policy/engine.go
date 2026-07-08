@@ -179,13 +179,14 @@ func (e *Engine) cacheKey(ctx *Context) string {
 	return hex.EncodeToString(h[:16])
 }
 
-// decisionCache is a bounded LRU-like cache for policy decisions.
+// decisionCache is a bounded TTL cache for policy decisions.
+// When full, it evicts an arbitrary half of the map rather than tracking recency.
 type decisionCache struct {
-	entries      map[string]*cacheEntry
-	mu           sync.RWMutex
-	maxSize      int
-	ttl          time.Duration
-	lastCleanup  time.Time
+	entries     map[string]*cacheEntry
+	mu          sync.RWMutex
+	maxSize     int
+	ttl         time.Duration
+	lastCleanup time.Time
 }
 
 type cacheEntry struct {

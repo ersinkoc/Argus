@@ -57,6 +57,7 @@ data:
         "outputs": [
           {"type": "stdout"}
         ],
+        "webhook_url": "$ENV{SIEM_WEBHOOK_URL}",
         "buffer_size": 10000,
         "sql_max_length": 4096,
         "pii_auto_detect": true
