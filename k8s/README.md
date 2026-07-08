@@ -3,7 +3,14 @@
 ## Quick Start
 
 ```bash
-# 1. Fill in real values in secret.yaml (or use an external secrets manager)
+# 1. Create the required Kubernetes Secret with real values
+kubectl create secret generic argus-secrets --namespace argus \
+  --from-literal=DB_PG_HOST=postgres \
+  --from-literal=DB_PG_PASSWORD='<real-password>' \
+  --from-literal=DB_MYSQL_HOST=mysql \
+  --from-literal=DB_MYSQL_PASSWORD='<real-password>' \
+  --from-literal=ARGUS_ADMIN_TOKEN='<64-char-random-token>'
+
 # 2. Apply everything
 kubectl apply -k k8s/
 
@@ -17,7 +24,7 @@ kubectl -n argus rollout status deployment/argus
 |------|---------|
 | `namespace.yaml` | `argus` namespace |
 | `serviceaccount.yaml` | ServiceAccount (no token auto-mount) |
-| `secret.yaml` | Database credentials and admin token |
+| `secret.example.yaml` | Secret template (fill in before deploying) |
 | `configmap.yaml` | `argus.json` + base WAF policy |
 | `deployment.yaml` | 2-replica Deployment with probes & resource limits |
 | `service.yaml` | ClusterIP Services: PG (5432), MySQL (3306), admin (9090), metrics (9091) |
@@ -27,11 +34,30 @@ kubectl -n argus rollout status deployment/argus
 
 ## Secrets Management
 
-The `secret.yaml` file contains placeholder base64 values. In production:
+The `secret.example.yaml` file contains placeholder base64 values and is **not** included in
+the default kustomization. Before deploying, create the real Secret with one of these methods:
 
-- **External Secrets Operator**: sync from AWS Secrets Manager / GCP Secret Manager / Vault
-- **Sealed Secrets**: encrypt with `kubeseal` before committing
-- **Vault Agent**: inject secrets as environment variables
+### Option A — kubectl create secret (simplest)
+
+```bash
+# Edit secret.example.yaml with real values, then run:
+kubectl create secret generic argus-secrets --namespace argus \
+  --from-literal=DB_PG_HOST=postgres \
+  --from-literal=DB_PG_PASSWORD='<real-password>' \
+  --from-literal=DB_MYSQL_HOST=mysql \
+  --from-literal=DB_MYSQL_PASSWORD='<real-password>' \
+  --from-literal=ARGUS_ADMIN_TOKEN='<64-char-random-token>'
+```
+
+Repeat for any other keys (`SIEM_WEBHOOK_URL`, etc.) as needed.
+
+### Option B — External Secrets Operator
+
+Sync from AWS Secrets Manager / GCP Secret Manager / HashiCorp Vault.
+
+### Option C — Sealed Secrets
+
+Encrypt the secret with `kubeseal` before committing the sealed manifest.
 
 ## Network Policy (recommended)
 

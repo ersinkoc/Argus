@@ -7,7 +7,6 @@ namespace: argus
 resources:
   - namespace.yaml
   - serviceaccount.yaml
-  - secret.yaml
   - configmap.yaml
   - deployment.yaml
   - service.yaml
