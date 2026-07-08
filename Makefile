@@ -3,7 +3,7 @@ BUILD_TIME := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME)
 BINARY := argus
 
-.PHONY: all build test test-compile test-short test-full test-verbose test-race test-e2e test-stress clean lint run bench cover validate
+.PHONY: all build test test-compile test-short test-full test-verbose test-timing test-race test-e2e test-stress clean lint fmt-check dep-guard run bench cover coverage-ci validate
 
 all: lint test build
 
@@ -21,6 +21,9 @@ test-short:
 
 test-full:
 	go test ./... -count=1 -timeout 60s
+
+test-timing:
+	bash scripts/test-package-timing.sh
 
 test-verbose:
 	go test ./... -count=1 -timeout 60s -v
@@ -40,6 +43,17 @@ bench:
 
 lint:
 	go vet ./...
+
+fmt-check:
+	bash scripts/gofmt-check.sh
+
+dep-guard:
+	bash scripts/check-internal-deps.sh
+
+coverage-ci:
+	go test ./... -count=1 -timeout 60s -coverprofile=coverage.out
+	@go tool cover -func=coverage.out | tee coverage-summary.txt
+	@grep "^total:" coverage-summary.txt
 
 validate: build
 	./$(BINARY) -config configs/argus.json -validate
