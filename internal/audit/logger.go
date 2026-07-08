@@ -2,6 +2,7 @@ package audit
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -42,6 +43,8 @@ type Logger struct {
 	dropped        atomic.Int64
 	closeCh        chan struct{}
 	overflowPolicy OverflowPolicy
+	chainMu        sync.Mutex
+	lastHash       string
 }
 
 // NewLogger creates a new audit logger.
@@ -112,6 +115,7 @@ func (l *Logger) Log(event Event) {
 	if len(event.Command) > l.sqlMaxLen {
 		event.Command = event.Command[:l.sqlMaxLen] + "...[truncated]"
 	}
+	l.signEvent(&event)
 
 	if l.overflowPolicy == OverflowBlock {
 		l.eventCh <- event
@@ -190,6 +194,26 @@ func (l *Logger) writeLoop() {
 			}
 		}
 	}
+}
+
+func (l *Logger) signEvent(event *Event) {
+	l.chainMu.Lock()
+	defer l.chainMu.Unlock()
+
+	event.PrevHash = l.lastHash
+	event.Hash = eventHash(*event)
+	l.lastHash = event.Hash
+}
+
+func eventHash(event Event) string {
+	clone := event
+	clone.Hash = ""
+	payload, err := json.Marshal(clone)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(payload)
+	return hex.EncodeToString(sum[:])
 }
 
 func generateID() string {

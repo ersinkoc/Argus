@@ -3,6 +3,8 @@ package audit
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -77,6 +79,52 @@ func TestLoggerWritesEvents(t *testing.T) {
 	}
 	if event.ID == "" {
 		t.Error("event ID should be auto-generated")
+	}
+	if event.Hash == "" {
+		t.Error("event hash should be populated")
+	}
+}
+
+func TestVerifyChain(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	logger := NewLogger(10, LevelStandard, 4096)
+	if err := logger.AddFileWriter(path); err != nil {
+		t.Fatalf("AddFileWriter: %v", err)
+	}
+	logger.Start()
+	logger.Log(Event{EventType: CommandExecuted.String(), Username: "alice", Action: "allow"})
+	logger.Log(Event{EventType: CommandBlocked.String(), Username: "bob", Action: "block"})
+	time.Sleep(50 * time.Millisecond)
+	logger.Close()
+
+	if err := VerifyChain(path); err != nil {
+		t.Fatalf("VerifyChain: %v", err)
+	}
+}
+
+func TestVerifyChainDetectsTampering(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	logger := NewLogger(10, LevelStandard, 4096)
+	if err := logger.AddFileWriter(path); err != nil {
+		t.Fatalf("AddFileWriter: %v", err)
+	}
+	logger.Start()
+	logger.Log(Event{EventType: CommandExecuted.String(), Username: "alice", Action: "allow"})
+	logger.Log(Event{EventType: CommandBlocked.String(), Username: "bob", Action: "block"})
+	time.Sleep(50 * time.Millisecond)
+	logger.Close()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	tampered := strings.Replace(string(data), "\"action\":\"block\"", "\"action\":\"allow\"", 1)
+	if err := os.WriteFile(path, []byte(tampered), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	if err := VerifyChain(path); err == nil {
+		t.Fatal("VerifyChain should detect tampering")
 	}
 }
 

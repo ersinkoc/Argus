@@ -26,16 +26,16 @@ const (
 )
 
 var eventTypeNames = map[EventType]string{
-	ConnectionOpen:  "connection_open",
-	ConnectionClose: "connection_close",
-	AuthSuccess:     "auth_success",
-	AuthFailure:     "auth_failure",
-	CommandExecuted: "command_executed",
-	CommandBlocked:  "command_blocked",
-	ResultMasked:    "result_masked",
-	ResultTruncated: "result_truncated",
-	PolicyViolation: "policy_violation",
-	SessionTimeout:  "session_timeout",
+	ConnectionOpen:   "connection_open",
+	ConnectionClose:  "connection_close",
+	AuthSuccess:      "auth_success",
+	AuthFailure:      "auth_failure",
+	CommandExecuted:  "command_executed",
+	CommandBlocked:   "command_blocked",
+	ResultMasked:     "result_masked",
+	ResultTruncated:  "result_truncated",
+	PolicyViolation:  "policy_violation",
+	SessionTimeout:   "session_timeout",
 	SessionKilled:    "session_killed",
 	PolicyReloaded:   "policy_reloaded",
 	GatewayQuery:     "gateway_query",
@@ -74,6 +74,8 @@ type Event struct {
 	MaskedCols  []string      `json:"masked_cols,omitempty"`
 	Reason      string        `json:"reason,omitempty"`
 	Error       string        `json:"error,omitempty"`
+	PrevHash    string        `json:"prev_hash,omitempty"`
+	Hash        string        `json:"hash,omitempty"`
 }
 
 // LogLevel controls audit detail.
