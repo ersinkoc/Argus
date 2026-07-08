@@ -1,19 +1,24 @@
 package gateway
 
 import (
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"net/http"
 	"sync"
 )
 
 // APIKey represents a gateway API key with associated identity.
 type APIKey struct {
-	Key       string   `json:"key"`
-	Username  string   `json:"username"`
-	Roles     []string `json:"roles,omitempty"`
-	Database  string   `json:"database,omitempty"`
-	RateLimit float64  `json:"rate_limit,omitempty"`
-	Enabled   bool     `json:"enabled"`
+	ID           string   `json:"id,omitempty"`
+	Key          string   `json:"key"`
+	PreviousKeys []string `json:"previous_keys,omitempty"`
+	Fingerprint  string   `json:"fingerprint,omitempty"`
+	Username     string   `json:"username"`
+	Roles        []string `json:"roles,omitempty"`
+	Database     string   `json:"database,omitempty"`
+	RateLimit    float64  `json:"rate_limit,omitempty"`
+	Enabled      bool     `json:"enabled"`
 }
 
 // APIKeyStore manages gateway API keys.
@@ -33,7 +38,34 @@ func NewAPIKeyStore() *APIKeyStore {
 func (s *APIKeyStore) Add(key *APIKey) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	key.ensureMetadata()
 	s.keys[key.Key] = key
+}
+
+func (k *APIKey) ensureMetadata() {
+	if k.ID == "" {
+		k.ID = keyFingerprint(k.Key)
+	}
+	if k.Fingerprint == "" {
+		k.Fingerprint = keyFingerprint(k.Key)
+	}
+}
+
+func keyFingerprint(key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:6])
+}
+
+func (k *APIKey) matches(candidate string) bool {
+	if subtle.ConstantTimeCompare([]byte(k.Key), []byte(candidate)) == 1 {
+		return true
+	}
+	for _, previous := range k.PreviousKeys {
+		if subtle.ConstantTimeCompare([]byte(previous), []byte(candidate)) == 1 {
+			return true
+		}
+	}
+	return false
 }
 
 // Validate checks an API key and returns the associated identity.
@@ -42,9 +74,8 @@ func (s *APIKeyStore) Validate(key string) *APIKey {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Use constant-time comparison to prevent timing attacks
 	for _, k := range s.keys {
-		if k.Enabled && subtle.ConstantTimeCompare([]byte(k.Key), []byte(key)) == 1 {
+		if k.Enabled && k.matches(key) {
 			return k
 		}
 	}
@@ -64,13 +95,13 @@ func (s *APIKeyStore) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		apiKey := r.Header.Get("X-API-Key")
 		if apiKey == "" {
-			http.Error(w, `{"error":"missing API key"}`, http.StatusUnauthorized)
+			writeAPIError(w, http.StatusUnauthorized, "UNAUTHORIZED", "missing API key")
 			return
 		}
 
 		key := s.Validate(apiKey)
 		if key == nil {
-			http.Error(w, `{"error":"invalid API key"}`, http.StatusForbidden)
+			writeAPIError(w, http.StatusForbidden, "FORBIDDEN", "invalid API key")
 			return
 		}
 

@@ -16,18 +16,18 @@ import (
 // HandleQuery handles POST /api/gateway/query — submit a SQL query.
 func (gw *Gateway) HandleQuery(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		writeAPIError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 		return
 	}
 
 	var req QueryRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"invalid request: %s"}`, err.Error()), http.StatusBadRequest)
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", fmt.Sprintf("invalid request: %s", err.Error()))
 		return
 	}
 
 	if req.SQL == "" {
-		http.Error(w, `{"error":"sql is required"}`, http.StatusBadRequest)
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", "sql is required")
 		return
 	}
 
@@ -40,11 +40,12 @@ func (gw *Gateway) HandleQuery(w http.ResponseWriter, r *http.Request) {
 		if req.Database == "" && apiKey.Database != "" {
 			req.Database = apiKey.Database
 		}
+		req.APIKeyID = apiKey.ID
 		apiKeyRoles = apiKey.Roles
 	}
 
 	if req.Username == "" {
-		http.Error(w, `{"error":"username is required"}`, http.StatusBadRequest)
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", "username is required")
 		return
 	}
 
@@ -85,25 +86,25 @@ type ApproveRequest struct {
 // HandleApprove handles POST /api/gateway/approve — approve a pending query.
 func (gw *Gateway) HandleApprove(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		writeAPIError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 		return
 	}
 
 	var req ApproveRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"invalid request: %s"}`, err.Error()), http.StatusBadRequest)
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", fmt.Sprintf("invalid request: %s", err.Error()))
 		return
 	}
 
 	if req.ApprovalID == "" {
-		http.Error(w, `{"error":"approval_id is required"}`, http.StatusBadRequest)
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", "approval_id is required")
 		return
 	}
 
 	// Get the pending approval to extract fingerprint/username/database
 	pending := gw.approvalManager.Get(req.ApprovalID)
 	if pending == nil {
-		http.Error(w, `{"error":"approval not found or already resolved"}`, http.StatusNotFound)
+		writeAPIError(w, http.StatusNotFound, "NOT_FOUND", "approval not found or already resolved")
 		return
 	}
 
@@ -113,7 +114,7 @@ func (gw *Gateway) HandleApprove(w http.ResponseWriter, r *http.Request) {
 		approveFn = gw.approveFn
 	}
 	if err := approveFn(req.ApprovalID, req.Approver); err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
+		writeAPIError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 
@@ -190,18 +191,18 @@ func (gw *Gateway) HandleAllowlist(w http.ResponseWriter, r *http.Request) {
 	case http.MethodDelete:
 		id := r.URL.Query().Get("id")
 		if id == "" {
-			http.Error(w, `{"error":"missing id parameter"}`, http.StatusBadRequest)
+			writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", "missing id parameter")
 			return
 		}
 		if gw.allowlist.Remove(id) {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]string{"status": "removed", "id": id})
 		} else {
-			http.Error(w, `{"error":"entry not found"}`, http.StatusNotFound)
+			writeAPIError(w, http.StatusNotFound, "NOT_FOUND", "entry not found")
 		}
 
 	default:
-		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		writeAPIError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 	}
 }
 
@@ -209,7 +210,7 @@ func (gw *Gateway) HandleAllowlist(w http.ResponseWriter, r *http.Request) {
 func (gw *Gateway) HandleQueryStatus(w http.ResponseWriter, r *http.Request) {
 	approvalID := r.URL.Query().Get("approval_id")
 	if approvalID == "" {
-		http.Error(w, `{"error":"missing approval_id parameter"}`, http.StatusBadRequest)
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", "missing approval_id parameter")
 		return
 	}
 
@@ -238,17 +239,17 @@ func (gw *Gateway) HandleQueryStatus(w http.ResponseWriter, r *http.Request) {
 // HandleDryRun handles POST /api/gateway/dryrun — preview what would happen without executing.
 func (gw *Gateway) HandleDryRun(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		writeAPIError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 		return
 	}
 
 	var req QueryRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"invalid request: %s"}`, err.Error()), http.StatusBadRequest)
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", fmt.Sprintf("invalid request: %s", err.Error()))
 		return
 	}
 	if req.SQL == "" || req.Username == "" {
-		http.Error(w, `{"error":"sql and username are required"}`, http.StatusBadRequest)
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", "sql and username are required")
 		return
 	}
 
@@ -296,23 +297,23 @@ func (gw *Gateway) HandleDryRun(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"fingerprint":      fingerprint,
-		"command_type":     cmd.Type.String(),
-		"tables":           cmd.Tables,
-		"risk_level":       cmd.RiskLevel.String(),
-		"cost_score":       costEstimate.Score,
-		"cost_factors":     costEstimate.Factors,
-		"has_where":        cmd.HasWhere,
-		"roles":            roles,
-		"policy_action":    decision.Action.String(),
-		"policy_name":      decision.PolicyName,
-		"policy_reason":    decision.Reason,
-		"risk_score":       decision.RiskScore,
-		"masking_rules":    decision.MaskingRules,
-		"max_rows":         decision.MaxRows,
-		"needs_approval":   needsApproval,
-		"allowlist_hit":    allowlistHit,
-		"would_execute":    decision.Action != policy.ActionBlock && !needsApproval || allowlistHit,
+		"fingerprint":    fingerprint,
+		"command_type":   cmd.Type.String(),
+		"tables":         cmd.Tables,
+		"risk_level":     cmd.RiskLevel.String(),
+		"cost_score":     costEstimate.Score,
+		"cost_factors":   costEstimate.Factors,
+		"has_where":      cmd.HasWhere,
+		"roles":          roles,
+		"policy_action":  decision.Action.String(),
+		"policy_name":    decision.PolicyName,
+		"policy_reason":  decision.Reason,
+		"risk_score":     decision.RiskScore,
+		"masking_rules":  decision.MaskingRules,
+		"max_rows":       decision.MaxRows,
+		"needs_approval": needsApproval,
+		"allowlist_hit":  allowlistHit,
+		"would_execute":  decision.Action != policy.ActionBlock && !needsApproval || allowlistHit,
 	})
 }
 

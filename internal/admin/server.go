@@ -6,12 +6,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
-	"github.com/ersinkoc/argus/internal/audit"
 	"github.com/ersinkoc/argus/internal/metrics"
 	"github.com/ersinkoc/argus/internal/pool"
 	"github.com/ersinkoc/argus/internal/session"
@@ -179,14 +177,7 @@ func (s *Server) Start() error {
 	if s.authToken != "" {
 		auth := NewAuthMiddleware(s.authToken)
 		// Gateway routes skip admin bearer auth — they use their own API key middleware.
-		gatewayPublicPaths := []string{
-			"/api/gateway/query",
-			"/api/gateway/approve",
-			"/api/gateway/allowlist",
-			"/api/gateway/status",
-			"/api/gateway/dryrun",
-		}
-		for _, p := range gatewayPublicPaths {
+		for _, p := range s.GatewayPublicPaths() {
 			auth.publicPaths[p] = true
 		}
 		if len(s.allowedSources) > 0 {
@@ -432,18 +423,18 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSessionKill(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		writeAPIError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 		return
 	}
 
 	sessionID := r.URL.Query().Get("id")
 	if sessionID == "" {
-		http.Error(w, `{"error": "missing id parameter"}`, http.StatusBadRequest)
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", "missing id parameter")
 		return
 	}
 
 	if err := s.provider.SessionManager().Kill(sessionID); err != nil {
-		http.Error(w, fmt.Sprintf(`{"error": %q}`, err.Error()), http.StatusNotFound)
+		writeAPIError(w, http.StatusNotFound, "NOT_FOUND", err.Error())
 		return
 	}
 
@@ -460,17 +451,17 @@ func (s *Server) handleSessionKill(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePolicyReload(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		writeAPIError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 		return
 	}
 
 	if s.policyReloadFn == nil {
-		http.Error(w, `{"error": "policy reload not configured"}`, http.StatusInternalServerError)
+		writeAPIError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "policy reload not configured")
 		return
 	}
 
 	if err := s.policyReloadFn(); err != nil {
-		http.Error(w, fmt.Sprintf(`{"error": %q}`, err.Error()), http.StatusInternalServerError)
+		writeAPIError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 
@@ -515,24 +506,24 @@ func (s *Server) handleApprovals(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleApprovalAction(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		writeAPIError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 		return
 	}
 	if s.approvalFn == nil {
-		http.Error(w, `{"error":"approval not configured"}`, http.StatusInternalServerError)
+		writeAPIError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "approval not configured")
 		return
 	}
 	id := r.URL.Query().Get("id")
 	approver := r.URL.Query().Get("approver")
 	if id == "" {
-		http.Error(w, `{"error":"missing id"}`, http.StatusBadRequest)
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", "missing id")
 		return
 	}
 	if approver == "" {
 		approver = "admin"
 	}
 	if err := s.approvalFn.Approve(id, approver); err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusNotFound)
+		writeAPIError(w, http.StatusNotFound, "NOT_FOUND", err.Error())
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -541,107 +532,29 @@ func (s *Server) handleApprovalAction(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleApprovalDeny(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		writeAPIError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 		return
 	}
 	if s.approvalFn == nil {
-		http.Error(w, `{"error":"approval not configured"}`, http.StatusInternalServerError)
+		writeAPIError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "approval not configured")
 		return
 	}
 	id := r.URL.Query().Get("id")
 	approver := r.URL.Query().Get("approver")
 	reason := r.URL.Query().Get("reason")
 	if id == "" {
-		http.Error(w, `{"error":"missing id"}`, http.StatusBadRequest)
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", "missing id")
 		return
 	}
 	if approver == "" {
 		approver = "admin"
 	}
 	if err := s.approvalFn.Deny(id, approver, reason); err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusNotFound)
+		writeAPIError(w, http.StatusNotFound, "NOT_FOUND", err.Error())
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "denied", "id": id})
-}
-
-// SetAuditLogPath sets the audit log file path for search.
-func (s *Server) SetAuditLogPath(path string) {
-	s.auditLogPath = path
-}
-
-func (s *Server) handleAuditSearch(w http.ResponseWriter, r *http.Request) {
-	if s.auditLogPath == "" {
-		http.Error(w, `{"error":"audit log path not configured"}`, http.StatusInternalServerError)
-		return
-	}
-
-	q := r.URL.Query()
-	filter := audit.SearchFilter{
-		SessionID:   q.Get("session_id"),
-		Username:    q.Get("username"),
-		Database:    q.Get("database"),
-		EventType:   q.Get("event_type"),
-		Action:      q.Get("action"),
-		CommandType: q.Get("command_type"),
-	}
-	if v := q.Get("limit"); v != "" {
-		n := 0
-		for _, c := range v {
-			n = n*10 + int(c-'0')
-		}
-		filter.Limit = n
-	}
-	if v := q.Get("start"); v != "" {
-		if t, err := time.Parse(time.RFC3339, v); err == nil {
-			filter.StartTime = t
-		}
-	}
-	if v := q.Get("end"); v != "" {
-		if t, err := time.Parse(time.RFC3339, v); err == nil {
-			filter.EndTime = t
-		}
-	}
-
-	result, err := audit.SearchFile(s.auditLogPath, filter)
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
-}
-
-// Server.recordFile is the path to query recordings for replay.
-func (s *Server) SetRecordFile(path string) {
-	s.recordFile = path
-}
-
-func (s *Server) handleReplay(w http.ResponseWriter, r *http.Request) {
-	sessionID := r.URL.Query().Get("session_id")
-	if sessionID == "" {
-		http.Error(w, `{"error":"missing session_id parameter"}`, http.StatusBadRequest)
-		return
-	}
-	path := s.recordFile
-	if path == "" {
-		path = s.auditLogPath
-	}
-	if path == "" {
-		http.Error(w, `{"error":"recording not configured"}`, http.StatusInternalServerError)
-		return
-	}
-
-	replay, err := audit.ReplayFromFile(path, sessionID)
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(replay)
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
@@ -713,42 +626,13 @@ func (s *Server) SetConfigExporter(fn func() ([]byte, error)) {
 	s.configData = fn
 }
 
-func (s *Server) handleFingerprints(w http.ResponseWriter, r *http.Request) {
-	path := s.recordFile
-	if path == "" {
-		http.Error(w, `{"error":"recording not configured"}`, http.StatusInternalServerError)
-		return
-	}
-	limit := 20
-	if v := r.URL.Query().Get("limit"); v != "" {
-		n := 0
-		for _, c := range v {
-			if c >= '0' && c <= '9' {
-				n = n*10 + int(c-'0')
-			}
-		}
-		if n > 0 {
-			limit = n
-		}
-	}
-
-	top, err := audit.TopFingerprints(path, limit)
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(top)
-}
-
 func (s *Server) handleDryRun(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		writeAPIError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 		return
 	}
 	if s.dryRunFn == nil {
-		http.Error(w, `{"error":"dry-run not configured"}`, http.StatusInternalServerError)
+		writeAPIError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "dry-run not configured")
 		return
 	}
 
@@ -760,7 +644,7 @@ func (s *Server) handleDryRun(w http.ResponseWriter, r *http.Request) {
 		q.Get("client_ip"),
 	)
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+		writeAPIError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 
@@ -770,13 +654,13 @@ func (s *Server) handleDryRun(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleConfigExport(w http.ResponseWriter, r *http.Request) {
 	if s.configData == nil {
-		http.Error(w, `{"error":"config export not configured"}`, http.StatusInternalServerError)
+		writeAPIError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "config export not configured")
 		return
 	}
 
 	data, err := s.configData()
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+		writeAPIError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 
@@ -814,48 +698,6 @@ func (s *Server) handleLive(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "alive")
 }
 
-func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	logDir := ""
-	if s.auditLogPath != "" {
-		logDir = filepath.Dir(s.auditLogPath)
-	}
-	if logDir == "" || logDir == "." {
-		http.Error(w, `{"error":"audit log path not configured"}`, http.StatusInternalServerError)
-		return
-	}
-
-	dryRun := r.URL.Query().Get("dry_run") == "true"
-	maxAge := 7 * 24 * time.Hour // default 7 days
-	if v := r.URL.Query().Get("max_age_hours"); v != "" {
-		hours := 0
-		for _, c := range v {
-			if c >= '0' && c <= '9' {
-				hours = hours*10 + int(c-'0')
-			}
-		}
-		if hours > 0 {
-			maxAge = time.Duration(hours) * time.Hour
-		}
-	}
-
-	result, err := audit.CompactLogs(logDir, audit.CompactionConfig{
-		MaxAge: maxAge,
-		DryRun: dryRun,
-	})
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
-}
-
 // SetPolicyValidator sets the policy validation function.
 func (s *Server) SetPolicyValidator(fn func() (any, error)) {
 	s.validateFn = fn
@@ -863,39 +705,16 @@ func (s *Server) SetPolicyValidator(fn func() (any, error)) {
 
 func (s *Server) handlePolicyValidate(w http.ResponseWriter, r *http.Request) {
 	if s.validateFn == nil {
-		http.Error(w, `{"error":"policy validation not configured"}`, http.StatusInternalServerError)
+		writeAPIError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "policy validation not configured")
 		return
 	}
 	result, err := s.validateFn()
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+		writeAPIError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
-}
-
-func (s *Server) handleAuditExport(w http.ResponseWriter, r *http.Request) {
-	if s.auditLogPath == "" {
-		http.Error(w, `{"error":"audit log path not configured"}`, http.StatusInternalServerError)
-		return
-	}
-
-	q := r.URL.Query()
-	filter := audit.SearchFilter{
-		Username: q.Get("username"),
-		Action:   q.Get("action"),
-		Limit:    1000,
-	}
-
-	w.Header().Set("Content-Type", "text/csv")
-	w.Header().Set("Content-Disposition", "attachment; filename=argus-audit.csv")
-
-	count, err := audit.ExportCSV(s.auditLogPath, w, filter)
-	if err != nil {
-		slog.Error("CSV export error", "error", err)
-	}
-	slog.Info("CSV export completed", "count", count)
 }
 
 func (s *Server) handlePoolHealth(w http.ResponseWriter, r *http.Request) {
@@ -945,7 +764,7 @@ func (s *Server) SetOnSessionKill(fn func(sessionID string)) {
 
 func (s *Server) handleClassify(w http.ResponseWriter, r *http.Request) {
 	if s.classifyFn == nil {
-		http.Error(w, `{"error":"classification not configured"}`, http.StatusInternalServerError)
+		writeAPIError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "classification not configured")
 		return
 	}
 	columns := r.URL.Query()["column"]
@@ -956,7 +775,7 @@ func (s *Server) handleClassify(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(columns) == 0 {
-		http.Error(w, `{"error":"provide column names via ?column=x&column=y or ?columns=x,y"}`, http.StatusBadRequest)
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", "provide column names via ?column=x&column=y or ?columns=x,y")
 		return
 	}
 	result := s.classifyFn(columns)

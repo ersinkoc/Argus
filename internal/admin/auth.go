@@ -81,13 +81,13 @@ func (a *AuthMiddleware) Wrap(next http.Handler) http.Handler {
 		// Check Authorization header
 		auth := r.Header.Get("Authorization")
 		if auth == "" || !strings.HasPrefix(auth, "Bearer ") {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			writeAPIError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
 			return
 		}
 
 		providedToken := strings.TrimPrefix(auth, "Bearer ")
 		if subtle.ConstantTimeCompare([]byte(providedToken), []byte(a.token)) != 1 {
-			http.Error(w, `{"error":"invalid token"}`, http.StatusForbidden)
+			writeAPIError(w, http.StatusForbidden, "FORBIDDEN", "invalid token")
 			return
 		}
 
@@ -95,7 +95,7 @@ func (a *AuthMiddleware) Wrap(next http.Handler) http.Handler {
 		clientIP := a.getClientIP(r)
 		if !a.isIPAllowed(clientIP) {
 			slog.Warn("admin API access denied", "ip", clientIP.String(), "path", r.URL.Path)
-			http.Error(w, `{"error":"access denied"}`, http.StatusForbidden)
+			writeAPIError(w, http.StatusForbidden, "FORBIDDEN", "access denied")
 			return
 		}
 
