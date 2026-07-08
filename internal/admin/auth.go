@@ -14,6 +14,7 @@ type AuthMiddleware struct {
 	token          string
 	publicPaths    map[string]bool // paths that don't require auth
 	allowedSources []net.IPNet     // IP ranges allowed to access admin API
+	trustedProxies []net.IPNet     // proxy IP ranges whose X-Forwarded-For is trusted
 }
 
 // NewAuthMiddleware creates an auth middleware with the given bearer token.
@@ -36,6 +37,17 @@ func (a *AuthMiddleware) WithAllowedSources(sources []string) *AuthMiddleware {
 	for _, s := range sources {
 		if _, ipnet, err := net.ParseCIDR(s); err == nil {
 			a.allowedSources = append(a.allowedSources, *ipnet)
+		}
+	}
+	return a
+}
+
+// WithTrustedProxies sets IP ranges whose X-Forwarded-For header is trusted.
+// If not set, forwarded headers are ignored and only RemoteAddr is used.
+func (a *AuthMiddleware) WithTrustedProxies(proxies []string) *AuthMiddleware {
+	for _, s := range proxies {
+		if _, ipnet, err := net.ParseCIDR(s); err == nil {
+			a.trustedProxies = append(a.trustedProxies, *ipnet)
 		}
 	}
 	return a
@@ -80,7 +92,7 @@ func (a *AuthMiddleware) Wrap(next http.Handler) http.Handler {
 		}
 
 		// Check IP allowlist
-		clientIP := getClientIP(r)
+		clientIP := a.getClientIP(r)
 		if !a.isIPAllowed(clientIP) {
 			slog.Warn("admin API access denied", "ip", clientIP.String(), "path", r.URL.Path)
 			http.Error(w, `{"error":"access denied"}`, http.StatusForbidden)
@@ -91,26 +103,47 @@ func (a *AuthMiddleware) Wrap(next http.Handler) http.Handler {
 	})
 }
 
-func getClientIP(r *http.Request) net.IP {
-	// Check X-Forwarded-For header first
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if idx := strings.Index(xff, ","); idx != -1 {
-			xff = xff[:idx]
+func (a *AuthMiddleware) getClientIP(r *http.Request) net.IP {
+	remoteIP := parseRemoteAddr(r.RemoteAddr)
+
+	// Only trust forwarded headers when the immediate connection comes from a trusted proxy
+	if a.isTrustedProxy(remoteIP) {
+		// Check X-Forwarded-For header first
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			if idx := strings.Index(xff, ","); idx != -1 {
+				xff = xff[:idx]
+			}
+			if ip := net.ParseIP(strings.TrimSpace(xff)); ip != nil {
+				return ip
+			}
 		}
-		if ip := net.ParseIP(strings.TrimSpace(xff)); ip != nil {
-			return ip
+		// Fall back to X-Real-IP
+		if xri := r.Header.Get("X-Real-IP"); xri != "" {
+			if ip := net.ParseIP(xri); ip != nil {
+				return ip
+			}
 		}
 	}
-	// Fall back to X-Real-IP
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		if ip := net.ParseIP(xri); ip != nil {
-			return ip
+
+	return remoteIP
+}
+
+func (a *AuthMiddleware) isTrustedProxy(ip net.IP) bool {
+	if len(a.trustedProxies) == 0 {
+		return false // no proxies configured — never trust forwarded headers
+	}
+	for _, p := range a.trustedProxies {
+		if p.Contains(ip) {
+			return true
 		}
 	}
-	// Fall back to RemoteAddr
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	return false
+}
+
+func parseRemoteAddr(addr string) net.IP {
+	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
-		return net.ParseIP(r.RemoteAddr)
+		return net.ParseIP(addr)
 	}
 	return net.ParseIP(host)
 }

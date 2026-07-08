@@ -334,6 +334,9 @@ func setupAdmin(cfg *config.Config, proxy *core.Proxy, policyLoader *policy.Load
 				srv.SetAuthToken(cfg.Admin.AuthToken, cfg.Admin.AllowedSources...)
 			}
 			srv.SetAllowedOrigins(cfg.Admin.AllowedOrigins...)
+			if len(cfg.Admin.TrustedProxies) > 0 {
+				srv.SetTrustedProxies(cfg.Admin.TrustedProxies)
+			}
 			srv.SetApprovalProvider(proxy.ApprovalManager())
 			proxy.SetOnEvent(makeEventBroadcast(srv))
 			srv.SetDryRunFunc(makeDryRunFunc(policyEngine))

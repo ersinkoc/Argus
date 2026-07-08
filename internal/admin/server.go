@@ -47,6 +47,7 @@ type Server struct {
 	configData         func() ([]byte, error)
 	authToken          string
 	allowedSources     []string
+	trustedProxies     []string
 	validateFn         func() (any, error)
 	classifyFn         func([]string) any
 	pluginListFn       func() any
@@ -110,6 +111,11 @@ func (s *Server) SetAllowedOrigins(origins ...string) {
 	s.EventStream.SetAllowedOrigins(origins)
 }
 
+// SetTrustedProxies configures proxy IP ranges whose X-Forwarded-For header is trusted.
+func (s *Server) SetTrustedProxies(proxies []string) {
+	s.trustedProxies = proxies
+}
+
 // OnPolicyReload sets the callback for policy reload requests.
 func (s *Server) OnPolicyReload(fn func() error) {
 	s.policyReloadFn = fn
@@ -170,10 +176,14 @@ func (s *Server) Start() error {
 
 	var handler http.Handler = mux
 	if s.authToken != "" {
-		handler = NewAuthMiddleware(s.authToken).Wrap(mux)
+		auth := NewAuthMiddleware(s.authToken)
 		if len(s.allowedSources) > 0 {
-			handler = NewAuthMiddleware(s.authToken).WithAllowedSources(s.allowedSources).Wrap(mux)
+			auth = auth.WithAllowedSources(s.allowedSources)
 		}
+		if len(s.trustedProxies) > 0 {
+			auth = auth.WithTrustedProxies(s.trustedProxies)
+		}
+		handler = auth.Wrap(mux)
 	}
 
 	s.server = &http.Server{

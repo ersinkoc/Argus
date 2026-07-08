@@ -297,6 +297,7 @@ type AdminConfig struct {
 	AuthToken      string   `json:"auth_token"`
 	AllowedSources []string `json:"allowed_sources,omitempty"` // CIDR ranges, e.g. ["10.0.0.0/8", "192.168.1.0/24"]
 	AllowedOrigins []string `json:"allowed_origins,omitempty"` // exact WebSocket/browser origins, e.g. ["https://admin.example.com"]
+	TrustedProxies []string `json:"trusted_proxies,omitempty"` // CIDR ranges whose X-Forwarded-For is trusted
 }
 
 type MetricsConfig struct {

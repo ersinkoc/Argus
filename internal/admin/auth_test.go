@@ -102,3 +102,42 @@ func TestAuthMiddlewareQueryParamRejected(t *testing.T) {
 		t.Errorf("query param token: status = %d, want 401", w.Code)
 	}
 }
+
+func TestGetClientIPUsesRemoteAddrWhenNoTrustedProxies(t *testing.T) {
+	auth := NewAuthMiddleware("test-token")
+	req := httptest.NewRequest("GET", "/api/sessions", nil)
+	req.RemoteAddr = "10.0.0.1:54321"
+	req.Header.Set("X-Forwarded-For", "203.0.113.1")
+
+	ip := auth.getClientIP(req)
+	if ip == nil || ip.String() != "10.0.0.1" {
+		t.Errorf("expected 10.0.0.1 (trusted proxy not configured), got %v", ip)
+	}
+}
+
+func TestGetClientIPWithTrustedProxy(t *testing.T) {
+	auth := NewAuthMiddleware("test-token")
+	auth = auth.WithTrustedProxies([]string{"10.0.0.0/8"})
+
+	req := httptest.NewRequest("GET", "/api/sessions", nil)
+	req.RemoteAddr = "10.0.0.1:54321"
+	req.Header.Set("X-Forwarded-For", "203.0.113.1")
+
+	ip := auth.getClientIP(req)
+	if ip == nil || ip.String() != "203.0.113.1" {
+		t.Errorf("expected 203.0.113.1 (trusted proxy forwards), got %v", ip)
+	}
+}
+
+func TestGetClientIPIgnoresSpoofedXFF(t *testing.T) {
+	auth := NewAuthMiddleware("test-token")
+	// No trusted proxies configured
+	req := httptest.NewRequest("GET", "/api/sessions", nil)
+	req.RemoteAddr = "203.0.113.5:54321"
+	req.Header.Set("X-Forwarded-For", "10.0.0.2")
+
+	ip := auth.getClientIP(req)
+	if ip == nil || ip.String() != "203.0.113.5" {
+		t.Errorf("expected 203.0.113.5 (no trusted proxies), got %v", ip)
+	}
+}
