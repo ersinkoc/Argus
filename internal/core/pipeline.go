@@ -499,16 +499,7 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 		metrics.Global.CommandsTotal.Add(1)
 
 		// Per-protocol metrics
-		switch protocolName {
-		case "postgresql":
-			metrics.ProtocolStats.PGCommands.Add(1)
-		case "mysql":
-			metrics.ProtocolStats.MySQLCommands.Add(1)
-		case "mssql":
-			metrics.ProtocolStats.MSSQLCommands.Add(1)
-		case "mongodb":
-			metrics.ProtocolStats.MongoDBCommands.Add(1)
-		}
+		recordProtocolCommand(protocolName)
 
 		// Query cost estimation (before policy eval so policies can use it)
 		costEstimate := inspection.EstimateCost(cmd)
