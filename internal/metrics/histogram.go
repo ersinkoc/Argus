@@ -14,18 +14,18 @@ type LatencyHistogram struct {
 
 // Bucket boundaries in microseconds
 var latencyBounds = [12]float64{
-	100,       // 0.1ms
-	500,       // 0.5ms
-	1000,      // 1ms
-	2500,      // 2.5ms
-	5000,      // 5ms
-	10000,     // 10ms
-	25000,     // 25ms
-	50000,     // 50ms
-	100000,    // 100ms
-	250000,    // 250ms
-	500000,    // 500ms
-	1000000,   // 1s
+	100,     // 0.1ms
+	500,     // 0.5ms
+	1000,    // 1ms
+	2500,    // 2.5ms
+	5000,    // 5ms
+	10000,   // 10ms
+	25000,   // 25ms
+	50000,   // 50ms
+	100000,  // 100ms
+	250000,  // 250ms
+	500000,  // 500ms
+	1000000, // 1s
 }
 
 // QueryLatency is the global query latency histogram.

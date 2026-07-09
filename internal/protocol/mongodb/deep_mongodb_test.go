@@ -206,7 +206,7 @@ func TestReadMessageExactHeader(t *testing.T) {
 
 	go func() {
 		buf := make([]byte, 16)
-		binary.LittleEndian.PutUint32(buf[0:4], 16)           // exact header size
+		binary.LittleEndian.PutUint32(buf[0:4], 16) // exact header size
 		binary.LittleEndian.PutUint32(buf[12:16], uint32(OpMsg))
 		clientConn.Write(buf)
 	}()
@@ -380,7 +380,7 @@ func TestReadCommandOpMsgFind(t *testing.T) {
 	go func() {
 		var payload []byte
 		payload = append(payload, 0, 0, 0, 0) // flagBits
-		payload = append(payload, 0) // kind=0
+		payload = append(payload, 0)          // kind=0
 		doc := []byte{13, 0, 0, 0, 0x10, 'f', 'i', 'n', 'd', 0, 1, 0, 0, 0, 0}
 		binary.LittleEndian.PutUint32(doc[0:4], uint32(len(doc)))
 		payload = append(payload, doc...)

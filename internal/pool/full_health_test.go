@@ -379,7 +379,7 @@ func TestHistogramPercentileEmptyBounds(t *testing.T) {
 	// Create a histogram with empty bounds explicitly
 	h := &Histogram{
 		buckets: make([]atomic.Int64, 1), // just overflow bucket
-		bounds:  nil,                      // empty bounds
+		bounds:  nil,                     // empty bounds
 	}
 	h.count.Store(1)
 	h.buckets[0].Store(1)

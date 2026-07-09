@@ -12,10 +12,10 @@ const headerSize = 4
 
 // Command bytes
 const (
-	ComQuit    byte = 0x01
-	ComQuery   byte = 0x03
-	ComPing    byte = 0x0e
-	ComInitDB  byte = 0x02
+	ComQuit   byte = 0x01
+	ComQuery  byte = 0x03
+	ComPing   byte = 0x0e
+	ComInitDB byte = 0x02
 )
 
 // Column types
@@ -240,8 +240,8 @@ func BuildErrPacket(seqID byte, code uint16, message string) *Packet {
 // BuildEOFPacket creates an EOF packet.
 func BuildEOFPacket(seqID byte) *Packet {
 	var payload []byte
-	payload = append(payload, 0xFE) // EOF marker
-	payload = append(payload, 0, 0) // warnings
+	payload = append(payload, 0xFE)                                              // EOF marker
+	payload = append(payload, 0, 0)                                              // warnings
 	payload = append(payload, byte(StatusAutocommit), byte(StatusAutocommit>>8)) // status
 	return &Packet{SequenceID: seqID, Payload: payload}
 }

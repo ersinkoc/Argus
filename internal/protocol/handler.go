@@ -43,8 +43,8 @@ type Handler interface {
 
 // ResultStats holds statistics about a result set that was forwarded.
 type ResultStats struct {
-	RowCount    int64
-	ByteCount   int64
-	Truncated   bool
-	MaskedCols  []string
+	RowCount   int64
+	ByteCount  int64
+	Truncated  bool
+	MaskedCols []string
 }

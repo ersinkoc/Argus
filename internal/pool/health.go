@@ -9,14 +9,14 @@ import (
 
 // HealthStatus represents detailed health information for a target.
 type HealthStatus struct {
-	Target      string        `json:"target"`
-	Healthy     bool          `json:"healthy"`
-	Latency     time.Duration `json:"latency_us"`
-	LastCheck   time.Time     `json:"last_check"`
-	LastError   string        `json:"last_error,omitempty"`
-	CheckCount  int64         `json:"check_count"`
-	FailCount   int64         `json:"fail_count"`
-	CircuitState string       `json:"circuit_state,omitempty"`
+	Target       string        `json:"target"`
+	Healthy      bool          `json:"healthy"`
+	Latency      time.Duration `json:"latency_us"`
+	LastCheck    time.Time     `json:"last_check"`
+	LastError    string        `json:"last_error,omitempty"`
+	CheckCount   int64         `json:"check_count"`
+	FailCount    int64         `json:"fail_count"`
+	CircuitState string        `json:"circuit_state,omitempty"`
 }
 
 // DeepHealthCheck performs a full connectivity test to the target.
@@ -68,10 +68,10 @@ func CheckAllTargets(targets []string, timeout time.Duration) map[string]*Health
 
 // PoolHealthSummary returns a summary of all pool health states.
 type PoolHealthSummary struct {
-	TotalTargets    int    `json:"total_targets"`
-	HealthyTargets  int    `json:"healthy_targets"`
-	UnhealthyTargets int   `json:"unhealthy_targets"`
-	OverallStatus   string `json:"overall_status"` // healthy, degraded, unhealthy
+	TotalTargets     int    `json:"total_targets"`
+	HealthyTargets   int    `json:"healthy_targets"`
+	UnhealthyTargets int    `json:"unhealthy_targets"`
+	OverallStatus    string `json:"overall_status"` // healthy, degraded, unhealthy
 }
 
 // Summarize creates a health summary from pool stats.

@@ -24,7 +24,9 @@ func TestProxyMultiStatement(t *testing.T) {
 	// Backend handles multi-statement: returns 2 result sets + 1 ReadyForQuery
 	go func() {
 		conn, err := backendLn.Accept()
-		if err != nil { return }
+		if err != nil {
+			return
+		}
 		defer conn.Close()
 
 		pgcodec.ReadStartupMessage(conn)
@@ -103,7 +105,9 @@ func TestProxyMultiStatement(t *testing.T) {
 
 	for {
 		msg := readPgMsg(t, conn)
-		if msg.Type == pgcodec.MsgReadyForQuery { break }
+		if msg.Type == pgcodec.MsgReadyForQuery {
+			break
+		}
 	}
 
 	// Send multi-statement: "SELECT 1; SELECT 2"

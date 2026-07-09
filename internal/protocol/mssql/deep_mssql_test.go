@@ -163,7 +163,7 @@ func TestParseColMetadataBIGVARBIN(t *testing.T) {
 	data = append(data, TokenColMetadata)
 	data = append(data, 1, 0)
 	data = append(data, 0, 0, 0, 0, 0, 0)
-	data = append(data, 0xA5) // BIGVARBIN
+	data = append(data, 0xA5)       // BIGVARBIN
 	data = append(data, 0x00, 0x02) // max len 512
 	data = append(data, 3)
 	data = append(data, 'b', 0, 'i', 0, 'n', 0)
@@ -287,8 +287,8 @@ func TestParseColMetadataNChar(t *testing.T) {
 	data = append(data, TokenColMetadata)
 	data = append(data, 1, 0)
 	data = append(data, 0, 0, 0, 0, 0, 0)
-	data = append(data, 0xEF) // NCHAR
-	data = append(data, 0x14, 0x00) // max 20
+	data = append(data, 0xEF)          // NCHAR
+	data = append(data, 0x14, 0x00)    // max 20
 	data = append(data, 0, 0, 0, 0, 0) // collation
 	data = append(data, 1)
 	data = append(data, 'c', 0)

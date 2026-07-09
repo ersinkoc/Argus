@@ -6,9 +6,9 @@ import (
 
 func TestTokenizer(t *testing.T) {
 	tests := []struct {
-		name     string
-		sql      string
-		wantLen  int
+		name      string
+		sql       string
+		wantLen   int
 		wantFirst TokenType
 	}{
 		{"simple select", "SELECT * FROM users", 4, TokenKeyword},

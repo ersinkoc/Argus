@@ -20,10 +20,10 @@ type WebhookWriter struct {
 	flushEvery time.Duration
 	headers    map[string]string
 
-	mu      sync.Mutex
-	batch   []Event
-	stopCh  chan struct{}
-	wg      sync.WaitGroup
+	mu     sync.Mutex
+	batch  []Event
+	stopCh chan struct{}
+	wg     sync.WaitGroup
 }
 
 // WebhookConfig configures the webhook writer.

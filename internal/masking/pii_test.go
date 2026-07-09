@@ -64,10 +64,10 @@ func TestPIIDetectByValue(t *testing.T) {
 	}
 
 	row := []FieldValue{
-		{Data: []byte("john@example.com")},           // email
-		{Data: []byte("+905321234567")},               // phone
-		{Data: []byte("4532015112830366")},            // credit card (valid Luhn)
-		{Data: []byte("just a normal string")},        // not PII
+		{Data: []byte("john@example.com")},     // email
+		{Data: []byte("+905321234567")},        // phone
+		{Data: []byte("4532015112830366")},     // credit card (valid Luhn)
+		{Data: []byte("just a normal string")}, // not PII
 	}
 
 	matches := detector.DetectByValue(columns, row)

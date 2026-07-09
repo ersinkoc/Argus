@@ -11,10 +11,10 @@ type SensitivityLevel int
 
 const (
 	Public       SensitivityLevel = iota // non-sensitive data
-	Internal                              // internal business data
-	Confidential                          // business confidential
-	Restricted                            // highly restricted (PII, financial)
-	Critical                              // critical secrets (credentials, keys)
+	Internal                             // internal business data
+	Confidential                         // business confidential
+	Restricted                           // highly restricted (PII, financial)
+	Critical                             // critical secrets (credentials, keys)
 )
 
 var levelNames = map[SensitivityLevel]string{

@@ -146,11 +146,11 @@ func TestParseLDAPResultCodeMultiByteLength(t *testing.T) {
 	// 0x61, 0x81, 0x07 = Application[1] with length 7 (0x81 means 1 byte of length follows)
 	// After that: ENUMERATED resultCode=5
 	data := []byte{
-		0x30, 0x0C,       // SEQUENCE
+		0x30, 0x0C, // SEQUENCE
 		0x02, 0x01, 0x01, // INTEGER (messageID=1)
 		0x61, 0x81, 0x05, // Application[1] with multi-byte length = 5
 		0x0A, 0x01, 0x05, // ENUMERATED resultCode=5
-		0x04, 0x00,       // matchedDN = ""
+		0x04, 0x00, // matchedDN = ""
 	}
 
 	code := parseLDAPResultCode(data)
@@ -166,7 +166,7 @@ func TestParseLDAPResultCodeNoEnumerated(t *testing.T) {
 	data := []byte{
 		0x30, 0x08,
 		0x02, 0x01, 0x01,
-		0x61, 0x03,       // Application[1], length 3
+		0x61, 0x03, // Application[1], length 3
 		0x04, 0x01, 0x00, // OCTET STRING (not ENUMERATED)
 	}
 	code := parseLDAPResultCode(data)
@@ -182,8 +182,8 @@ func TestParseLDAPResultCodeEnumTruncated(t *testing.T) {
 	data := []byte{
 		0x30, 0x05,
 		0x02, 0x01, 0x01,
-		0x61, 0x02,       // Application[1], length 2
-		0x0A, 0x01,       // ENUMERATED tag + length, but no value byte
+		0x61, 0x02, // Application[1], length 2
+		0x0A, 0x01, // ENUMERATED tag + length, but no value byte
 	}
 	code := parseLDAPResultCode(data)
 	if code != -1 {

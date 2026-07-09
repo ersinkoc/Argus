@@ -54,13 +54,13 @@ func TestParseRowDescription(t *testing.T) {
 
 	// Column 1: "id"
 	payload = append(payload, []byte("id")...)
-	payload = append(payload, 0) // null terminator
-	payload = append(payload, 0, 0, 0, 0) // table OID
-	payload = append(payload, 0, 1) // column index
-	payload = append(payload, 0, 0, 0, 23) // type OID (int4)
-	payload = append(payload, 0, 4) // type size
+	payload = append(payload, 0)                      // null terminator
+	payload = append(payload, 0, 0, 0, 0)             // table OID
+	payload = append(payload, 0, 1)                   // column index
+	payload = append(payload, 0, 0, 0, 23)            // type OID (int4)
+	payload = append(payload, 0, 4)                   // type size
 	payload = append(payload, 0xFF, 0xFF, 0xFF, 0xFF) // type modifier
-	payload = append(payload, 0, 0) // format
+	payload = append(payload, 0, 0)                   // format
 
 	// Column 2: "name"
 	payload = append(payload, []byte("name")...)
@@ -68,7 +68,7 @@ func TestParseRowDescription(t *testing.T) {
 	payload = append(payload, 0, 0, 0, 0)
 	payload = append(payload, 0, 2)
 	payload = append(payload, 0, 0, 0, 25) // type OID (text)
-	payload = append(payload, 0xFF, 0xFF) // type size (-1)
+	payload = append(payload, 0xFF, 0xFF)  // type size (-1)
 	payload = append(payload, 0xFF, 0xFF, 0xFF, 0xFF)
 	payload = append(payload, 0, 0)
 

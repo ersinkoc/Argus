@@ -92,12 +92,12 @@ func (h *Histogram) Percentile(p float64) float64 {
 
 // Snapshot returns a copy of the histogram data.
 type HistogramSnapshot struct {
-	Count   int64              `json:"count"`
-	Sum     int64              `json:"sum_us"`
-	P50     float64            `json:"p50_us"`
-	P95     float64            `json:"p95_us"`
-	P99     float64            `json:"p99_us"`
-	Buckets map[string]int64   `json:"buckets"`
+	Count   int64            `json:"count"`
+	Sum     int64            `json:"sum_us"`
+	P50     float64          `json:"p50_us"`
+	P95     float64          `json:"p95_us"`
+	P99     float64          `json:"p99_us"`
+	Buckets map[string]int64 `json:"buckets"`
 }
 
 func (h *Histogram) Snapshot() HistogramSnapshot {

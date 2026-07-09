@@ -24,7 +24,7 @@ func TestDetectByValueMoreValuesThanColumns(t *testing.T) {
 	cols := []ColumnInfo{{Name: "email", Index: 0}}
 	row := []FieldValue{
 		{Data: []byte("john@example.com")},  // index 0, has column
-		{Data: []byte("alice@example.com")},  // index 1, no column → colName = ""
+		{Data: []byte("alice@example.com")}, // index 1, no column → colName = ""
 	}
 	matches := d.DetectByValue(cols, row)
 	// Both should be detected

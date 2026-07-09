@@ -36,7 +36,7 @@ type CircuitBreaker struct {
 	threshold    int           // failures before opening
 	resetTimeout time.Duration // how long to stay open before half-open
 	lastFailure  time.Time
-	halfOpenMax  int           // max test requests in half-open state
+	halfOpenMax  int // max test requests in half-open state
 }
 
 // NewCircuitBreaker creates a circuit breaker.

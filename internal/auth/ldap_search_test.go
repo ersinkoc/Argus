@@ -83,8 +83,8 @@ func buildSearchResultDone() []byte {
 	// SearchResultDone (Application 5 = tag 0x65) with resultCode=0, matchedDN="", errorMsg=""
 	innerBody := []byte{
 		0x0a, 0x01, 0x00, // resultCode = 0 (success)
-		0x04, 0x00,       // matchedDN = ""
-		0x04, 0x00,       // errorMessage = ""
+		0x04, 0x00, // matchedDN = ""
+		0x04, 0x00, // errorMessage = ""
 	}
 	innerTag := append([]byte{0x65, byte(len(innerBody))}, innerBody...)
 
@@ -100,8 +100,8 @@ func buildBindSuccessResponse() []byte {
 	// BindResponse = Application[1] (0x61) { resultCode=0, matchedDN="", errorMsg="" }
 	innerBody := []byte{
 		0x0a, 0x01, 0x00, // ENUMERATED resultCode = 0
-		0x04, 0x00,       // matchedDN = ""
-		0x04, 0x00,       // errorMessage = ""
+		0x04, 0x00, // matchedDN = ""
+		0x04, 0x00, // errorMessage = ""
 	}
 	appTag := append([]byte{0x61, byte(len(innerBody))}, innerBody...)
 	msgID := []byte{0x02, 0x01, 0x01} // messageID = 1
@@ -169,12 +169,12 @@ func TestResolveGroups_Success(t *testing.T) {
 	}
 
 	p := NewLDAPProvider(LDAPConfig{
-		Host:      host,
-		Port:      portNum,
-		BaseDN:    "dc=test,dc=com",
-		BindDN:    "cn=admin,dc=test,dc=com",
-		BindPass:  "secret",
-		Timeout:   2 * time.Second,
+		Host:     host,
+		Port:     portNum,
+		BaseDN:   "dc=test,dc=com",
+		BindDN:   "cn=admin,dc=test,dc=com",
+		BindPass: "secret",
+		Timeout:  2 * time.Second,
 	})
 
 	groups := p.resolveGroups("testuser")

@@ -10,13 +10,13 @@ import (
 
 // ReplaySession reconstructs a session's query history from recorded queries.
 type ReplaySession struct {
-	SessionID string         `json:"session_id"`
-	Username  string         `json:"username"`
-	Database  string         `json:"database"`
-	Queries   []ReplayQuery  `json:"queries"`
-	StartTime time.Time      `json:"start_time"`
-	EndTime   time.Time      `json:"end_time"`
-	Duration  string         `json:"duration"`
+	SessionID string        `json:"session_id"`
+	Username  string        `json:"username"`
+	Database  string        `json:"database"`
+	Queries   []ReplayQuery `json:"queries"`
+	StartTime time.Time     `json:"start_time"`
+	EndTime   time.Time     `json:"end_time"`
+	Duration  string        `json:"duration"`
 }
 
 // ReplayQuery is a single query in a replay session.

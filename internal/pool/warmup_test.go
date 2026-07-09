@@ -9,7 +9,14 @@ import (
 func TestPoolWarmupSuccess(t *testing.T) {
 	ln, _ := net.Listen("tcp", "127.0.0.1:0")
 	defer ln.Close()
-	go func() { for { c, _ := ln.Accept(); if c != nil { _ = c } } }()
+	go func() {
+		for {
+			c, _ := ln.Accept()
+			if c != nil {
+				_ = c
+			}
+		}
+	}()
 
 	p := NewPool(ln.Addr().String(), 10, 3, time.Hour, 5*time.Second, 0)
 	p.warmup()

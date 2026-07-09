@@ -21,15 +21,15 @@ type SharedPool struct {
 	connectTimeout time.Duration
 	healthInterval time.Duration
 
-	mu       sync.Mutex
-	idle     []*Conn
-	active   int
-	total    int
-	healthy  bool
-	closed   bool
-	stopCh   chan struct{}
-	wg       sync.WaitGroup
-	waiters  []chan *Conn
+	mu        sync.Mutex
+	idle      []*Conn
+	active    int
+	total     int
+	healthy   bool
+	closed    bool
+	stopCh    chan struct{}
+	wg        sync.WaitGroup
+	waiters   []chan *Conn
 	connectFn func(ctx context.Context) (net.Conn, error)
 }
 

@@ -17,16 +17,16 @@ func TestExportCSV(t *testing.T) {
 	f, _ := os.Create(path)
 	enc := json.NewEncoder(f)
 	enc.Encode(Event{
-		Timestamp: time.Now(),
-		EventType: "command_executed",
-		SessionID: "s1",
-		Username:  "alice",
-		ClientIP:  "10.0.0.1",
-		Database:  "prod",
+		Timestamp:   time.Now(),
+		EventType:   "command_executed",
+		SessionID:   "s1",
+		Username:    "alice",
+		ClientIP:    "10.0.0.1",
+		Database:    "prod",
 		CommandType: "SELECT",
-		Action:    "allow",
-		RowCount:  42,
-		Duration:  150 * time.Millisecond,
+		Action:      "allow",
+		RowCount:    42,
+		Duration:    150 * time.Millisecond,
 	})
 	enc.Encode(Event{
 		Timestamp: time.Now(),

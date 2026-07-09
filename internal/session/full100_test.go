@@ -10,7 +10,7 @@ import (
 
 func TestTimeoutLoopTickerFires(t *testing.T) {
 	m := NewManager(50*time.Millisecond, 0) // 50ms idle timeout
-	m.checkInterval = 50 * time.Millisecond  // fast check interval for test
+	m.checkInterval = 50 * time.Millisecond // fast check interval for test
 
 	timedOut := make(chan string, 1)
 	m.OnTimeout(func(s *Session, reason string) {

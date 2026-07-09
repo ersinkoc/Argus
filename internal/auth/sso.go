@@ -12,10 +12,10 @@ import (
 
 // SSOConfig configures SSO/JWT token authentication.
 type SSOConfig struct {
-	Issuer       string   `json:"issuer"`        // expected JWT issuer
-	Secret       string   `json:"secret"`        // HMAC secret for validation
-	UsernameClaim string  `json:"username_claim"` // JWT claim for username (default: "sub")
-	GroupsClaim   string  `json:"groups_claim"`   // JWT claim for groups (default: "groups")
+	Issuer         string   `json:"issuer"`          // expected JWT issuer
+	Secret         string   `json:"secret"`          // HMAC secret for validation
+	UsernameClaim  string   `json:"username_claim"`  // JWT claim for username (default: "sub")
+	GroupsClaim    string   `json:"groups_claim"`    // JWT claim for groups (default: "groups")
 	AllowedIssuers []string `json:"allowed_issuers"` // allowed issuers
 }
 

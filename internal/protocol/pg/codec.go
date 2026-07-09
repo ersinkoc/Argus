@@ -10,18 +10,18 @@ import (
 // PostgreSQL message type bytes
 const (
 	// Frontend (client → server) message types
-	MsgQuery       byte = 'Q'
-	MsgTerminate   byte = 'X'
-	MsgPassword    byte = 'p'
+	MsgQuery     byte = 'Q'
+	MsgTerminate byte = 'X'
+	MsgPassword  byte = 'p'
 
 	// Extended Query frontend messages
-	MsgParse       byte = 'P'
-	MsgBind        byte = 'B'
-	MsgDescribe    byte = 'D' // overloaded with DataRow — direction matters
-	MsgExecute     byte = 'E' // overloaded with ErrorResponse — direction matters
-	MsgSync        byte = 'S' // overloaded with ParameterStatus — direction matters
-	MsgClose       byte = 'C' // overloaded with CommandComplete — direction matters
-	MsgFlush       byte = 'H'
+	MsgParse    byte = 'P'
+	MsgBind     byte = 'B'
+	MsgDescribe byte = 'D' // overloaded with DataRow — direction matters
+	MsgExecute  byte = 'E' // overloaded with ErrorResponse — direction matters
+	MsgSync     byte = 'S' // overloaded with ParameterStatus — direction matters
+	MsgClose    byte = 'C' // overloaded with CommandComplete — direction matters
+	MsgFlush    byte = 'H'
 
 	// Backend (server → client) message types
 	MsgAuth            byte = 'R'
@@ -47,12 +47,12 @@ const (
 
 // Auth types
 const (
-	AuthOK              int32 = 0
-	AuthCleartextPwd    int32 = 3
-	AuthMD5Pwd          int32 = 5
-	AuthSASL            int32 = 10
-	AuthSASLContinue    int32 = 11
-	AuthSASLFinal       int32 = 12
+	AuthOK           int32 = 0
+	AuthCleartextPwd int32 = 3
+	AuthMD5Pwd       int32 = 5
+	AuthSASL         int32 = 10
+	AuthSASLContinue int32 = 11
+	AuthSASLFinal    int32 = 12
 )
 
 // Message represents a PostgreSQL protocol message.

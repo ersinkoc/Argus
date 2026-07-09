@@ -190,6 +190,6 @@ func TestServerStartStop(t *testing.T) {
 
 type mockApproval struct{}
 
-func (m *mockApproval) Approve(id, approver string) error   { return nil }
+func (m *mockApproval) Approve(id, approver string) error      { return nil }
 func (m *mockApproval) Deny(id, approver, reason string) error { return nil }
-func (m *mockApproval) PendingRequests() []any               { return nil }
+func (m *mockApproval) PendingRequests() []any                 { return nil }

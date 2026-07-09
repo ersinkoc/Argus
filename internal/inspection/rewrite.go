@@ -7,8 +7,8 @@ import (
 
 // Rewriter applies transformations to SQL queries.
 type Rewriter struct {
-	maxLimit    int    // auto-add LIMIT N to SELECT without LIMIT
-	forceWhere  string // inject WHERE condition (e.g. "tenant_id = 42")
+	maxLimit   int    // auto-add LIMIT N to SELECT without LIMIT
+	forceWhere string // inject WHERE condition (e.g. "tenant_id = 42")
 }
 
 // NewRewriter creates a query rewriter.

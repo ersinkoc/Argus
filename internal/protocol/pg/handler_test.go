@@ -278,14 +278,18 @@ func TestHandlerResultWithMasking(t *testing.T) {
 	go func() {
 		for {
 			m, err := ReadMessage(clientConn)
-			if err != nil { return }
+			if err != nil {
+				return
+			}
 			if m.Type == MsgDataRow {
 				fields, _ := ParseDataRow(m.Payload)
 				if len(fields) > 1 {
 					maskedEmail = string(fields[1])
 				}
 			}
-			if m.Type == MsgReadyForQuery { return }
+			if m.Type == MsgReadyForQuery {
+				return
+			}
 		}
 	}()
 

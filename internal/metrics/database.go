@@ -12,10 +12,10 @@ type DatabaseCounters struct {
 }
 
 type dbCounter struct {
-	Queries  atomic.Int64
-	Writes   atomic.Int64
-	Blocked  atomic.Int64
-	Rows     atomic.Int64
+	Queries atomic.Int64
+	Writes  atomic.Int64
+	Blocked atomic.Int64
+	Rows    atomic.Int64
 }
 
 // DatabaseStats is the global per-database metrics instance.

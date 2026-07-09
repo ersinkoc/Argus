@@ -11,14 +11,14 @@ import (
 
 // Loader watches and loads policy files.
 type Loader struct {
-	files        []string
+	files          []string
 	reloadInterval time.Duration
-	current      *PolicySet
-	mu           sync.RWMutex
-	onReload     func()
-	stopCh       chan struct{}
-	wg           sync.WaitGroup
-	lastModTimes map[string]time.Time
+	current        *PolicySet
+	mu             sync.RWMutex
+	onReload       func()
+	stopCh         chan struct{}
+	wg             sync.WaitGroup
+	lastModTimes   map[string]time.Time
 }
 
 // NewLoader creates a new policy loader.

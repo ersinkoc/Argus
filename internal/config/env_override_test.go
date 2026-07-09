@@ -23,16 +23,40 @@ func TestApplyEnvOverridesFull(t *testing.T) {
 
 	applyEnvOverrides(cfg)
 
-	if cfg.Audit.Level != "verbose" { t.Errorf("audit level = %q", cfg.Audit.Level) }
-	if cfg.Audit.BufferSize != 99999 { t.Errorf("buffer = %d", cfg.Audit.BufferSize) }
-	if !cfg.Metrics.Enabled { t.Error("metrics should be enabled") }
-	if cfg.Metrics.Address != ":8888" { t.Errorf("metrics addr = %q", cfg.Metrics.Address) }
-	if !cfg.Admin.Enabled { t.Error("admin should be enabled") }
-	if cfg.Admin.Address != ":7777" { t.Errorf("admin addr = %q", cfg.Admin.Address) }
-	if cfg.Admin.AuthToken != "secret123" { t.Errorf("auth token = %q", cfg.Admin.AuthToken) }
-	if cfg.Pool.MaxConnectionsPerTarget != 999 { t.Errorf("pool max = %d", cfg.Pool.MaxConnectionsPerTarget) }
-	if cfg.Routing.DefaultTarget != "custom-target" { t.Errorf("default = %q", cfg.Routing.DefaultTarget) }
-	if cfg.Targets[0].Host != "overridden-host" { t.Errorf("host = %q", cfg.Targets[0].Host) }
-	if cfg.Targets[0].Port != 9999 { t.Errorf("port = %d", cfg.Targets[0].Port) }
-	if cfg.Server.Listeners[0].Address != ":55555" { t.Errorf("addr = %q", cfg.Server.Listeners[0].Address) }
+	if cfg.Audit.Level != "verbose" {
+		t.Errorf("audit level = %q", cfg.Audit.Level)
+	}
+	if cfg.Audit.BufferSize != 99999 {
+		t.Errorf("buffer = %d", cfg.Audit.BufferSize)
+	}
+	if !cfg.Metrics.Enabled {
+		t.Error("metrics should be enabled")
+	}
+	if cfg.Metrics.Address != ":8888" {
+		t.Errorf("metrics addr = %q", cfg.Metrics.Address)
+	}
+	if !cfg.Admin.Enabled {
+		t.Error("admin should be enabled")
+	}
+	if cfg.Admin.Address != ":7777" {
+		t.Errorf("admin addr = %q", cfg.Admin.Address)
+	}
+	if cfg.Admin.AuthToken != "secret123" {
+		t.Errorf("auth token = %q", cfg.Admin.AuthToken)
+	}
+	if cfg.Pool.MaxConnectionsPerTarget != 999 {
+		t.Errorf("pool max = %d", cfg.Pool.MaxConnectionsPerTarget)
+	}
+	if cfg.Routing.DefaultTarget != "custom-target" {
+		t.Errorf("default = %q", cfg.Routing.DefaultTarget)
+	}
+	if cfg.Targets[0].Host != "overridden-host" {
+		t.Errorf("host = %q", cfg.Targets[0].Host)
+	}
+	if cfg.Targets[0].Port != 9999 {
+		t.Errorf("port = %d", cfg.Targets[0].Port)
+	}
+	if cfg.Server.Listeners[0].Address != ":55555" {
+		t.Errorf("addr = %q", cfg.Server.Listeners[0].Address)
+	}
 }

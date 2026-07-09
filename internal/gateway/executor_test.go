@@ -216,7 +216,7 @@ func TestExecutePG_WithMasking(t *testing.T) {
 
 func TestExecutePG_EmptyQuery(t *testing.T) {
 	var resp []byte
-	resp = append(resp, pgMsg('I', nil)...)    // EmptyQueryResponse
+	resp = append(resp, pgMsg('I', nil)...) // EmptyQueryResponse
 	resp = append(resp, pgReadyForQuery()...)
 
 	pl := mockPGPool(t, resp)

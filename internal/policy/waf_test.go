@@ -125,10 +125,10 @@ func TestDetectSQLInjectionEncoding(t *testing.T) {
 		sql  string
 		want bool
 	}{
-		{"SELECT CHAR(68,82,79,80) FROM dual", true},         // CHAR() with multi-args (building strings)
+		{"SELECT CHAR(68,82,79,80) FROM dual", true},               // CHAR() with multi-args (building strings)
 		{"SELECT * FROM users UNION SELECT CONCAT('a','b')", true}, // CONCAT + UNION
-		{"SELECT name FROM users WHERE id=1", false},          // normal query
-		{"UPDATE users SET name=CONCAT('a','b')", false},      // CONCAT without UNION/DROP/EXEC
+		{"SELECT name FROM users WHERE id=1", false},               // normal query
+		{"UPDATE users SET name=CONCAT('a','b')", false},           // CONCAT without UNION/DROP/EXEC
 	}
 	for _, tt := range tests {
 		got := detectSQLInjection(tt.sql)

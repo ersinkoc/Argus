@@ -580,10 +580,10 @@ func TestHandleCopyOutErrorResponse(t *testing.T) {
 
 func TestBuildStartupMessageMultipleParams(t *testing.T) {
 	params := map[string]string{
-		"user":            "test",
-		"database":        "mydb",
+		"user":             "test",
+		"database":         "mydb",
 		"application_name": "argus",
-		"client_encoding": "UTF8",
+		"client_encoding":  "UTF8",
 	}
 	data := BuildStartupMessage(params)
 	if len(data) == 0 {

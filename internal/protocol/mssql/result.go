@@ -9,11 +9,11 @@ import (
 
 // TDSColumnMeta holds parsed column metadata from COLMETADATA token.
 type TDSColumnMeta struct {
-	Name     string
-	TypeID   byte
-	MaxLen   int
-	Index    int
-	IsText   bool // whether the column carries text data we can mask
+	Name   string
+	TypeID byte
+	MaxLen int
+	Index  int
+	IsText bool // whether the column carries text data we can mask
 }
 
 // ParseColMetadata extracts column info from a COLMETADATA token in a TDS data stream.

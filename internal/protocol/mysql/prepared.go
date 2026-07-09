@@ -4,10 +4,10 @@ import "encoding/binary"
 
 // MySQL Prepared Statement command bytes
 const (
-	ComStmtPrepare  byte = 0x16
-	ComStmtExecute  byte = 0x17
-	ComStmtClose    byte = 0x19
-	ComStmtReset    byte = 0x1A
+	ComStmtPrepare byte = 0x16
+	ComStmtExecute byte = 0x17
+	ComStmtClose   byte = 0x19
+	ComStmtReset   byte = 0x1A
 )
 
 // PreparedStatement tracks a server-side prepared statement.

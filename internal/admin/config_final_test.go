@@ -176,9 +176,9 @@ func TestHandleCompactNoPathFinal(t *testing.T) {
 
 type successApproval struct{}
 
-func (m *successApproval) Approve(id, approver string) error   { return nil }
+func (m *successApproval) Approve(id, approver string) error      { return nil }
 func (m *successApproval) Deny(id, approver, reason string) error { return nil }
-func (m *successApproval) PendingRequests() []any               { return nil }
+func (m *successApproval) PendingRequests() []any                 { return nil }
 
 func TestHandleApprovalActionSuccessFinal(t *testing.T) {
 	s := NewServer(&finalProvider{}, ":0")

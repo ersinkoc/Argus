@@ -49,9 +49,9 @@ func TestHandlerHandshakeAuthSwitch(t *testing.T) {
 		payload = append(payload, 0) // auth len
 		WritePacket(clientConn, &Packet{SequenceID: 1, Payload: payload})
 
-		ReadPacket(clientConn) // auth switch
+		ReadPacket(clientConn)                                                     // auth switch
 		WritePacket(clientConn, &Packet{SequenceID: 3, Payload: make([]byte, 20)}) // auth response
-		ReadPacket(clientConn) // OK
+		ReadPacket(clientConn)                                                     // OK
 	}()
 
 	proxyClient.SetDeadline(time.Now().Add(3 * time.Second))

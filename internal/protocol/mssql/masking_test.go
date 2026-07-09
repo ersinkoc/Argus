@@ -366,11 +366,11 @@ func TestReadAndForwardResultWithMasking(t *testing.T) {
 
 		// COLMETADATA: 1 NVARCHAR column named "email"
 		data = append(data, TokenColMetadata)
-		data = append(data, 1, 0) // 1 column
+		data = append(data, 1, 0)             // 1 column
 		data = append(data, 0, 0, 0, 0, 0, 0) // user type + flags
-		data = append(data, 0xE7)               // NVARCHAR
-		data = append(data, 0x00, 0x01)         // max length 256
-		data = append(data, 0, 0, 0, 0, 0)     // collation
+		data = append(data, 0xE7)             // NVARCHAR
+		data = append(data, 0x00, 0x01)       // max length 256
+		data = append(data, 0, 0, 0, 0, 0)    // collation
 		emailName := toUTF16LE("email")
 		data = append(data, byte(len("email"))) // name length in chars
 		data = append(data, emailName...)
@@ -517,8 +517,8 @@ func TestParseColMetadataTruncatedName(t *testing.T) {
 	data = append(data, TokenColMetadata)
 	data = append(data, 1, 0)
 	data = append(data, 0, 0, 0, 0, 0, 0)
-	data = append(data, 0x38) // INT (fixed)
-	data = append(data, 5)    // name length 5 chars
+	data = append(data, 0x38)   // INT (fixed)
+	data = append(data, 5)      // name length 5 chars
 	data = append(data, 'a', 0) // only 1 char (2 bytes), not 5
 
 	cols, _ := ParseColMetadata(data)
@@ -731,7 +731,7 @@ func TestPatchPreLoginEncryptionNoToken(t *testing.T) {
 	// Pre-login with only VERSION, no ENCRYPTION token
 	var data []byte
 	data = append(data, 0x00, 0, 6, 0, 6) // VERSION
-	data = append(data, 0xFF)              // terminator
+	data = append(data, 0xFF)             // terminator
 	data = append(data, 0x0F, 0x00, 0x00, 0x00, 0x00, 0x00)
 
 	orig := make([]byte, len(data))
@@ -761,12 +761,12 @@ func TestPatchPreLoginEncryptionEmpty(t *testing.T) {
 func TestDisableMARS(t *testing.T) {
 	// Build a Login7 with fExtension=1 and FeatureExt block
 	data := make([]byte, 240)
-	data[0], data[1], data[2], data[3] = 240, 0, 0, 0 // Length=240
-	data[25] = 0x07                                      // OptionFlags2: MARS (0x04) + others
-	data[27] = 0x1A                                      // OptionFlags3: fExtension (0x10) + others
-	data[56], data[57] = 200, 0                          // ibExtension -> offset 200
+	data[0], data[1], data[2], data[3] = 240, 0, 0, 0         // Length=240
+	data[25] = 0x07                                           // OptionFlags2: MARS (0x04) + others
+	data[27] = 0x1A                                           // OptionFlags3: fExtension (0x10) + others
+	data[56], data[57] = 200, 0                               // ibExtension -> offset 200
 	data[200], data[201], data[202], data[203] = 210, 0, 0, 0 // ptr -> FeatureExt at 210
-	data[210] = 0x01                                      // Feature SESSION_RECOVERY
+	data[210] = 0x01                                          // Feature SESSION_RECOVERY
 	data[211], data[212], data[213], data[214] = 0, 0, 0, 0
 	data[215] = 0xFF // terminator
 
@@ -817,12 +817,12 @@ func TestPatchPreLoginMARS(t *testing.T) {
 	var data []byte
 	data = append(data, 0x00, 0, 11, 0, 6) // VERSION token
 	data = append(data, 0x04, 0, 17, 0, 1) // MARS token at offset 17
-	data = append(data, 0xFF)               // terminator
+	data = append(data, 0xFF)              // terminator
 	for len(data) < 11 {
 		data = append(data, 0)
 	}
 	data = append(data, 0x0F, 0x00, 0x00, 0x00, 0x00, 0x00) // VERSION data
-	data = append(data, 0x01)                                  // MARS = ON
+	data = append(data, 0x01)                               // MARS = ON
 
 	patchPreLoginMARS(data)
 

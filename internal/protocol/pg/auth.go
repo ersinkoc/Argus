@@ -22,6 +22,7 @@ type HandshakeOpts struct {
 //  2. Forwards it to the backend
 //  3. Relays auth messages between client and backend
 //  4. Returns session info on success
+//
 // DoHandshake performs the PostgreSQL authentication handshake.
 func DoHandshake(ctx context.Context, client, backend net.Conn) (*session.Info, error) {
 	return DoHandshakeWithOpts(ctx, client, backend, nil)

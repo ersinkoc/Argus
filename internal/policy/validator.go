@@ -4,8 +4,8 @@ import "fmt"
 
 // ValidationIssue represents a problem found during policy validation.
 type ValidationIssue struct {
-	Level   string `json:"level"`   // "error", "warning", "info"
-	Rule    string `json:"rule"`    // policy rule name
+	Level   string `json:"level"` // "error", "warning", "info"
+	Rule    string `json:"rule"`  // policy rule name
 	Message string `json:"message"`
 }
 

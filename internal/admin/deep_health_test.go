@@ -31,7 +31,14 @@ func TestHandleDeepHealthWithTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer ln.Close()
-	go func() { for { c, _ := ln.Accept(); if c != nil { c.Close() } } }()
+	go func() {
+		for {
+			c, _ := ln.Accept()
+			if c != nil {
+				c.Close()
+			}
+		}
+	}()
 
 	provider := &healthyTargetProvider{
 		sm:   session.NewManager(0, 0),

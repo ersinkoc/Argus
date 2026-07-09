@@ -266,7 +266,7 @@ func TestDoHandshakeWithOptsPostSSLStartupParseError(t *testing.T) {
 		// Send too-short startup message (length says 5, but only 1 byte payload = total 5)
 		msg := make([]byte, 5)
 		binary.BigEndian.PutUint32(msg[0:4], 5) // length = 5
-		msg[4] = 0xFF                            // 1 byte payload
+		msg[4] = 0xFF                           // 1 byte payload
 		clientConn.Write(msg)
 		clientConn.Close()
 	}()
@@ -607,7 +607,7 @@ func TestParseRowDescriptionTruncatedMeta(t *testing.T) {
 	var payload []byte
 	payload = append(payload, 0, 1) // 1 column
 	payload = append(payload, []byte("col")...)
-	payload = append(payload, 0)    // null term
+	payload = append(payload, 0) // null term
 	// Only 10 bytes of metadata instead of 18
 	payload = append(payload, make([]byte, 10)...)
 
@@ -662,7 +662,7 @@ func TestDecodeParseNoParams(t *testing.T) {
 func TestDecodeBindNoStmtTerminator(t *testing.T) {
 	// portal\0 + stmt (no null terminator)
 	var payload []byte
-	payload = append(payload, 0)                        // empty portal
+	payload = append(payload, 0)                         // empty portal
 	payload = append(payload, []byte("my_statement")...) // no null term
 	_, err := DecodeBind(payload)
 	if err == nil {
@@ -718,8 +718,8 @@ func TestReadExtendedBatchTerminateMsg(t *testing.T) {
 	go func() {
 		// Send Bind followed by Terminate (not Sync)
 		var bindPayload []byte
-		bindPayload = append(bindPayload, 0)  // portal
-		bindPayload = append(bindPayload, 0)  // stmt
+		bindPayload = append(bindPayload, 0)    // portal
+		bindPayload = append(bindPayload, 0)    // stmt
 		bindPayload = append(bindPayload, 0, 0) // format codes
 		bindPayload = append(bindPayload, 0, 0) // params
 		bindPayload = append(bindPayload, 0, 0) // result formats
@@ -1186,7 +1186,7 @@ func TestReadExtendedBatchBindNamedStmtNoSQL(t *testing.T) {
 	go func() {
 		// Send Execute + Bind with named stmt + Sync (no Parse)
 		var execPayload []byte
-		execPayload = append(execPayload, 0)    // portal
+		execPayload = append(execPayload, 0)          // portal
 		execPayload = append(execPayload, 0, 0, 0, 0) // max rows
 
 		// Bind with named statement
@@ -1219,7 +1219,7 @@ func TestReadExtendedBatchBindNamedStmtNoSQL(t *testing.T) {
 
 func TestParseRowDescriptionNameNoNull(t *testing.T) {
 	var payload []byte
-	payload = append(payload, 0, 1) // 1 column
+	payload = append(payload, 0, 1)                  // 1 column
 	payload = append(payload, []byte("col_name")...) // no null terminator
 
 	_, err := ParseRowDescription(payload)

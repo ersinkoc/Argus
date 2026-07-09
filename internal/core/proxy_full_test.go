@@ -10,8 +10,8 @@ import (
 	"github.com/ersinkoc/argus/internal/config"
 	"github.com/ersinkoc/argus/internal/inspection"
 	"github.com/ersinkoc/argus/internal/policy"
-	"github.com/ersinkoc/argus/internal/session"
 	pgcodec "github.com/ersinkoc/argus/internal/protocol/pg"
+	"github.com/ersinkoc/argus/internal/session"
 )
 
 // TestProxyBlockedCommand starts proxy, sends a DDL command that should be blocked by policy.
@@ -70,7 +70,9 @@ func TestProxyBlockedCommand(t *testing.T) {
 	// Read until ReadyForQuery
 	for {
 		msg := readPgMsg(t, conn)
-		if msg.Type == pgcodec.MsgReadyForQuery { break }
+		if msg.Type == pgcodec.MsgReadyForQuery {
+			break
+		}
 	}
 
 	// Send DDL command that should be BLOCKED
@@ -150,7 +152,9 @@ func TestProxyRewriter(t *testing.T) {
 func fakePostgresBackendMulti(t *testing.T, ln net.Listener) {
 	t.Helper()
 	conn, err := ln.Accept()
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 	defer conn.Close()
 
 	pgcodec.ReadStartupMessage(conn)
@@ -169,9 +173,13 @@ func fakePostgresBackendMulti(t *testing.T, ln net.Listener) {
 	// Handle multiple commands
 	for {
 		msg, err := pgcodec.ReadMessage(conn)
-		if err != nil { return }
+		if err != nil {
+			return
+		}
 
-		if msg.Type == pgcodec.MsgTerminate { return }
+		if msg.Type == pgcodec.MsgTerminate {
+			return
+		}
 
 		if msg.Type == pgcodec.MsgQuery {
 			// Send result: RowDescription + DataRow + CommandComplete + ReadyForQuery
@@ -192,12 +200,16 @@ func readPgMsg(t *testing.T, conn net.Conn) *pgcodec.Message {
 	t.Helper()
 	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
 	msg, err := pgcodec.ReadMessage(conn)
-	if err != nil { t.Fatalf("readPgMsg: %v", err) }
+	if err != nil {
+		t.Fatalf("readPgMsg: %v", err)
+	}
 	return msg
 }
 
 func parsePort(s string) int {
 	n := 0
-	for _, c := range s { n = n*10 + int(c-'0') }
+	for _, c := range s {
+		n = n*10 + int(c-'0')
+	}
 	return n
 }

@@ -59,16 +59,16 @@ func TestExtractCommandName(t *testing.T) {
 	doc = append(doc, 0, 0, 0, 0) // placeholder for length
 
 	// Element: type=2 (string), key="find", value="users"
-	doc = append(doc, 0x02)            // string type
+	doc = append(doc, 0x02) // string type
 	doc = append(doc, []byte("find")...)
-	doc = append(doc, 0)               // null terminator for key
+	doc = append(doc, 0) // null terminator for key
 	valBytes := []byte("users")
 	lenBuf := make([]byte, 4)
 	binary.LittleEndian.PutUint32(lenBuf, uint32(len(valBytes)+1))
-	doc = append(doc, lenBuf...)       // string length (including null)
+	doc = append(doc, lenBuf...) // string length (including null)
 	doc = append(doc, valBytes...)
-	doc = append(doc, 0)               // null terminator for value
-	doc = append(doc, 0)               // document terminator
+	doc = append(doc, 0) // null terminator for value
+	doc = append(doc, 0) // document terminator
 
 	// Set document length
 	binary.LittleEndian.PutUint32(doc[0:4], uint32(len(doc)))

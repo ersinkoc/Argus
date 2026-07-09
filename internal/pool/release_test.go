@@ -10,7 +10,14 @@ import (
 func TestPoolReleaseExpired(t *testing.T) {
 	ln, _ := net.Listen("tcp", "127.0.0.1:0")
 	defer ln.Close()
-	go func() { for { c, _ := ln.Accept(); if c != nil { _ = c } } }()
+	go func() {
+		for {
+			c, _ := ln.Accept()
+			if c != nil {
+				_ = c
+			}
+		}
+	}()
 
 	p := NewPool(ln.Addr().String(), 5, 0, 1*time.Millisecond, 5*time.Second, 0) // 1ms lifetime
 
@@ -20,7 +27,7 @@ func TestPoolReleaseExpired(t *testing.T) {
 	}
 
 	time.Sleep(10 * time.Millisecond) // exceed lifetime
-	p.Release(conn)                    // should close, not return to idle
+	p.Release(conn)                   // should close, not return to idle
 
 	stats := p.Stats()
 	if stats.Idle != 0 {

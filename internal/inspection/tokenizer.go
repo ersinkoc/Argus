@@ -9,14 +9,14 @@ import (
 type TokenType int
 
 const (
-	TokenKeyword    TokenType = iota // SQL keyword (SELECT, INSERT, etc.)
-	TokenIdentifier                  // table name, column name
-	TokenOperator                    // =, <, >, !=, etc.
-	TokenLiteral                     // string or number literal
-	TokenComment                     // -- or /* */ comment
-	TokenPunctuation                 // (, ), ,, ;
-	TokenWildcard                    // *
-	TokenEOF                         // end of input
+	TokenKeyword     TokenType = iota // SQL keyword (SELECT, INSERT, etc.)
+	TokenIdentifier                   // table name, column name
+	TokenOperator                     // =, <, >, !=, etc.
+	TokenLiteral                      // string or number literal
+	TokenComment                      // -- or /* */ comment
+	TokenPunctuation                  // (, ), ,, ;
+	TokenWildcard                     // *
+	TokenEOF                          // end of input
 )
 
 // Token represents a single SQL token.

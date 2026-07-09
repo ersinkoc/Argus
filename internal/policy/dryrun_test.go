@@ -12,15 +12,15 @@ func TestDryRun(t *testing.T) {
 		},
 		Policies: []PolicyRule{
 			{
-				Name:  "block-ddl",
-				Match: MatchConfig{Roles: []string{"!dba"}, Commands: []string{"DDL"}},
+				Name:      "block-ddl",
+				Match:     MatchConfig{Roles: []string{"!dba"}, Commands: []string{"DDL"}},
 				Condition: &ConditionConfig{SQLContains: []string{"DROP"}},
-				Action: "block",
-				Reason: "DBA only",
+				Action:    "block",
+				Reason:    "DBA only",
 			},
 			{
-				Name:  "mask-support",
-				Match: MatchConfig{Roles: []string{"support"}, Commands: []string{"SELECT"}},
+				Name:    "mask-support",
+				Match:   MatchConfig{Roles: []string{"support"}, Commands: []string{"SELECT"}},
 				Masking: []MaskingRule{{Column: "email", Transformer: "partial_email"}},
 			},
 			{

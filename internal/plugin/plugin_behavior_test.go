@@ -11,10 +11,10 @@ type failClosePlugin struct {
 	name string
 }
 
-func (p *failClosePlugin) Name() string                    { return p.name }
-func (p *failClosePlugin) Type() Type                      { return TypeTransformer }
+func (p *failClosePlugin) Name() string                     { return p.name }
+func (p *failClosePlugin) Type() Type                       { return TypeTransformer }
 func (p *failClosePlugin) Init(config map[string]any) error { return nil }
-func (p *failClosePlugin) Close() error                    { return fmt.Errorf("close failed") }
+func (p *failClosePlugin) Close() error                     { return fmt.Errorf("close failed") }
 
 func TestCloseAllWithError(t *testing.T) {
 	r := NewRegistry()

@@ -35,7 +35,9 @@ func TestDoHandshakeWithSSLReject(t *testing.T) {
 		// Read auth + params + ReadyForQuery
 		for {
 			m, err := ReadMessage(clientConn)
-			if err != nil || m.Type == MsgReadyForQuery { return }
+			if err != nil || m.Type == MsgReadyForQuery {
+				return
+			}
 		}
 	}()
 
@@ -89,7 +91,9 @@ func TestRelayAuthCleartextPassword(t *testing.T) {
 		// Read remaining auth messages
 		for {
 			m, err := ReadMessage(clientConn)
-			if err != nil || m.Type == MsgReadyForQuery { return }
+			if err != nil || m.Type == MsgReadyForQuery {
+				return
+			}
 		}
 	}()
 
@@ -154,7 +158,9 @@ func TestRelayAuthMD5Password(t *testing.T) {
 
 		for {
 			m, err := ReadMessage(clientConn)
-			if err != nil || m.Type == MsgReadyForQuery { return }
+			if err != nil || m.Type == MsgReadyForQuery {
+				return
+			}
 		}
 	}()
 
@@ -164,7 +170,10 @@ func TestRelayAuthMD5Password(t *testing.T) {
 		// MD5 auth request (type 5 + 4 bytes salt)
 		authReq := make([]byte, 8)
 		binary.BigEndian.PutUint32(authReq, uint32(AuthMD5Pwd))
-		authReq[4] = 0x01; authReq[5] = 0x02; authReq[6] = 0x03; authReq[7] = 0x04 // salt
+		authReq[4] = 0x01
+		authReq[5] = 0x02
+		authReq[6] = 0x03
+		authReq[7] = 0x04 // salt
 		WriteMessage(backendConn, &Message{Type: MsgAuth, Payload: authReq})
 
 		ReadMessage(backendConn) // password response

@@ -20,14 +20,14 @@ type FieldValue struct {
 
 // Pipeline is the streaming masking pipeline.
 type Pipeline struct {
-	rules        []policy.MaskingRule
-	columnMap    map[int]Transformer // column index → transformer
-	maxRows      int64
-	rowCount     int64
-	truncated    bool
-	maskedCols   []string
-	piiDetector  *PIIDetector
-	piiScanned   bool // whether PII column scan has been done
+	rules       []policy.MaskingRule
+	columnMap   map[int]Transformer // column index → transformer
+	maxRows     int64
+	rowCount    int64
+	truncated   bool
+	maskedCols  []string
+	piiDetector *PIIDetector
+	piiScanned  bool // whether PII column scan has been done
 }
 
 // NewPipeline creates a masking pipeline from policy rules and column metadata.

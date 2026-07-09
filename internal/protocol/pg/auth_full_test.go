@@ -21,7 +21,9 @@ func TestRelayPostAuthWithNotice(t *testing.T) {
 		clientConn.Write(msg)
 		for {
 			m, err := ReadMessage(clientConn)
-			if err != nil || m.Type == MsgReadyForQuery { return }
+			if err != nil || m.Type == MsgReadyForQuery {
+				return
+			}
 		}
 	}()
 
@@ -77,7 +79,9 @@ func TestDoHandshakeDefaultDatabase(t *testing.T) {
 		clientConn.Write(msg)
 		for {
 			m, err := ReadMessage(clientConn)
-			if err != nil || m.Type == MsgReadyForQuery { return }
+			if err != nil || m.Type == MsgReadyForQuery {
+				return
+			}
 		}
 	}()
 
@@ -114,7 +118,9 @@ func TestReadMessageLargePayload(t *testing.T) {
 	// Send a message with reasonable payload
 	go func() {
 		payload := make([]byte, 1000)
-		for i := range payload { payload[i] = 'X' }
+		for i := range payload {
+			payload[i] = 'X'
+		}
 		WriteMessage(clientConn, &Message{Type: 'T', Payload: payload})
 	}()
 

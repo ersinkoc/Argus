@@ -597,10 +597,10 @@ func fullGatewayWithPG(t *testing.T, policyAction string, resp []byte, maskRules
 	var policies []policy.PolicyRule
 	if policyAction == "mask" {
 		policies = append(policies, policy.PolicyRule{
-			Name:         "mask-all",
-			Match:        policy.MatchConfig{Commands: []string{"SELECT"}},
-			Action:       "mask",
-			Reason:       "masking applied",
+			Name:    "mask-all",
+			Match:   policy.MatchConfig{Commands: []string{"SELECT"}},
+			Action:  "mask",
+			Reason:  "masking applied",
 			Masking: maskRules,
 		})
 	} else if policyAction == "audit" {
@@ -930,16 +930,16 @@ func TestExecuteQuerySubmitApprovalWithWebhook(t *testing.T) {
 	defer logger.Close()
 
 	gw := &Gateway{
-		cfg:              cfg,
-		policyEngine:     policy.NewEngine(loader),
-		auditLogger:      logger,
-		approvalManager:  core.NewApprovalManager(5 * time.Minute),
-		pools:            map[string]*pool.Pool{},
-		allowlist:        NewAllowlist(),
-		apiKeyStore:      NewAPIKeyStore(),
-		rateLimiters:     make(map[string]*ratelimit.Limiter),
-		webhookNotifier:  NewWebhookNotifier(server.URL, map[string]string{"X-Custom": "test"}),
-		cleanupStop:      make(chan struct{}),
+		cfg:             cfg,
+		policyEngine:    policy.NewEngine(loader),
+		auditLogger:     logger,
+		approvalManager: core.NewApprovalManager(5 * time.Minute),
+		pools:           map[string]*pool.Pool{},
+		allowlist:       NewAllowlist(),
+		apiKeyStore:     NewAPIKeyStore(),
+		rateLimiters:    make(map[string]*ratelimit.Limiter),
+		webhookNotifier: NewWebhookNotifier(server.URL, map[string]string{"X-Custom": "test"}),
+		cleanupStop:     make(chan struct{}),
 	}
 	defer close(gw.cleanupStop)
 
@@ -1039,15 +1039,15 @@ func TestExecuteOnBackendNoPool(t *testing.T) {
 	defer logger.Close()
 
 	gw := &Gateway{
-		cfg:          cfg,
-		policyEngine: policy.NewEngine(loader),
-		auditLogger:  logger,
-		pools:        map[string]*pool.Pool{}, // empty pool map
-		allowlist:    NewAllowlist(),
-		apiKeyStore:  NewAPIKeyStore(),
-		rateLimiters: make(map[string]*ratelimit.Limiter),
+		cfg:             cfg,
+		policyEngine:    policy.NewEngine(loader),
+		auditLogger:     logger,
+		pools:           map[string]*pool.Pool{}, // empty pool map
+		allowlist:       NewAllowlist(),
+		apiKeyStore:     NewAPIKeyStore(),
+		rateLimiters:    make(map[string]*ratelimit.Limiter),
 		approvalManager: core.NewApprovalManager(5 * time.Minute),
-		cleanupStop:  make(chan struct{}),
+		cleanupStop:     make(chan struct{}),
 	}
 	defer close(gw.cleanupStop)
 
@@ -1100,15 +1100,15 @@ func TestExecuteOnBackendMaxRowsDefault(t *testing.T) {
 	defer logger.Close()
 
 	gw := &Gateway{
-		cfg:          cfg,
-		policyEngine: policy.NewEngine(loader),
-		auditLogger:  logger,
-		pools:        map[string]*pool.Pool{"test-pg": pl},
-		allowlist:    NewAllowlist(),
-		apiKeyStore:  NewAPIKeyStore(),
-		rateLimiters: make(map[string]*ratelimit.Limiter),
+		cfg:             cfg,
+		policyEngine:    policy.NewEngine(loader),
+		auditLogger:     logger,
+		pools:           map[string]*pool.Pool{"test-pg": pl},
+		allowlist:       NewAllowlist(),
+		apiKeyStore:     NewAPIKeyStore(),
+		rateLimiters:    make(map[string]*ratelimit.Limiter),
 		approvalManager: core.NewApprovalManager(5 * time.Minute),
-		cleanupStop:  make(chan struct{}),
+		cleanupStop:     make(chan struct{}),
 	}
 	defer close(gw.cleanupStop)
 
@@ -1162,15 +1162,15 @@ func TestExecuteOnBackendDefaultTargetFallback(t *testing.T) {
 	defer logger.Close()
 
 	gw := &Gateway{
-		cfg:          cfg,
-		policyEngine: policy.NewEngine(loader),
-		auditLogger:  logger,
-		pools:        map[string]*pool.Pool{"default-target": pl},
-		allowlist:    NewAllowlist(),
-		apiKeyStore:  NewAPIKeyStore(),
-		rateLimiters: make(map[string]*ratelimit.Limiter),
+		cfg:             cfg,
+		policyEngine:    policy.NewEngine(loader),
+		auditLogger:     logger,
+		pools:           map[string]*pool.Pool{"default-target": pl},
+		allowlist:       NewAllowlist(),
+		apiKeyStore:     NewAPIKeyStore(),
+		rateLimiters:    make(map[string]*ratelimit.Limiter),
 		approvalManager: core.NewApprovalManager(5 * time.Minute),
-		cleanupStop:  make(chan struct{}),
+		cleanupStop:     make(chan struct{}),
 	}
 	defer close(gw.cleanupStop)
 
@@ -1910,16 +1910,16 @@ func TestExecuteQueryAllowWithMaskedColsFromPII(t *testing.T) {
 	defer logger.Close()
 
 	gw := &Gateway{
-		cfg:          cfg,
-		policyEngine: policy.NewEngine(loader),
-		auditLogger:  logger,
-		pools:        map[string]*pool.Pool{"test-pg": pl},
-		allowlist:    NewAllowlist(),
-		apiKeyStore:  NewAPIKeyStore(),
-		rateLimiters: make(map[string]*ratelimit.Limiter),
+		cfg:             cfg,
+		policyEngine:    policy.NewEngine(loader),
+		auditLogger:     logger,
+		pools:           map[string]*pool.Pool{"test-pg": pl},
+		allowlist:       NewAllowlist(),
+		apiKeyStore:     NewAPIKeyStore(),
+		rateLimiters:    make(map[string]*ratelimit.Limiter),
 		approvalManager: core.NewApprovalManager(5 * time.Minute),
-		piiDetector:  masking.NewPIIDetector(),
-		cleanupStop:  make(chan struct{}),
+		piiDetector:     masking.NewPIIDetector(),
+		cleanupStop:     make(chan struct{}),
 	}
 	defer close(gw.cleanupStop)
 

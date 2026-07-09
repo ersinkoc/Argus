@@ -187,10 +187,10 @@ func buildTestRowDescription(columns []string) *Message {
 		payload = append(payload, 0) // null terminator
 		// table OID (4), column index (2), type OID (4), type size (2), type modifier (4), format (2) = 18 bytes
 		meta := make([]byte, 18)
-		binary.BigEndian.PutUint16(meta[4:6], uint16(i+1))           // column index
-		binary.BigEndian.PutUint32(meta[6:10], 25)                    // text type OID
-		binary.BigEndian.PutUint16(meta[10:12], 0xFFFF)               // type size -1
-		binary.BigEndian.PutUint32(meta[12:16], 0xFFFFFFFF)           // type modifier -1
+		binary.BigEndian.PutUint16(meta[4:6], uint16(i+1))  // column index
+		binary.BigEndian.PutUint32(meta[6:10], 25)          // text type OID
+		binary.BigEndian.PutUint16(meta[10:12], 0xFFFF)     // type size -1
+		binary.BigEndian.PutUint32(meta[12:16], 0xFFFFFFFF) // type modifier -1
 		payload = append(payload, meta...)
 	}
 

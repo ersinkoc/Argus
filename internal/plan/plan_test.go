@@ -377,10 +377,10 @@ func (s *mysqlServer) sendColumnDefPacket(conn net.Conn, name string, seq byte) 
 	// Minimal column def: catalog(def) + various fixed strings + flags
 	fields := []byte{
 		3, 'd', 'e', 'f', // catalog = "def"
-		0,                // schema = ""
-		0,                // table = ""
-		0,                // org_table = ""
-		byte(len(name)),  // name length prefix
+		0,               // schema = ""
+		0,               // table = ""
+		0,               // org_table = ""
+		byte(len(name)), // name length prefix
 	}
 	fields = append(fields, []byte(name)...)
 	fields = append(fields,
@@ -694,8 +694,8 @@ func newMySQLRowErrServer(t *testing.T) *mysqlRowErrServer {
 		body := make([]byte, pktLen)
 		io.ReadFull(conn, body) //nolint:errcheck
 
-		writeMySQLPacket(conn, 1, []byte{0x01})                     // col count=1
-		writeMySQLPacket(conn, 2, []byte{'d', 'e', 'f'})            // col def
+		writeMySQLPacket(conn, 1, []byte{0x01})                         // col count=1
+		writeMySQLPacket(conn, 2, []byte{'d', 'e', 'f'})                // col def
 		writeMySQLPacket(conn, 3, []byte{0xfe, 0x00, 0x00, 0x02, 0x00}) // EOF
 		// ERR row
 		errPkt := []byte{0xff, 0x48, 0x04, '#', 'H', 'Y', '0', '0', '0', 'f', 'a', 'i', 'l'}
@@ -834,7 +834,7 @@ func TestReadMessage_ShortPayload(t *testing.T) {
 		// Send 5-byte header (type + 4 bytes length = 4+100 = 104 bytes)
 		// but then close without sending the payload.
 		hdr := []byte{'T', 0, 0, 0, 108} // length=104
-		server.Write(hdr)                  //nolint:errcheck
+		server.Write(hdr)                //nolint:errcheck
 		server.Close()
 	}()
 	_, _, err := readMessage(client)
@@ -1134,8 +1134,8 @@ func TestExplainMySQL_EOFAfterColError(t *testing.T) {
 		body := make([]byte, pktLen)
 		io.ReadFull(server, body) //nolint:errcheck
 
-		writeMySQLPacket(server, 1, []byte{0x01})            // col count
-		writeMySQLPacket(server, 2, []byte{'d', 'e', 'f'})   // col def
+		writeMySQLPacket(server, 1, []byte{0x01})          // col count
+		writeMySQLPacket(server, 2, []byte{'d', 'e', 'f'}) // col def
 		// Close before EOF packet
 	}()
 
@@ -1237,7 +1237,7 @@ func TestReadMySQLPacket_TruncatedPayload(t *testing.T) {
 		defer server.Close()
 		// Send header saying 10 bytes but only write 3
 		server.Write([]byte{0x0a, 0x00, 0x00, 0x01}) //nolint:errcheck
-		server.Write([]byte{0x01, 0x02, 0x03})        //nolint:errcheck
+		server.Write([]byte{0x01, 0x02, 0x03})       //nolint:errcheck
 		// close — truncated
 	}()
 	_, err := readMySQLPacket(client)

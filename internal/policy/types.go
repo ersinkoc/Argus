@@ -59,8 +59,8 @@ type Context struct {
 	// What
 	CommandType inspection.CommandType
 	RiskLevel   inspection.RiskLevel
-	RawSQL   string
-	HasWhere bool
+	RawSQL      string
+	HasWhere    bool
 	CostScore   int     // heuristic query cost estimate 0-100
 	PlanCost    float64 // real planner cost from EXPLAIN (0 = not available)
 }
@@ -143,11 +143,11 @@ type ConditionConfig struct {
 	SourceIPIn     []string `json:"source_ip_in,omitempty"`
 	SourceIPNotIn  []string `json:"source_ip_not_in,omitempty"`
 	MaxCostGTE     int      `json:"max_cost_gte,omitempty"`
-	SQLRegex       []string `json:"sql_regex,omitempty"`           // regex patterns to match against SQL
-	MaxQueryLength int      `json:"max_query_length,omitempty"`    // max SQL length in bytes
-	MaxTables      int      `json:"max_tables,omitempty"`          // max tables in a single query
-	RequireWhere   bool     `json:"require_where,omitempty"`       // require WHERE on write ops
-	MaxJoins       int      `json:"max_joins,omitempty"`           // max JOINs in a query
-	SQLInjection   bool     `json:"sql_injection,omitempty"`       // enable SQLi pattern detection
-	PlanCostGTE    float64  `json:"plan_cost_gte,omitempty"`       // block if EXPLAIN total cost >= value
+	SQLRegex       []string `json:"sql_regex,omitempty"`        // regex patterns to match against SQL
+	MaxQueryLength int      `json:"max_query_length,omitempty"` // max SQL length in bytes
+	MaxTables      int      `json:"max_tables,omitempty"`       // max tables in a single query
+	RequireWhere   bool     `json:"require_where,omitempty"`    // require WHERE on write ops
+	MaxJoins       int      `json:"max_joins,omitempty"`        // max JOINs in a query
+	SQLInjection   bool     `json:"sql_injection,omitempty"`    // enable SQLi pattern detection
+	PlanCostGTE    float64  `json:"plan_cost_gte,omitempty"`    // block if EXPLAIN total cost >= value
 }

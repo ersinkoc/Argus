@@ -10,7 +10,14 @@ import (
 func TestPoolAcquireWithStaleDiscard(t *testing.T) {
 	ln, _ := net.Listen("tcp", "127.0.0.1:0")
 	defer ln.Close()
-	go func() { for { c, _ := ln.Accept(); if c != nil { c.Close() } } }()
+	go func() {
+		for {
+			c, _ := ln.Accept()
+			if c != nil {
+				c.Close()
+			}
+		}
+	}()
 
 	p := NewPool(ln.Addr().String(), 5, 0, time.Hour, 5*time.Second, 0)
 

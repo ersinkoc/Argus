@@ -12,9 +12,9 @@ import (
 
 // CompactionConfig configures automatic log cleanup.
 type CompactionConfig struct {
-	MaxAge     time.Duration // delete logs older than this
-	MaxFiles   int           // keep at most N log files
-	DryRun     bool          // if true, only report what would be deleted
+	MaxAge   time.Duration // delete logs older than this
+	MaxFiles int           // keep at most N log files
+	DryRun   bool          // if true, only report what would be deleted
 }
 
 // CompactionResult reports what was cleaned up.

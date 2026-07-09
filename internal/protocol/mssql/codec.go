@@ -9,40 +9,40 @@ import (
 
 // TDS packet types
 const (
-	PacketSQLBatch   byte = 0x01 // SQL Batch
-	PacketPreTDS7    byte = 0x02 // Pre-TDS7 Login
-	PacketRPC        byte = 0x03 // RPC
-	PacketReply      byte = 0x04 // Tabular result
-	PacketAttention  byte = 0x06 // Attention
-	PacketBulkLoad   byte = 0x07 // Bulk Load
-	PacketFedAuth    byte = 0x08 // Federated Authentication Token
-	PacketTransMgr   byte = 0x0E // Transaction Manager Request
-	PacketTDS7Login  byte = 0x10 // TDS7 Login
-	PacketSSPI       byte = 0x11 // SSPI
-	PacketPreLogin   byte = 0x12 // Pre-Login
+	PacketSQLBatch  byte = 0x01 // SQL Batch
+	PacketPreTDS7   byte = 0x02 // Pre-TDS7 Login
+	PacketRPC       byte = 0x03 // RPC
+	PacketReply     byte = 0x04 // Tabular result
+	PacketAttention byte = 0x06 // Attention
+	PacketBulkLoad  byte = 0x07 // Bulk Load
+	PacketFedAuth   byte = 0x08 // Federated Authentication Token
+	PacketTransMgr  byte = 0x0E // Transaction Manager Request
+	PacketTDS7Login byte = 0x10 // TDS7 Login
+	PacketSSPI      byte = 0x11 // SSPI
+	PacketPreLogin  byte = 0x12 // Pre-Login
 )
 
 // TDS packet status flags
 const (
-	StatusNormal         byte = 0x00
-	StatusEOM            byte = 0x01 // End of message
-	StatusIgnore         byte = 0x02
-	StatusResetConn      byte = 0x08
-	StatusResetConnSkip  byte = 0x10
+	StatusNormal        byte = 0x00
+	StatusEOM           byte = 0x01 // End of message
+	StatusIgnore        byte = 0x02
+	StatusResetConn     byte = 0x08
+	StatusResetConnSkip byte = 0x10
 )
 
 // TDS token types
 const (
-	TokenColMetadata  byte = 0x81
-	TokenRow          byte = 0xD1
-	TokenNBCRow       byte = 0xD2
-	TokenDone         byte = 0xFD
-	TokenDoneProc     byte = 0xFE
-	TokenDoneInProc   byte = 0xFF
-	TokenError        byte = 0xAA
-	TokenInfo         byte = 0xAB
-	TokenLoginAck     byte = 0xAD
-	TokenEnvChange    byte = 0xE3
+	TokenColMetadata byte = 0x81
+	TokenRow         byte = 0xD1
+	TokenNBCRow      byte = 0xD2
+	TokenDone        byte = 0xFD
+	TokenDoneProc    byte = 0xFE
+	TokenDoneInProc  byte = 0xFF
+	TokenError       byte = 0xAA
+	TokenInfo        byte = 0xAB
+	TokenLoginAck    byte = 0xAD
+	TokenEnvChange   byte = 0xE3
 )
 
 // Packet represents a TDS packet.
@@ -198,19 +198,19 @@ func BuildPreLoginResponse() *Packet {
 	var data []byte
 
 	// VERSION token (0x00): offset 6, length 6
-	data = append(data, 0x00)                 // token type: VERSION
-	data = append(data, 0, 26)                // offset (big-endian uint16)
-	data = append(data, 0, 6)                 // length (big-endian uint16)
+	data = append(data, 0x00)  // token type: VERSION
+	data = append(data, 0, 26) // offset (big-endian uint16)
+	data = append(data, 0, 6)  // length (big-endian uint16)
 
 	// ENCRYPTION token (0x01): offset 32, length 1
-	data = append(data, 0x01)                 // token type: ENCRYPTION
-	data = append(data, 0, 32)                // offset
-	data = append(data, 0, 1)                 // length
+	data = append(data, 0x01)  // token type: ENCRYPTION
+	data = append(data, 0, 32) // offset
+	data = append(data, 0, 1)  // length
 
 	// INSTOPT token (0x02): offset 33, length 1
-	data = append(data, 0x02)                 // token type: INSTOPT
-	data = append(data, 0, 33)                // offset
-	data = append(data, 0, 1)                 // length
+	data = append(data, 0x02)  // token type: INSTOPT
+	data = append(data, 0, 33) // offset
+	data = append(data, 0, 1)  // length
 
 	// Terminator
 	data = append(data, 0xFF)

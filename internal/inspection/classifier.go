@@ -76,16 +76,16 @@ func ParseRiskLevel(s string) RiskLevel {
 
 // Command represents an inspected SQL command.
 type Command struct {
-	Raw         string
-	Type        CommandType
-	Tables      []string
-	Columns     []string
-	RiskLevel   RiskLevel
-	Confidence  float64
-	HasWhere    bool
-	IsMulti     bool // multiple statements
-	Warnings    []string
-	Tokens      []Token `json:"-"` // cached tokens for reuse by EstimateCost/Fingerprint
+	Raw        string
+	Type       CommandType
+	Tables     []string
+	Columns    []string
+	RiskLevel  RiskLevel
+	Confidence float64
+	HasWhere   bool
+	IsMulti    bool // multiple statements
+	Warnings   []string
+	Tokens     []Token `json:"-"` // cached tokens for reuse by EstimateCost/Fingerprint
 }
 
 // Classify analyzes a SQL string and returns a Command.

@@ -38,10 +38,10 @@ type userProfile struct {
 
 // AnomalyAlert represents a detected anomaly.
 type AnomalyAlert struct {
-	Username    string  `json:"username"`
-	Type        string  `json:"type"`        // "unusual_command", "unusual_table", "unusual_hour", "frequency_spike"
-	Description string  `json:"description"`
-	Score       float64 `json:"score"`       // 0.0 to 1.0
+	Username    string    `json:"username"`
+	Type        string    `json:"type"` // "unusual_command", "unusual_table", "unusual_hour", "frequency_spike"
+	Description string    `json:"description"`
+	Score       float64   `json:"score"` // 0.0 to 1.0
 	Timestamp   time.Time `json:"timestamp"`
 }
 

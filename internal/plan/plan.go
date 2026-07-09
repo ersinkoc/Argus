@@ -56,7 +56,7 @@ func ExplainPG(ctx context.Context, backend net.Conn, sql string, timeout time.D
 	if err := backend.SetReadDeadline(deadline); err != nil {
 		return nil, fmt.Errorf("plan: set read deadline: %w", err)
 	}
-	defer backend.SetReadDeadline(time.Time{}) //nolint:errcheck // best-effort reset
+	defer backend.SetReadDeadline(time.Time{})  //nolint:errcheck // best-effort reset
 	defer backend.SetWriteDeadline(time.Time{}) //nolint:errcheck
 
 	return readExplainResult(backend)
@@ -113,7 +113,7 @@ func readExplainResult(backend net.Conn) (*Result, error) {
 		case 'E': // ErrorResponse
 			msg := extractErrorMessage(payload)
 			return nil, fmt.Errorf("plan: EXPLAIN error: %s", msg)
-		// ignore: notice ('N'), parameter status ('S'), etc.
+			// ignore: notice ('N'), parameter status ('S'), etc.
 		}
 	}
 }
@@ -165,9 +165,9 @@ type pgExplainOutput []struct {
 }
 
 type pgPlanNode struct {
-	TotalCost  float64 `json:"Total Cost"`
-	PlanRows   float64 `json:"Plan Rows"`
-	PlanWidth  int     `json:"Plan Width"`
+	TotalCost float64 `json:"Total Cost"`
+	PlanRows  float64 `json:"Plan Rows"`
+	PlanWidth int     `json:"Plan Width"`
 }
 
 // parseExplainJSON parses the JSON output from EXPLAIN (FORMAT JSON).
@@ -235,7 +235,7 @@ func ExplainMySQL(ctx context.Context, backend net.Conn, sql string, timeout tim
 	if err := backend.SetReadDeadline(deadline); err != nil {
 		return nil, fmt.Errorf("plan: mysql set read deadline: %w", err)
 	}
-	defer backend.SetReadDeadline(time.Time{}) //nolint:errcheck
+	defer backend.SetReadDeadline(time.Time{})  //nolint:errcheck
 	defer backend.SetWriteDeadline(time.Time{}) //nolint:errcheck
 
 	return readMySQLExplainResult(backend)
@@ -243,11 +243,11 @@ func ExplainMySQL(ctx context.Context, backend net.Conn, sql string, timeout tim
 
 // readMySQLExplainResult reads a MySQL text result set and extracts the
 // EXPLAIN FORMAT=JSON output. MySQL result set structure:
-//   1. Column count packet (length-encoded int)
-//   2. N column definition packets
-//   3. EOF packet (0xfe)
-//   4. Row data packets (length-encoded strings per column)
-//   5. EOF packet (0xfe) or ERR packet (0xff)
+//  1. Column count packet (length-encoded int)
+//  2. N column definition packets
+//  3. EOF packet (0xfe)
+//  4. Row data packets (length-encoded strings per column)
+//  5. EOF packet (0xfe) or ERR packet (0xff)
 func readMySQLExplainResult(r net.Conn) (*Result, error) {
 	// Read column count packet
 	pkt, err := readMySQLPacket(r)

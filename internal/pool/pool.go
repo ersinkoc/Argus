@@ -11,23 +11,23 @@ import (
 
 // Pool manages backend connections for a single target.
 type Pool struct {
-	target          string // host:port
-	maxConns        int
-	minIdle         int
-	maxLifetime     time.Duration
-	connectTimeout  time.Duration
-	healthInterval  time.Duration
+	target         string // host:port
+	maxConns       int
+	minIdle        int
+	maxLifetime    time.Duration
+	connectTimeout time.Duration
+	healthInterval time.Duration
 
-	mu          sync.Mutex
-	idle        []*Conn
-	active      int
-	total       int
-	healthy     bool
-	closed      bool
-	stopCh      chan struct{}
-	wg          sync.WaitGroup
-	connectFn   func(ctx context.Context) (net.Conn, error)
-	breaker     *CircuitBreaker
+	mu        sync.Mutex
+	idle      []*Conn
+	active    int
+	total     int
+	healthy   bool
+	closed    bool
+	stopCh    chan struct{}
+	wg        sync.WaitGroup
+	connectFn func(ctx context.Context) (net.Conn, error)
+	breaker   *CircuitBreaker
 }
 
 // NewPool creates a new connection pool for a target.

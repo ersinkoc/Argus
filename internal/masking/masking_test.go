@@ -23,7 +23,7 @@ func TestTransformers(t *testing.T) {
 		{"partial_card short", "partial_card", "12", "****-****-****-****"},
 		{"partial_iban", "partial_iban", "TR330006100519786457841326", "TR**-****-****-****-**26"},
 		{"partial_tc", "partial_tc", "12345678901", "*********01"},
-		{"hash", "hash", "test", ""},     // just check non-empty
+		{"hash", "hash", "test", ""}, // just check non-empty
 		{"null", "null", "anything", "NULL"},
 	}
 

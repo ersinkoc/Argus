@@ -47,9 +47,9 @@ func (e *Engine) DryRun(input DryRunInput) *DryRunResult {
 	}
 
 	ctx := &Context{
-		Username:   input.Username,
-		Database:   input.Database,
-		Tables:     input.Tables,
+		Username:  input.Username,
+		Database:  input.Database,
+		Tables:    input.Tables,
 		RawSQL:    input.SQL,
 		Timestamp: time.Now(),
 	}

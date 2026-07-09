@@ -4,8 +4,8 @@ package inspection
 // This is NOT a real query planner — it uses structural analysis to flag
 // potentially expensive queries before they reach the database.
 type CostEstimate struct {
-	Score       int      `json:"score"`       // 0-100, higher = more expensive
-	Factors     []string `json:"factors"`     // what contributed to the score
+	Score       int      `json:"score"`   // 0-100, higher = more expensive
+	Factors     []string `json:"factors"` // what contributed to the score
 	TableCount  int      `json:"table_count"`
 	HasSubquery bool     `json:"has_subquery"`
 	HasJoin     bool     `json:"has_join"`

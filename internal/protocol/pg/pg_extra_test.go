@@ -18,10 +18,10 @@ func TestReadCommandExtendedQuery(t *testing.T) {
 	go func() {
 		// Parse: empty name + "SELECT 1" + 0 params
 		var parsePayload []byte
-		parsePayload = append(parsePayload, 0)          // empty stmt name
+		parsePayload = append(parsePayload, 0) // empty stmt name
 		parsePayload = append(parsePayload, []byte("SELECT 1")...)
-		parsePayload = append(parsePayload, 0)          // null term
-		parsePayload = append(parsePayload, 0, 0)       // 0 params
+		parsePayload = append(parsePayload, 0)    // null term
+		parsePayload = append(parsePayload, 0, 0) // 0 params
 		WriteMessage(clientConn, &Message{Type: MsgParse, Payload: parsePayload})
 
 		// Sync

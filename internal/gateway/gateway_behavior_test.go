@@ -54,15 +54,15 @@ func TestExecuteOnBackendPostgreSQL(t *testing.T) {
 	defer logger.Close()
 
 	gw := &Gateway{
-		cfg:          cfg,
-		policyEngine: policy.NewEngine(loader),
-		auditLogger:  logger,
-		pools:        map[string]*pool.Pool{"test-pg": pl},
-		allowlist:    NewAllowlist(),
-		apiKeyStore:  NewAPIKeyStore(),
-		rateLimiters: make(map[string]*ratelimit.Limiter),
+		cfg:             cfg,
+		policyEngine:    policy.NewEngine(loader),
+		auditLogger:     logger,
+		pools:           map[string]*pool.Pool{"test-pg": pl},
+		allowlist:       NewAllowlist(),
+		apiKeyStore:     NewAPIKeyStore(),
+		rateLimiters:    make(map[string]*ratelimit.Limiter),
 		approvalManager: core.NewApprovalManager(5 * time.Minute),
-		cleanupStop:  make(chan struct{}),
+		cleanupStop:     make(chan struct{}),
 	}
 	defer close(gw.cleanupStop)
 
@@ -117,15 +117,15 @@ func TestExecuteOnBackendMySQL(t *testing.T) {
 	defer logger.Close()
 
 	gw := &Gateway{
-		cfg:          cfg,
-		policyEngine: policy.NewEngine(loader),
-		auditLogger:  logger,
-		pools:        map[string]*pool.Pool{"test-mysql": pl},
-		allowlist:    NewAllowlist(),
-		apiKeyStore:  NewAPIKeyStore(),
-		rateLimiters: make(map[string]*ratelimit.Limiter),
+		cfg:             cfg,
+		policyEngine:    policy.NewEngine(loader),
+		auditLogger:     logger,
+		pools:           map[string]*pool.Pool{"test-mysql": pl},
+		allowlist:       NewAllowlist(),
+		apiKeyStore:     NewAPIKeyStore(),
+		rateLimiters:    make(map[string]*ratelimit.Limiter),
 		approvalManager: core.NewApprovalManager(5 * time.Minute),
-		cleanupStop:  make(chan struct{}),
+		cleanupStop:     make(chan struct{}),
 	}
 	defer close(gw.cleanupStop)
 
@@ -171,15 +171,15 @@ func TestExecuteOnBackendUnsupportedProtocol(t *testing.T) {
 	pl := pool.NewPool("test-mssql", 1, 0, time.Hour, 10*time.Second, 0)
 
 	gw := &Gateway{
-		cfg:          cfg,
-		policyEngine: policy.NewEngine(loader),
-		auditLogger:  logger,
-		pools:        map[string]*pool.Pool{"test-mssql": pl},
-		allowlist:    NewAllowlist(),
-		apiKeyStore:  NewAPIKeyStore(),
-		rateLimiters: make(map[string]*ratelimit.Limiter),
+		cfg:             cfg,
+		policyEngine:    policy.NewEngine(loader),
+		auditLogger:     logger,
+		pools:           map[string]*pool.Pool{"test-mssql": pl},
+		allowlist:       NewAllowlist(),
+		apiKeyStore:     NewAPIKeyStore(),
+		rateLimiters:    make(map[string]*ratelimit.Limiter),
 		approvalManager: core.NewApprovalManager(5 * time.Minute),
-		cleanupStop:  make(chan struct{}),
+		cleanupStop:     make(chan struct{}),
 	}
 	defer close(gw.cleanupStop)
 

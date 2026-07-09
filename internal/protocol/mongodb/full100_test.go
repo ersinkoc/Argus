@@ -83,7 +83,7 @@ func TestParseOpMsgExactEnd(t *testing.T) {
 	doc := []byte{5, 0, 0, 0, 0} // minimal valid BSON doc (5 bytes)
 	payload := make([]byte, 4+1+len(doc))
 	binary.LittleEndian.PutUint32(payload[0:4], 0) // flagBits
-	payload[4] = 0                                   // kind = 0
+	payload[4] = 0                                 // kind = 0
 	copy(payload[5:], doc)
 
 	flagBits, sections, err := ParseOpMsg(payload)
@@ -136,8 +136,8 @@ func TestReadCommandOpMsgParseError(t *testing.T) {
 		// Actually let me just send a valid OP_MSG to verify.
 		var payload []byte
 		payload = append(payload, 0, 0, 0, 0) // flagBits
-		payload = append(payload, 0)            // kind = 0
-		doc := []byte{5, 0, 0, 0, 0}           // minimal empty BSON doc
+		payload = append(payload, 0)          // kind = 0
+		doc := []byte{5, 0, 0, 0, 0}          // minimal empty BSON doc
 		payload = append(payload, doc...)
 
 		msg := &Message{

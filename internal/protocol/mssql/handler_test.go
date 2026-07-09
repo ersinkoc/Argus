@@ -71,9 +71,9 @@ func TestMSSQLReadAndForwardResult(t *testing.T) {
 	// Backend: send reply with Row token + Done token
 	go func() {
 		var data []byte
-		data = append(data, TokenRow)      // row token
-		data = append(data, 0x00, 0x00)    // some row data
-		data = append(data, TokenDone)     // done token
+		data = append(data, TokenRow)           // row token
+		data = append(data, 0x00, 0x00)         // some row data
+		data = append(data, TokenDone)          // done token
 		data = append(data, make([]byte, 8)...) // done status
 
 		pkt := &Packet{Type: PacketReply, Status: StatusEOM, Data: data}

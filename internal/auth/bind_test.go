@@ -10,7 +10,13 @@ func TestLdapSimpleBindTimeout(t *testing.T) {
 	// Server that accepts but never responds
 	ln, _ := net.Listen("tcp", "127.0.0.1:0")
 	defer ln.Close()
-	go func() { c, _ := ln.Accept(); if c != nil { time.Sleep(10 * time.Second); c.Close() } }()
+	go func() {
+		c, _ := ln.Accept()
+		if c != nil {
+			time.Sleep(10 * time.Second)
+			c.Close()
+		}
+	}()
 
 	conn, _ := net.Dial("tcp", ln.Addr().String())
 	defer conn.Close()

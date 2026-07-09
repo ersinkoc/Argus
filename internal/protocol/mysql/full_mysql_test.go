@@ -1081,7 +1081,7 @@ func TestHandlePrepareResponseWithParamsAndCols(t *testing.T) {
 		numParams := make([]byte, 2)
 		binary.LittleEndian.PutUint16(numParams, 1) // 1 param
 		resp = append(resp, numParams...)
-		resp = append(resp, 0) // filler
+		resp = append(resp, 0)    // filler
 		resp = append(resp, 0, 0) // warnings
 		WritePacket(backendConn, &Packet{SequenceID: 1, Payload: resp})
 

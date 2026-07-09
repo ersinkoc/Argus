@@ -43,7 +43,7 @@ func TestReadAndForwardResultWithColMetadata(t *testing.T) {
 		// ROW token
 		data = append(data, TokenRow)
 		// Some row data
-		data = append(data, 0x10, 0x00) // 16 bytes text
+		data = append(data, 0x10, 0x00)                  // 16 bytes text
 		data = append(data, []byte("john@example.c")...) // truncated for simplicity
 
 		// DONE token

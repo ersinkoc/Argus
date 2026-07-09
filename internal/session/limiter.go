@@ -4,8 +4,8 @@ import "sync"
 
 // ConcurrencyLimiter limits the number of concurrent sessions per user.
 type ConcurrencyLimiter struct {
-	mu       sync.RWMutex
-	counts   map[string]int
+	mu         sync.RWMutex
+	counts     map[string]int
 	maxPerUser int
 }
 

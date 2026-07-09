@@ -7,20 +7,22 @@ type mockTransformer struct {
 	name string
 }
 
-func (m *mockTransformer) Name() string                          { return m.name }
-func (m *mockTransformer) Type() Type                            { return TypeTransformer }
-func (m *mockTransformer) Init(config map[string]any) error      { return nil }
-func (m *mockTransformer) Close() error                          { return nil }
-func (m *mockTransformer) Transform(v []byte, col string) []byte { return []byte("masked:" + string(v)) }
+func (m *mockTransformer) Name() string                     { return m.name }
+func (m *mockTransformer) Type() Type                       { return TypeTransformer }
+func (m *mockTransformer) Init(config map[string]any) error { return nil }
+func (m *mockTransformer) Close() error                     { return nil }
+func (m *mockTransformer) Transform(v []byte, col string) []byte {
+	return []byte("masked:" + string(v))
+}
 
 // mockAuditWriter implements AuditWriterPlugin
 type mockAuditWriter struct{ name string }
 
-func (m *mockAuditWriter) Name() string                             { return m.name }
-func (m *mockAuditWriter) Type() Type                               { return TypeAuditWriter }
-func (m *mockAuditWriter) Init(config map[string]any) error         { return nil }
-func (m *mockAuditWriter) Close() error                             { return nil }
-func (m *mockAuditWriter) WriteEvent(event map[string]any) error    { return nil }
+func (m *mockAuditWriter) Name() string                          { return m.name }
+func (m *mockAuditWriter) Type() Type                            { return TypeAuditWriter }
+func (m *mockAuditWriter) Init(config map[string]any) error      { return nil }
+func (m *mockAuditWriter) Close() error                          { return nil }
+func (m *mockAuditWriter) WriteEvent(event map[string]any) error { return nil }
 
 func TestRegistryBasic(t *testing.T) {
 	r := NewRegistry()

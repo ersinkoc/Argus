@@ -36,8 +36,8 @@ func TestHandlerHandshakeFullFlow(t *testing.T) {
 		var payload []byte
 		payload = append(payload, 0x0F, 0x00, 0x00, 0x00) // caps with CONNECT_WITH_DB
 		payload = append(payload, 0x00, 0x00, 0x00, 0x01) // max pkt
-		payload = append(payload, 45)                       // charset
-		payload = append(payload, make([]byte, 23)...)      // reserved
+		payload = append(payload, 45)                     // charset
+		payload = append(payload, make([]byte, 23)...)    // reserved
 		payload = append(payload, []byte("testuser")...)
 		payload = append(payload, 0)
 		payload = append(payload, 0) // empty auth
@@ -147,7 +147,7 @@ func TestHandlerReadAndForwardResultSet(t *testing.T) {
 		colDef = append(colDef, []byte("name")...)
 		colDef = append(colDef, 4) // org_name
 		colDef = append(colDef, []byte("name")...)
-		colDef = append(colDef, 0x0c)        // filler
+		colDef = append(colDef, 0x0c)                // filler
 		colDef = append(colDef, make([]byte, 12)...) // charset + length + type + flags + decimals + filler
 		WritePacket(backendConn, &Packet{SequenceID: 2, Payload: colDef})
 
@@ -226,7 +226,9 @@ func TestHandlerReadAndForwardResultWithMasking(t *testing.T) {
 	go func() {
 		for range 5 {
 			pkt, err := ReadPacket(clientConn)
-			if err != nil { return }
+			if err != nil {
+				return
+			}
 			// 4th packet is the row
 			if pkt.SequenceID == 4 && len(pkt.Payload) > 1 {
 				nameLen := int(pkt.Payload[0])

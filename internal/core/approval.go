@@ -13,7 +13,7 @@ import (
 type ApprovalStatus int
 
 const (
-	ApprovalPending  ApprovalStatus = iota
+	ApprovalPending ApprovalStatus = iota
 	ApprovalApproved
 	ApprovalDenied
 	ApprovalExpired
@@ -35,10 +35,10 @@ type ApprovalRequest struct {
 	Reason      string         `json:"reason,omitempty"`
 
 	// Gateway-specific fields
-	Fingerprint  string `json:"fingerprint,omitempty"`
-	ClientIP     string `json:"client_ip,omitempty"`
-	CostScore    int    `json:"cost_score,omitempty"`
-	Source       string `json:"source,omitempty"` // "proxy" or "gateway"
+	Fingerprint string `json:"fingerprint,omitempty"`
+	ClientIP    string `json:"client_ip,omitempty"`
+	CostScore   int    `json:"cost_score,omitempty"`
+	Source      string `json:"source,omitempty"` // "proxy" or "gateway"
 
 	doneCh chan ApprovalStatus
 }

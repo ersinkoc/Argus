@@ -83,7 +83,6 @@ func TestBounds(t *testing.T) {
 	}
 }
 
-
 func BenchmarkLatencyObserve(b *testing.B) {
 	h := &LatencyHistogram{}
 	for b.Loop() {
