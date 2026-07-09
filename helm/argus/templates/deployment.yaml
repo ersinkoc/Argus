@@ -1,0 +1,138 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "argus.fullname" . }}
+  labels:
+    {{- include "argus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: proxy
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "argus.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        {{- include "argus.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: proxy
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "argus.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      containers:
+        - name: argus
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["-config", "/etc/argus/argus.json"]
+          ports:
+            - name: pg-proxy
+              containerPort: {{ .Values.service.pgProxyPort }}
+              protocol: TCP
+            - name: mysql-proxy
+              containerPort: {{ .Values.service.mysqlProxyPort }}
+              protocol: TCP
+          {{- if .Values.config.argus_json.admin.enabled }}
+            - name: admin
+              containerPort: {{ .Values.service.adminPort }}
+              protocol: TCP
+          {{- end }}
+          {{- if .Values.config.argus_json.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.service.metricsPort }}
+              protocol: TCP
+          {{- end }}
+          env:
+            - name: DB_PG_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "argus.fullname" . }}-secrets
+                  key: DB_PG_HOST
+            - name: DB_PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "argus.fullname" . }}-secrets
+                  key: DB_PG_PASSWORD
+            - name: DB_MYSQL_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "argus.fullname" . }}-secrets
+                  key: DB_MYSQL_HOST
+            - name: DB_MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "argus.fullname" . }}-secrets
+                  key: DB_MYSQL_PASSWORD
+            - name: ARGUS_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "argus.fullname" . }}-secrets
+                  key: ARGUS_ADMIN_TOKEN
+            - name: SIEM_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "argus.fullname" . }}-secrets
+                  key: SIEM_WEBHOOK_URL
+                  optional: true
+          {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/argus
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: metrics
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readiness.path }}
+              port: metrics
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "argus.fullname" . }}-config
+            items:
+              - key: argus.json
+                path: argus.json
+              - key: base-policy.json
+                path: policies/base.json
+      terminationGracePeriodSeconds: 30
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

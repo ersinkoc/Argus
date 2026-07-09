@@ -1,0 +1,27 @@
+1. Create the required Kubernetes Secret:
+
+   kubectl create secret generic {{ include "argus.fullname" . }}-secrets \
+     --namespace {{ .Release.Namespace }} \
+     --from-literal=DB_PG_HOST=postgres \
+     --from-literal=DB_PG_PASSWORD='<real-password>' \
+     --from-literal=DB_MYSQL_HOST=mysql \
+     --from-literal=DB_MYSQL_PASSWORD='<real-password>' \
+     --from-literal=ARGUS_ADMIN_TOKEN='<64-char-random-token>' \
+     --from-literal=SIEM_WEBHOOK_URL=''
+
+2. Get the application status:
+
+   kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+
+3. Check the admin API:
+
+   kubectl -n {{ .Release.Namespace }} port-forward service/{{ include "argus.fullname" . }}-admin {{ .Values.service.adminPort }}:{{ .Values.service.adminPort }}
+   # Visit http://localhost:{{ .Values.service.adminPort }}/healthz
+
+4. Connect a database client to the proxy:
+
+   # PostgreSQL
+   PGPASSWORD=<password> psql -h localhost -p {{ .Values.service.pgProxyPort }} -U <user> -d <db>
+
+   # MySQL
+   mysql -h localhost -P {{ .Values.service.mysqlProxyPort }} -u <user> -p<password> -D <db>

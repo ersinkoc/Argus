@@ -1,0 +1,58 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "argus.fullname" . }}
+  labels:
+    {{- include "argus.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "argus.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: pg-proxy
+      port: 5432
+      targetPort: {{ .Values.service.pgProxyPort }}
+      protocol: TCP
+    - name: mysql-proxy
+      port: 3306
+      targetPort: {{ .Values.service.mysqlProxyPort }}
+      protocol: TCP
+{{- if .Values.config.argus_json.admin.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "argus.fullname" . }}-admin
+  labels:
+    {{- include "argus.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "argus.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: admin
+      port: {{ .Values.service.adminPort }}
+      targetPort: {{ .Values.service.adminPort }}
+      protocol: TCP
+{{- end }}
+{{- if .Values.config.argus_json.metrics.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "argus.fullname" . }}-metrics
+  labels:
+    {{- include "argus.labels" . | nindent 4 }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: {{ .Values.service.metricsPort | quote }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "argus.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: metrics
+      port: {{ .Values.service.metricsPort }}
+      targetPort: {{ .Values.service.metricsPort }}
+      protocol: TCP
+{{- end }}

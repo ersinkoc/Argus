@@ -1,0 +1,183 @@
+# Default values for argus Helm chart.
+# This is a YAML-formatted file. Use helm install --values to override.
+
+# Number of replicas
+replicaCount: 2
+
+# Image configuration
+image:
+  repository: ghcr.io/ersinkoc/argus
+  tag: "v0.1.0"
+  pullPolicy: IfNotPresent
+  # digest: sha256:abc123...  # pin to immutable digest in production
+
+# ServiceAccount configuration
+serviceAccount:
+  create: true
+  name: ""
+
+# Secrets (create externally or set these values)
+# WARNING: Do not commit real secrets to version control.
+secrets:
+  # DB_PG_HOST: postgres
+  # DB_PG_PASSWORD: changeme
+  # DB_MYSQL_HOST: mysql
+  # DB_MYSQL_PASSWORD: changeme
+  # ARGUS_ADMIN_TOKEN: <64-char-random-token>
+  # SIEM_WEBHOOK_URL: ""  # optional, for SIEM log shipping
+
+# ConfigMap: embedded argus.json and policies
+config:
+  # argus.json configuration overrides (merged with built-in defaults)
+  argus_json:
+    server:
+      listeners:
+        - address: ":15432"
+          protocol: postgresql
+        - address: ":13306"
+          protocol: mysql
+    targets:
+      - name: pg-primary
+        protocol: postgresql
+        host: "$ENV{DB_PG_HOST}"
+        port: 5432
+      - name: mysql-primary
+        protocol: mysql
+        host: "$ENV{DB_MYSQL_HOST}"
+        port: 3306
+    routing:
+      default_target: pg-primary
+      rules:
+        - database: mysql_*
+          target: mysql-primary
+    policy:
+      files:
+        - /etc/argus/policies/base.json
+      reload_interval: "5s"
+    pool:
+      max_connections_per_target: 100
+      min_idle_connections: 5
+      connection_max_lifetime: "1h"
+      connection_timeout: "10s"
+      health_check_interval: "30s"
+      circuit_breaker_threshold: 5
+      circuit_breaker_reset_timeout: "30s"
+    session:
+      idle_timeout: "30m"
+      max_duration: "8h"
+      max_per_user: 10
+    audit:
+      level: standard
+      outputs:
+        - type: stdout
+      webhook_url: "$ENV{SIEM_WEBHOOK_URL}"
+      buffer_size: 10000
+      sql_max_length: 4096
+      pii_auto_detect: true
+    admin:
+      enabled: true
+      address: ":9090"
+      auth_token: "$ENV{ARGUS_ADMIN_TOKEN}"
+    metrics:
+      enabled: true
+      address: ":9091"
+
+  # Base WAF policy
+  base_policy: |
+    {
+      "version": "1.0",
+      "defaults": {"action": "allow", "log_level": "standard"},
+      "roles": {},
+      "policies": [
+        {
+          "name": "block-sqli",
+          "description": "Block SQL injection attempts",
+          "match": {"commands": ["SELECT", "INSERT", "UPDATE", "DELETE"]},
+          "condition": {"sql_injection": true},
+          "action": "block",
+          "reason": "SQL injection detected"
+        },
+        {
+          "name": "block-drop",
+          "description": "Block DROP TABLE and similar DDL",
+          "match": {"commands": ["DROP", "TRUNCATE"]},
+          "action": "block",
+          "reason": "DDL not allowed via proxy"
+        }
+      ]
+    }
+
+# Resource limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 64Mi
+  limits:
+    cpu: 1000m
+    memory: 256Mi
+
+# Horizontal Pod Autoscaler
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# PodDisruptionBudget
+pdb:
+  enabled: true
+  minAvailable: 1
+
+# NetworkPolicy
+networkPolicy:
+  enabled: true
+  # Egress CIDRs to allow for database backend connections
+  egressCIDRs:
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+  # SIEM webhook egress (optional)
+  siemEgressCIDRs: []
+
+# Probes
+probes:
+  liveness:
+    path: /livez
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readiness:
+    path: /readyz
+    initialDelaySeconds: 3
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 3
+
+# Security context (pod and container)
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+
+# Service ports
+service:
+  type: ClusterIP
+  pgProxyPort: 15432
+  mysqlProxyPort: 13306
+  adminPort: 9090
+  metricsPort: 9091
+
+# Node selector, tolerations, affinity
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Logging
+extraEnv: []

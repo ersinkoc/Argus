@@ -12,8 +12,11 @@ kubectl create secret generic argus-secrets --namespace argus \
   --from-literal=ARGUS_ADMIN_TOKEN='<64-char-random-token>' \
   --from-literal=SIEM_WEBHOOK_URL=''
 
-# 2. Apply everything
+# 2. Apply everything (Kustomize)
 kubectl apply -k k8s/
+
+# Or deploy via Helm:
+# helm install argus ./helm/argus/
 
 # Check rollout
 kubectl -n argus rollout status deployment/argus
