@@ -27,6 +27,49 @@ Argus is a protocol-aware database firewall and access proxy written in Go. It s
 
 ---
 
+## Quick Start (Production)
+
+```bash
+# 1. Build the binary
+go build -ldflags "-s -w" -o argus ./cmd/argus/
+
+# 2. Set required environment variables
+export DB_PG_HOST=localhost
+export DB_PG_PASSWORD=your_password
+export ARGUS_ADMIN_TOKEN=$(openssl rand -hex 32)
+
+# 3. Validate configuration
+./argus -config configs/argus.json -validate
+
+# 4. Run (background)
+./argus -config configs/argus.json &
+
+# 5. Health check
+curl -s http://localhost:9091/healthz
+```
+
+### Docker
+
+```bash
+docker build -t argus:latest .
+docker run -p 15432:15432 -p 9090:9090 \
+  -e DB_PG_HOST=host.docker.internal \
+  -e DB_PG_PASSWORD=your_password \
+  -e ARGUS_ADMIN_TOKEN=$(openssl rand -hex 32) \
+  argus:latest
+```
+
+### Kubernetes (Helm)
+
+```bash
+helm install argus ./helm/argus/
+```
+
+See [k8s/README.md](k8s/README.md) for detailed Kustomize instructions.
+See [docs/env-reference.md](docs/env-reference.md) for all environment variables.
+
+---
+
 ## Why Argus?
 
 Traditional PAM tools manage credentials. They answer **"who connected."**

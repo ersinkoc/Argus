@@ -71,19 +71,11 @@
   "audit": {
     "level": "standard",
     "outputs": [
-      {
-        "type": "file",
-        "path": "/var/log/argus/audit.jsonl",
-        "rotation": {
-          "max_size_mb": 100,
-          "max_files": 10
-        }
-      }
+      {"type": "stdout"}
     ],
     "buffer_size": 50000,
     "sql_max_length": 4096,
     "pii_auto_detect": true,
-    "record_file": "/var/log/argus/queries.jsonl",
     "webhook_url": "$ENV{SIEM_WEBHOOK_URL}"
   },
   "admin": {
