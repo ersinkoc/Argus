@@ -45,6 +45,7 @@ type Proxy struct {
 	rlCleanupStop     chan struct{}
 	rlCleanupInterval time.Duration // default 5 min; override in tests
 	drainTimeout      time.Duration // default 10s; override in tests
+	hookChain         *PipelineHookChain
 }
 
 // NewProxy creates a new proxy engine.
@@ -60,6 +61,7 @@ func NewProxy(cfg *config.Config, policyEngine *policy.Engine, auditLogger *audi
 		piiDetector:     masking.NewPIIDetector(),
 		anomalyDetector: inspection.NewAnomalyDetector(24 * time.Hour),
 		approvalManager: NewApprovalManager(cfg.Session.IdleTimeout),
+		hookChain:       NewPipelineHookChain(),
 	}
 }
 
@@ -76,6 +78,15 @@ func (p *Proxy) SetOnEvent(fn func(any)) {
 // SetSlowQueryLogger enables slow query logging.
 func (p *Proxy) SetSlowQueryLogger(s *audit.SlowQueryLogger) {
 	p.slowQueryLogger = s
+}
+
+// SetPipelineHooks replaces the pipeline hook chain with the given hooks.
+// Call before Start(). Each call replaces the previous chain entirely.
+func (p *Proxy) SetPipelineHooks(hooks ...PipelineHook) {
+	p.hookChain = NewPipelineHookChain()
+	for _, h := range hooks {
+		p.hookChain.Add(h)
+	}
 }
 
 // SetRewriter enables query rewriting.
@@ -548,6 +559,22 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 			PlanCost:    planCost,
 		}
 
+		// PreEval hooks (context enrichment before policy evaluation)
+		if p.hookChain.Count() > 0 {
+			p.hookChain.RunPreEval(&HookContext{
+				Stage:     HookPreEval,
+				PolicyCtx: policyCtx,
+				Command:   cmd,
+				Session: &SessionSnapshot{
+					ID:       sess.ID,
+					Username: sess.Username,
+					Database: sess.Database,
+					ClientIP: sess.ClientIP.String(),
+					Roles:    sess.Roles,
+				},
+			})
+		}
+
 		// Evaluate policy
 		decision := p.policyEngine.Evaluate(policyCtx)
 		metrics.Global.PolicyEvals.Add(1)
@@ -589,6 +616,23 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 				"database": sess.Database,
 				"cost":     costEstimate.Score,
 				"factors":  costEstimate.Factors,
+			})
+		}
+
+		// PostEval hooks (after decision, before action)
+		if p.hookChain.Count() > 0 {
+			p.hookChain.RunPostEval(&HookContext{
+				Stage:     HookPostEval,
+				Decision:  decision,
+				PolicyCtx: policyCtx,
+				Command:   cmd,
+				Session: &SessionSnapshot{
+					ID:       sess.ID,
+					Username: sess.Username,
+					Database: sess.Database,
+					ClientIP: sess.ClientIP.String(),
+					Roles:    sess.Roles,
+				},
 			})
 		}
 
@@ -768,6 +812,22 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 					"rows":        stats.RowCount,
 					"duration_us": duration.Microseconds(),
 					"fingerprint": fingerprint,
+				})
+			}
+
+			// PostExec hooks (after result forwarded, audited, and broadcast)
+			if p.hookChain.Count() > 0 {
+				p.hookChain.RunPostExec(&HookContext{
+					Stage:    HookPostExec,
+					Decision: decision,
+					Command:  cmd,
+					Session: &SessionSnapshot{
+						ID:       sess.ID,
+						Username: sess.Username,
+						Database: sess.Database,
+						ClientIP: sess.ClientIP.String(),
+						Roles:    sess.Roles,
+					},
 				})
 			}
 		}
