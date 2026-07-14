@@ -11,8 +11,7 @@
 #   15432  → PostgreSQL proxy
 #   13306  → MySQL proxy
 #   11433  → MSSQL proxy
-#   9090   → Admin API + Dashboard
-#   9091   → Metrics / Health
+#   9090   → Admin API + Dashboard + Metrics / Health
 
 services:
   argus-proxy:
@@ -48,7 +47,7 @@ services:
       - argus_logs:/var/log/argus
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:9091/livez"]
+      test: ["CMD", "curl", "-sf", "http://localhost:9090/livez"]
       interval: 15s
       timeout: 5s
       retries: 3

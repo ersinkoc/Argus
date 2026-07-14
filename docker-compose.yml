@@ -75,7 +75,10 @@ services:
       - "30100:15432"   # PG proxy
       - "30101:13306"   # MySQL proxy
       - "30102:11433"   # MSSQL proxy
-      - "30200:9091"    # Metrics/Admin
+      - "30200:9090"    # Admin API + Dashboard + Metrics
+    environment:
+      ARGUS_ADMIN_TOKEN: "${ARGUS_ADMIN_TOKEN:-argus-multidb-demo-token-32chars}"
+      ARGUS_GATEWAY_API_KEY: "${ARGUS_GATEWAY_API_KEY:-gw-multidb-2024}"
     volumes:
       - ./configs:/etc/argus:ro
       - argus_logs:/var/log/argus

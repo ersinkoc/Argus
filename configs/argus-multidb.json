@@ -94,7 +94,8 @@
   },
   "admin": {
     "enabled": true,
-    "address": ":9090"
+    "address": ":9090",
+    "auth_token": "$ENV{ARGUS_ADMIN_TOKEN}"
   },
   "metrics": {
     "enabled": true,
