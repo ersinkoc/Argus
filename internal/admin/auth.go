@@ -11,10 +11,11 @@ import (
 // AuthMiddleware provides token-based authentication for admin API endpoints.
 // If no token is configured, all requests are allowed.
 type AuthMiddleware struct {
-	token          string
-	publicPaths    map[string]bool // paths that don't require auth
-	allowedSources []net.IPNet     // IP ranges allowed to access admin API
-	trustedProxies []net.IPNet     // proxy IP ranges whose X-Forwarded-For is trusted
+	token           string
+	publicPaths     map[string]bool   // exact paths that don't require auth
+	publicPrefixes  []string          // path prefixes that don't require auth (e.g. /ui/)
+	allowedSources  []net.IPNet       // IP ranges allowed to access admin API
+	trustedProxies  []net.IPNet       // proxy IP ranges whose X-Forwarded-For is trusted
 }
 
 // NewAuthMiddleware creates an auth middleware with the given bearer token.
@@ -72,10 +73,17 @@ func (a *AuthMiddleware) Wrap(next http.Handler) http.Handler {
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Skip auth for public paths
+		// Skip auth for exact public paths
 		if a.publicPaths[r.URL.Path] {
 			next.ServeHTTP(w, r)
 			return
+		}
+		// Skip auth for public path prefixes (e.g. /ui/*)
+		for _, prefix := range a.publicPrefixes {
+			if len(r.URL.Path) >= len(prefix) && r.URL.Path[:len(prefix)] == prefix {
+				next.ServeHTTP(w, r)
+				return
+			}
 		}
 
 		// Check Authorization header

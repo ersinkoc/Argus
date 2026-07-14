@@ -260,6 +260,7 @@ func setupAdmin(cfg *config.Config, proxy *core.Proxy, policyLoader *policy.Load
 			srv.SetDryRunFunc(makeDryRunFunc(policyEngine))
 			srv.SetConfigExporter(makeConfigExporter(cfg))
 			srv.SetPolicyValidator(makePolicyValidator(policyLoader))
+			srv.SetPolicyListFn(makePolicyListFn(policyLoader))
 			srv.SetClassifyFunc(makeClassifyFunc())
 			srv.SetPluginListFunc(makePluginListFunc())
 			srv.SetOnSessionKill(makeSessionKillFn(auditLogger))

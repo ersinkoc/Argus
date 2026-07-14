@@ -53,6 +53,28 @@ func makePolicyValidator(policyLoader *policy.Loader) func() (any, error) {
 	}
 }
 
+func makePolicyListFn(policyLoader *policy.Loader) func() []map[string]any {
+	return func() []map[string]any {
+		ps := policyLoader.Current()
+		if ps == nil || ps.Policies == nil {
+			return []map[string]any{}
+		}
+		result := make([]map[string]any, 0, len(ps.Policies))
+		for _, p := range ps.Policies {
+			item := map[string]any{
+				"name":   p.Name,
+				"action": p.Action,
+				"reason": p.Reason,
+			}
+			if p.Description != "" {
+				item["description"] = p.Description
+			}
+			result = append(result, item)
+		}
+		return result
+	}
+}
+
 func makeClassifyFunc() func(columns []string) any {
 	engine := classify.NewEngine()
 	return func(columns []string) any {

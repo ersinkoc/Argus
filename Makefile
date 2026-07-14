@@ -7,9 +7,16 @@ BINARY := argus
 
 all: lint test build
 
-build:
+build: admin-ui
 	go build -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/argus/
 	@echo "Built $(BINARY) $(VERSION)"
+
+admin-ui:
+	@echo "Building admin UI..."
+	cd admin-ui && npm ci --silent 2>/dev/null || npm install --silent && npx vite build --logLevel error
+	@echo "Copying admin UI to embed directory..."
+	cp -r admin-ui/dist/* internal/admin/adminui/
+	@echo "Admin UI built and embedded."
 
 test: test-full
 
@@ -66,6 +73,10 @@ run: build
 
 run-dev: build
 	./$(BINARY) -config configs/argus-dev.json
+
+dev: admin-ui
+	@echo "Starting dev environment (backend:9090 + frontend:5173)..."
+	@bash dev.sh
 
 docker:
 	docker build -t argus:latest .

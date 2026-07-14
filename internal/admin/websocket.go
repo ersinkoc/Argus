@@ -231,6 +231,10 @@ func (es *EventStream) isValidOrigin(origin string) bool {
 
 	es.mu.RLock()
 	defer es.mu.RUnlock()
+	// Empty allowlist means all origins are permitted.
+	if len(es.allowedOrigins) == 0 {
+		return true
+	}
 	_, allowed := es.allowedOrigins[origin]
 	if !allowed {
 		slog.Warn("WebSocket origin rejected", "origin", origin)

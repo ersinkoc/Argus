@@ -1,0 +1,127 @@
+{
+  "server": {
+    "listeners": [
+      {
+        "address": ":15432",
+        "protocol": "postgresql",
+        "tls": {
+          "enabled": false
+        }
+      },
+      {
+        "address": ":13306",
+        "protocol": "mysql",
+        "tls": {
+          "enabled": false
+        }
+      },
+      {
+        "address": ":11433",
+        "protocol": "mssql",
+        "tls": {
+          "enabled": false
+        }
+      }
+    ]
+  },
+  "targets": [
+    {
+      "name": "default-pg",
+      "protocol": "postgresql",
+      "host": "$ENV{DB_PG_HOST}",
+      "port": 5432,
+      "tls": {
+        "enabled": false
+      }
+    },
+    {
+      "name": "default-mysql",
+      "protocol": "mysql",
+      "host": "$ENV{DB_MYSQL_HOST}",
+      "port": 3306,
+      "tls": {
+        "enabled": false
+      }
+    },
+    {
+      "name": "default-mssql",
+      "protocol": "mssql",
+      "host": "$ENV{DB_MSSQL_HOST}",
+      "port": 1433,
+      "tls": {
+        "enabled": false
+      }
+    }
+  ],
+  "routing": {
+    "default_target": "default-pg",
+    "rules": [
+      {"database": "mysql_*", "target": "default-mysql"},
+      {"database": "mssql_*", "target": "default-mssql"}
+    ]
+  },
+  "policy": {
+    "files": ["/etc/argus/policies/waf.json"],
+    "reload_interval": "5s"
+  },
+  "pool": {
+    "max_connections_per_target": 100,
+    "min_idle_connections": 2,
+    "connection_max_lifetime": "1h",
+    "connection_timeout": "10s",
+    "health_check_interval": "30s"
+  },
+  "session": {
+    "idle_timeout": "30m",
+    "max_duration": "8h",
+    "max_per_user": 50
+  },
+  "audit": {
+    "level": "verbose",
+    "outputs": [
+      {"type": "stdout"},
+      {
+        "type": "file",
+        "path": "/var/log/argus/audit.jsonl",
+        "rotation": {
+          "max_size_mb": 100,
+          "max_files": 10
+        }
+      }
+    ],
+    "buffer_size": 10000,
+    "sql_max_length": 4096,
+    "pii_auto_detect": true,
+    "record_file": "/var/log/argus/queries.jsonl"
+  },
+  "admin": {
+    "enabled": true,
+    "address": ":9090",
+    "auth_token": "$ENV{ARGUS_ADMIN_TOKEN}"
+  },
+  "metrics": {
+    "enabled": true,
+    "address": ":9090"
+  },
+  "gateway": {
+    "enabled": true,
+    "api_keys": [
+      {
+        "id": "gw-default",
+        "key": "$ENV{ARGUS_GATEWAY_API_KEY}",
+        "username": "argus-gateway",
+        "roles": ["admin"],
+        "allowed_targets": ["default-pg", "default-mysql", "default-mssql"]
+      }
+    ],
+    "webhook_url": "$ENV{ARGUS_WEBHOOK_URL}",
+    "max_result_rows": 10000,
+    "approval_timeout": "10m"
+  },
+  "rewrite": {
+    "max_limit": 10000
+  },
+  "slow_query": {
+    "threshold": "3s"
+  }
+}

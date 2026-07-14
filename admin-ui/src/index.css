@@ -1,0 +1,133 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+    --card: 215 28% 17%;
+    --card-foreground: 210 40% 98%;
+    --popover: 215 28% 17%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 199 89% 48%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 215 28% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 215 28% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 199 89% 48%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62% 55%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 215 28% 25%;
+    --input: 215 28% 25%;
+    --ring: 199 89% 48%;
+    --radius: 0.5rem;
+  }
+
+  * {
+    @apply border-argus-border;
+  }
+
+  body {
+    @apply bg-argus-bg text-argus-text;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #1e293b;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-argus-card border border-argus-border rounded-xl p-5;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-argus-accent disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply btn bg-argus-accent text-white hover:bg-argus-accent/90;
+  }
+
+  .btn-success {
+    @apply btn bg-argus-success text-white hover:bg-argus-success/90;
+  }
+
+  .btn-warning {
+    @apply btn bg-argus-warning text-black hover:bg-argus-warning/90;
+  }
+
+  .btn-danger {
+    @apply btn bg-argus-danger text-white hover:bg-argus-danger/90;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent hover:bg-argus-card text-argus-text;
+  }
+
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs;
+  }
+
+  .btn-lg {
+    @apply px-6 py-3 text-base;
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  .badge-ok {
+    @apply badge bg-emerald-900/50 text-emerald-400;
+  }
+
+  .badge-warn {
+    @apply badge bg-amber-900/50 text-amber-400;
+  }
+
+  .badge-err {
+    @apply badge bg-red-900/50 text-red-400;
+  }
+
+  .badge-info {
+    @apply badge bg-blue-900/50 text-blue-400;
+  }
+
+  .badge-purple {
+    @apply badge bg-purple-900/50 text-purple-400;
+  }
+
+  .input {
+    @apply flex h-10 w-full rounded-lg border border-argus-border bg-argus-bg px-3 py-2 text-sm text-argus-text placeholder:text-argus-muted focus:outline-none focus:ring-2 focus:ring-argus-accent focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .select {
+    @apply input appearance-none cursor-pointer;
+  }
+
+  .table-header {
+    @apply text-left px-4 py-3 text-xs font-medium text-argus-muted uppercase tracking-wider;
+  }
+
+  .table-cell {
+    @apply px-4 py-3 text-sm text-argus-text border-b border-argus-border;
+  }
+}

@@ -37,6 +37,7 @@ type Server struct {
 	addr               string
 	server             *http.Server
 	policyReloadFn     func() error
+	policyListFn       func() []map[string]any
 	EventStream        *EventStream
 	approvalFn         ApprovalProvider
 	auditLogPath       string
@@ -119,6 +120,11 @@ func (s *Server) OnPolicyReload(fn func() error) {
 	s.policyReloadFn = fn
 }
 
+// SetPolicyListFn sets the callback for listing current policies.
+func (s *Server) SetPolicyListFn(fn func() []map[string]any) {
+	s.policyListFn = fn
+}
+
 // Start begins serving the admin/metrics endpoints.
 func (s *Server) Start() error {
 	mux := http.NewServeMux()
@@ -132,6 +138,7 @@ func (s *Server) Start() error {
 	if s.enableAdminRoutes {
 		mux.HandleFunc("/api/sessions", s.handleSessions)
 		mux.HandleFunc("/api/sessions/kill", s.handleSessionKill)
+		mux.HandleFunc("/api/policies", s.handlePolicies)
 		mux.HandleFunc("/api/policies/reload", s.handlePolicyReload)
 		mux.HandleFunc("/api/stats", s.handleStats)
 		mux.HandleFunc("/api/events/ws", s.EventStream.HandleWebSocket)
@@ -152,9 +159,16 @@ func (s *Server) Start() error {
 		mux.HandleFunc("/api/dashboard", s.handleDashboard)
 		mux.HandleFunc("/api/classify", s.handleClassify)
 		mux.HandleFunc("/api/plugins", s.handlePlugins)
-		mux.HandleFunc("/ui", HandleDashboardUI)
-		mux.HandleFunc("/ui/test", HandleTestRunnerUI)
 		mux.HandleFunc("/api/test/run", handleTestRun)
+		// Admin UI — React SPA (with fallback to old dashboard)
+		if adminUI := NewAdminUIHandler("/ui"); adminUI != nil {
+			mux.Handle("/ui/", http.StripPrefix("/ui", adminUI))
+			mux.Handle("/ui", http.StripPrefix("/ui", adminUI))
+		} else {
+			// Fallback to the old embedded dashboard
+			mux.HandleFunc("/ui", HandleDashboardUI)
+		}
+		mux.HandleFunc("/ui/test", HandleTestRunnerUI)
 	}
 
 	// Gateway endpoints (with optional API key middleware) — registered
@@ -175,19 +189,29 @@ func (s *Server) Start() error {
 	}
 
 	var handler http.Handler = mux
+
+	// Wrap with CORS first (allows dev-mode cross-origin requests)
+	if s.enableAdminRoutes {
+		handler = NewCORS(handler, false, "http://localhost:5173", "http://127.0.0.1:5173")
+	}
+
 	if s.authToken != "" {
 		auth := NewAuthMiddleware(s.authToken)
 		// Gateway routes skip admin bearer auth — they use their own API key middleware.
 		for _, p := range s.GatewayPublicPaths() {
 			auth.publicPaths[p] = true
 		}
+		// WebSocket live events and Admin UI are read-only observability (like health checks)
+		auth.publicPaths["/api/events/ws"] = true
+		// Admin UI paths must be public — the entire /ui/ tree is an SPA
+		auth.publicPrefixes = append(auth.publicPrefixes, "/ui/")
 		if len(s.allowedSources) > 0 {
 			auth = auth.WithAllowedSources(s.allowedSources)
 		}
 		if len(s.trustedProxies) > 0 {
 			auth = auth.WithTrustedProxies(s.trustedProxies)
 		}
-		handler = auth.Wrap(mux)
+		handler = auth.Wrap(handler)
 	}
 
 	s.server = &http.Server{
@@ -468,6 +492,20 @@ func (s *Server) handlePolicyReload(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "reloaded"})
+}
+
+func (s *Server) handlePolicies(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeAPIError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "use GET")
+		return
+	}
+	if s.policyListFn == nil {
+		writeAPIError(w, http.StatusNotFound, "NOT_FOUND", "policy list not available")
+		return
+	}
+	policies := s.policyListFn()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(policies)
 }
 
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
