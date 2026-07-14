@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"encoding/json"
 	"net"
 	"time"
 
@@ -150,4 +151,8 @@ type ConditionConfig struct {
 	MaxJoins       int      `json:"max_joins,omitempty"`        // max JOINs in a query
 	SQLInjection   bool     `json:"sql_injection,omitempty"`    // enable SQLi pattern detection
 	PlanCostGTE    float64  `json:"plan_cost_gte,omitempty"`    // block if EXPLAIN total cost >= value
+
+	// Custom holds plugin-provided condition configurations keyed by plugin name.
+	// Each value is an arbitrary JSON object interpreted by the named condition plugin.
+	Custom map[string]json.RawMessage `json:"custom,omitempty"`
 }

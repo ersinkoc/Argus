@@ -175,6 +175,21 @@ func (e *Engine) cacheKey(ctx *Context) string {
 	// Include RawSQL hash separately (SQL can be very long)
 	sqlHash := sha256.Sum256([]byte(ctx.RawSQL))
 	combined := key + "|" + hex.EncodeToString(sqlHash[:8])
+
+	// Include custom condition plugin names so cached decisions are invalidated
+	// when plugin membership or configurations change.
+	ps := e.loader.Current()
+	if ps != nil {
+		for _, p := range ps.Policies {
+			if p.Condition != nil && len(p.Condition.Custom) > 0 {
+				combined += "|custom:"
+				for name := range p.Condition.Custom {
+					combined += name + ","
+				}
+			}
+		}
+	}
+
 	h := sha256.Sum256([]byte(combined))
 	return hex.EncodeToString(h[:16])
 }

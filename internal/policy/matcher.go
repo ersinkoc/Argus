@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"log/slog"
 	"net"
 	"strconv"
 	"strings"
@@ -240,6 +241,23 @@ func matchCondition(ctx *Context, cond *ConditionConfig) bool {
 	// and is treated as not matching — the policy rule is skipped.
 	if cond.PlanCostGTE > 0 {
 		if ctx.PlanCost <= 0 || ctx.PlanCost < cond.PlanCostGTE {
+			return false
+		}
+	}
+
+	// Custom plugin conditions — evaluated through the global ConditionRegistry.
+	for name, config := range cond.Custom {
+		plugin := GlobalCondRegistry.Get(name)
+		if plugin == nil {
+			slog.Warn("unknown custom condition plugin", "name", name)
+			return false
+		}
+		match, err := plugin.Eval(ctx, config)
+		if err != nil {
+			slog.Warn("custom condition plugin error", "name", name, "error", err)
+			return false
+		}
+		if !match {
 			return false
 		}
 	}
