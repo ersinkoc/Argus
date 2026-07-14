@@ -15,7 +15,7 @@ admin-ui:
 	@echo "Building admin UI..."
 	cd admin-ui && npm ci --silent 2>/dev/null || npm install --silent && npx vite build --logLevel error
 	@echo "Copying admin UI to embed directory..."
-	cp -r admin-ui/dist/* internal/admin/adminui/
+	cp -r admin-ui/dist/. internal/admin/adminui/
 	@echo "Admin UI built and embedded."
 
 test: test-full
