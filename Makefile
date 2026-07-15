@@ -5,7 +5,7 @@ BINARY := argus
 
 .PHONY: all build test test-compile test-short test-full test-verbose test-timing test-race test-e2e test-stress clean lint fmt-check dep-guard run bench cover coverage-ci validate
 
-all: lint test build
+all: lint test-full test-race build
 
 build: admin-ui
 	go build -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/argus/
