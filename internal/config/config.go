@@ -168,13 +168,14 @@ func (p *PolicyConfig) UnmarshalJSON(data []byte) error {
 }
 
 type PoolConfig struct {
-	MaxConnectionsPerTarget    int           `json:"max_connections_per_target"`
-	MinIdleConnections         int           `json:"min_idle_connections"`
-	ConnectionMaxLifetime      time.Duration `json:"connection_max_lifetime"`
-	ConnectionTimeout          time.Duration `json:"connection_timeout"`
-	HealthCheckInterval        time.Duration `json:"health_check_interval"`
-	CircuitBreakerThreshold    int           `json:"circuit_breaker_threshold,omitempty"`     // failures before open, default 5
-	CircuitBreakerResetTimeout time.Duration `json:"circuit_breaker_reset_timeout,omitempty"` // default 30s
+	MaxConnectionsPerTarget     int           `json:"max_connections_per_target"`
+	MinIdleConnections          int           `json:"min_idle_connections"`
+	ConnectionMaxLifetime       time.Duration `json:"connection_max_lifetime"`
+	ConnectionTimeout           time.Duration `json:"connection_timeout"`
+	HealthCheckInterval         time.Duration `json:"health_check_interval"`
+	CircuitBreakerThreshold     int           `json:"circuit_breaker_threshold,omitempty"`      // failures before open, default 5
+	CircuitBreakerResetTimeout  time.Duration `json:"circuit_breaker_reset_timeout,omitempty"`  // default 30s
+	CircuitBreakerHalfOpenMax   int           `json:"circuit_breaker_half_open_max,omitempty"`   // max test requests, default 1
 }
 
 func (p *PoolConfig) UnmarshalJSON(data []byte) error {

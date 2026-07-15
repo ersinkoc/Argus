@@ -123,6 +123,24 @@ func (cb *CircuitBreaker) State() CircuitState {
 	return cb.state
 }
 
+// SetHalfOpenMax sets the maximum number of test requests allowed in half-open state.
+// Must be called before the circuit breaker enters half-open state.
+// Default is 1 — one test request, then either close (success) or re-open (failure).
+func (cb *CircuitBreaker) SetHalfOpenMax(n int) {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	if n > 0 {
+		cb.halfOpenMax = n
+	}
+}
+
+// HalfOpenMax returns the current half-open test request limit.
+func (cb *CircuitBreaker) HalfOpenMax() int {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	return cb.halfOpenMax
+}
+
 // Reset resets the circuit breaker to closed state.
 func (cb *CircuitBreaker) Reset() {
 	cb.mu.Lock()

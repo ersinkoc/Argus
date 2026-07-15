@@ -58,6 +58,12 @@ func (p *Pool) SetCircuitBreaker(threshold int, resetTimeout time.Duration) {
 	p.breaker = NewCircuitBreaker(threshold, resetTimeout)
 }
 
+// SetBreakerHalfOpenMax sets the maximum test requests in half-open state.
+// Must be called before Start().
+func (p *Pool) SetBreakerHalfOpenMax(n int) {
+	p.breaker.SetHalfOpenMax(n)
+}
+
 // Start begins background health checking and warms up idle connections.
 func (p *Pool) Start() {
 	p.wg.Add(1)

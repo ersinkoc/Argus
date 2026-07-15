@@ -159,6 +159,9 @@ func (p *Proxy) Start() error {
 			resetTimeout := p.cfg.Pool.CircuitBreakerResetTimeout
 			pl.SetCircuitBreaker(threshold, resetTimeout)
 		}
+		if p.cfg.Pool.CircuitBreakerHalfOpenMax > 0 {
+			pl.SetBreakerHalfOpenMax(p.cfg.Pool.CircuitBreakerHalfOpenMax)
+		}
 
 		pl.Start()
 		p.poolsMu.Lock()
