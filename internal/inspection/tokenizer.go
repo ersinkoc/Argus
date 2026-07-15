@@ -192,10 +192,13 @@ func (t *Tokenizer) readStringLiteral() Token {
 		sb.WriteRune(ch)
 		t.pos++
 	}
-	// If we hit EOF without closing quote, mark as unclosed
 	value := sb.String()
-	if t.pos >= len(t.input) && len(value) > 0 && value[len(value)-1] != '\'' {
-		// Unterminated string - mark it so downstream code knows
+	// Empty string literal (lone quote at end of input): return quote as punctuation
+	if value == "" {
+		return Token{Type: TokenPunctuation, Value: "'", Upper: "'"}
+	}
+	// If we hit EOF without closing quote, mark as unclosed
+	if t.pos >= len(t.input) {
 		return Token{Type: TokenLiteral, Value: value, Upper: strings.ToUpper(value)}
 	}
 	return Token{Type: TokenLiteral, Value: value, Upper: value}
@@ -231,7 +234,12 @@ func (t *Tokenizer) readDollarQuoted() Token {
 		sb.WriteRune(t.input[t.pos])
 		t.pos++
 	}
-	return Token{Type: TokenLiteral, Value: sb.String(), Upper: sb.String()}
+	value := sb.String()
+	// Empty dollar-quoted string: return $ as operator rather than empty literal
+	if value == "" {
+		return Token{Type: TokenOperator, Value: "$", Upper: "$"}
+	}
+	return Token{Type: TokenLiteral, Value: value, Upper: value}
 }
 
 func (t *Tokenizer) readQuotedIdentifier(quote rune) Token {
@@ -252,6 +260,11 @@ func (t *Tokenizer) readQuotedIdentifier(quote rune) Token {
 		t.pos++
 	}
 	value := sb.String()
+	// Empty quoted identifier at end of input: return the quote as punctuation
+	// rather than a zero-length identifier (which would confuse downstream code).
+	if value == "" {
+		return Token{Type: TokenPunctuation, Value: string(quote), Upper: string(quote)}
+	}
 	return Token{Type: TokenIdentifier, Value: value, Upper: strings.ToUpper(value)}
 }
 
@@ -266,6 +279,10 @@ func (t *Tokenizer) readBracketIdentifier() Token {
 		t.pos++ // skip ]
 	}
 	value := sb.String()
+	// Empty bracket identifier at end of input: return bracket as punctuation
+	if value == "" {
+		return Token{Type: TokenPunctuation, Value: "[", Upper: "["}
+	}
 	return Token{Type: TokenIdentifier, Value: value, Upper: strings.ToUpper(value)}
 }
 
