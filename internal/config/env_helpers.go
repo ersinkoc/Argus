@@ -118,8 +118,27 @@ func expandEnvInConfig(cfg *Config) {
 	}
 }
 
-// ExpandEnvValue replaces $ENV{VAR} patterns with environment variable values.
+// ExpandEnvValue replaces $ENV{VAR} and $FILE{PATH} patterns with their values.
+//
+//   $ENV{VAR}  — replaced by the value of environment variable VAR.
+//                If VAR is unset, the pattern is replaced with an empty string
+//                and a warning is logged.
+//
+//   $FILE{PATH} — replaced by the contents of the file at PATH (trailing
+//                 newlines trimmed). If PATH does not exist or cannot be read,
+//                 the pattern is replaced with an empty string and a warning
+//                 is logged. This is designed for Docker secrets, K8s mounted
+//                 secrets, and Vault agent files.
 func ExpandEnvValue(s string) string {
+	// Expand $ENV{VAR} patterns
+	s = expandEnvPattern(s)
+	// Expand $FILE{PATH} patterns
+	s = expandFilePattern(s)
+	return s
+}
+
+// expandEnvPattern replaces $ENV{VAR} with the environment variable value.
+func expandEnvPattern(s string) string {
 	for {
 		start := strings.Index(s, "$ENV{")
 		if start == -1 {
@@ -135,6 +154,31 @@ func ExpandEnvValue(s string) string {
 			slog.Warn("$ENV{} references unset environment variable", "var", varName)
 		}
 		s = s[:start] + envVal + s[start+end+1:]
+	}
+	return s
+}
+
+// expandFilePattern replaces $FILE{PATH} with the contents of the file.
+// The file content has trailing newlines trimmed.
+func expandFilePattern(s string) string {
+	for {
+		start := strings.Index(s, "$FILE{")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(s[start:], "}")
+		if end == -1 {
+			break
+		}
+		path := s[start+6 : start+end]
+		data, err := os.ReadFile(path)
+		if err != nil {
+			slog.Warn("$FILE{} references unreadable file", "path", path, "error", err)
+			s = s[:start] + s[start+end+1:]
+		} else {
+			val := strings.TrimRight(string(data), "\n\r")
+			s = s[:start] + val + s[start+end+1:]
+		}
 	}
 	return s
 }

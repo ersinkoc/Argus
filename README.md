@@ -448,11 +448,19 @@ ARGUS_TARGETS_0_HOST=db-prod.internal
 
 ### Credential Security
 
-Use `$ENV{VAR}` syntax in config for secrets:
+Use `$ENV{VAR}` or `$FILE{PATH}` syntax in config for secrets:
+
+- **`$ENV{VAR}`** — replaced by the value of environment variable `VAR`.
+  Best for container env vars, CI/CD, and local development.
+
+- **`$FILE{PATH}`** — replaced by the contents of the file at `PATH`
+  (trailing newlines trimmed). Designed for **Docker secrets**, **Kubernetes
+  mounted secrets**, and **HashiCorp Vault agent files**.
 
 ```json
 {
   "host": "$ENV{DB_HOST}",
+  "password": "$FILE{/run/secrets/db_password}",
   "port": 5432
 }
 ```

@@ -201,6 +201,58 @@ func TestExpandEnvValue(t *testing.T) {
 	}
 }
 
+func TestExpandFileValue(t *testing.T) {
+	td := t.TempDir()
+	secretPath := td + "/db_password"
+	if err := os.WriteFile(secretPath, []byte("supersecret\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := ExpandEnvValue("$FILE{" + secretPath + "}")
+	if result != "supersecret" {
+		t.Errorf("got %q, want %q", result, "supersecret")
+	}
+
+	result = ExpandEnvValue("prefix_$FILE{" + secretPath + "}_suffix")
+	if result != "prefix_supersecret_suffix" {
+		t.Errorf("got %q, want %q", result, "prefix_supersecret_suffix")
+	}
+}
+
+func TestExpandFileValueNonexistent(t *testing.T) {
+	result := ExpandEnvValue("$FILE{/nonexistent/secret/key}")
+	if result != "" {
+		t.Errorf("got %q, want empty string for non-existent file", result)
+	}
+}
+
+func TestExpandFileValueNoTrailingNewline(t *testing.T) {
+	td := t.TempDir()
+	path := td + "/token"
+	if err := os.WriteFile(path, []byte("my-api-token"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := ExpandEnvValue("$FILE{" + path + "}")
+	if result != "my-api-token" {
+		t.Errorf("got %q, want %q", result, "my-api-token")
+	}
+}
+
+func TestExpandMixedEnvAndFile(t *testing.T) {
+	t.Setenv("DB_USER", "admin")
+	td := t.TempDir()
+	path := td + "/secret"
+	if err := os.WriteFile(path, []byte("fileval"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := ExpandEnvValue("user=$ENV{DB_USER};password=$FILE{" + path + "}")
+	if result != "user=admin;password=fileval" {
+		t.Errorf("got %q, want %q", result, "user=admin;password=fileval")
+	}
+}
+
 func TestMatchPattern(t *testing.T) {
 	tests := []struct {
 		pattern string
