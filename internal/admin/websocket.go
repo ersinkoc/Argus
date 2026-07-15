@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -18,6 +19,16 @@ type EventStream struct {
 	mu             sync.RWMutex
 	clients        map[*wsClient]struct{}
 	allowedOrigins map[string]struct{}
+	validateToken  func(string) bool // nil = no auth required
+	authEnabled    bool
+}
+
+// SetAuth sets the token validation function for first-frame WebSocket auth.
+// When set, every WebSocket connection must send a JSON auth frame
+// {"type":"auth","token":"..."} as its first message after upgrade.
+func (es *EventStream) SetAuth(validateToken func(string) bool) {
+	es.validateToken = validateToken
+	es.authEnabled = validateToken != nil
 }
 
 type wsClient struct {
@@ -86,8 +97,16 @@ func (es *EventStream) remove(c *wsClient) {
 	c.conn.Close()
 }
 
+// authFrame is the expected first-frame auth message from WebSocket clients.
+type authFrame struct {
+	Type  string `json:"type"`
+	Token string `json:"token"`
+}
+
 // HandleWebSocket upgrades an HTTP connection to WebSocket.
 // Minimal WebSocket implementation (RFC 6455) — no external dependencies.
+// If auth is enabled, the client must send a first-frame auth message
+// {"type":"auth","token":"..."} immediately after the upgrade handshake.
 func (es *EventStream) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// Validate WebSocket upgrade headers
 	if r.Header.Get("Upgrade") != "websocket" {
@@ -131,12 +150,51 @@ func (es *EventStream) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	bufrw.WriteString(resp)
 	bufrw.Flush()
 
+	// First-frame authentication (if enabled)
+	if es.authEnabled {
+		if err := es.authenticateClient(conn, bufrw); err != nil {
+			slog.Warn("WebSocket auth rejected", "error", err)
+			return
+		}
+	}
+
 	client := &wsClient{conn: conn}
 	es.add(client)
 	slog.Info("WebSocket client connected", "total", es.Count())
 
 	// Read loop (handle ping/pong/close)
 	go es.readLoop(client, bufrw)
+}
+
+// authenticateClient reads the first WebSocket frame and validates the auth token.
+// It sends a close frame and returns an error if authentication fails.
+func (es *EventStream) authenticateClient(conn net.Conn, br *bufio.ReadWriter) error {
+	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	defer conn.SetReadDeadline(time.Time{})
+
+	payload, err := readFramePayload(br.Reader)
+	if err != nil {
+		sendCloseFrame(conn, 1008, "auth read error")
+		return fmt.Errorf("reading auth frame: %w", err)
+	}
+
+	var frame authFrame
+	if err := json.Unmarshal(payload, &frame); err != nil {
+		sendCloseFrame(conn, 1008, "invalid auth frame")
+		return fmt.Errorf("parsing auth frame: %w", err)
+	}
+
+	if frame.Type != "auth" {
+		sendCloseFrame(conn, 1008, "expected auth frame")
+		return fmt.Errorf("expected auth frame, got %q", frame.Type)
+	}
+
+	if es.validateToken == nil || !es.validateToken(frame.Token) {
+		sendCloseFrame(conn, 1008, "invalid token")
+		return fmt.Errorf("invalid auth token")
+	}
+
+	return nil
 }
 
 func (es *EventStream) readLoop(c *wsClient, br *bufio.ReadWriter) {
@@ -219,6 +277,69 @@ func computeAcceptKey(key string) string {
 	h := sha1.New()
 	h.Write([]byte(key + magic))
 	return base64.StdEncoding.EncodeToString(h.Sum(nil))
+}
+
+// readFramePayload reads one WebSocket frame and returns its unmasked payload.
+// Client-to-server frames are always masked (RFC 6455 §5.1).
+func readFramePayload(br *bufio.Reader) ([]byte, error) {
+	header := make([]byte, 2)
+	if _, err := br.Read(header); err != nil {
+		return nil, fmt.Errorf("reading frame header: %w", err)
+	}
+
+	payloadLen := int64(header[1] & 0x7F)
+	if payloadLen == 126 {
+		ext := make([]byte, 2)
+		if _, err := br.Read(ext); err != nil {
+			return nil, fmt.Errorf("reading extended length: %w", err)
+		}
+		payloadLen = int64(ext[0])<<8 | int64(ext[1])
+	} else if payloadLen == 127 {
+		ext := make([]byte, 8)
+		if _, err := br.Read(ext); err != nil {
+			return nil, fmt.Errorf("reading extended length 64: %w", err)
+		}
+		payloadLen = 0
+		for i := 0; i < 8; i++ {
+			payloadLen = (payloadLen << 8) | int64(ext[i])
+		}
+	}
+
+	// Read mask key (always present from client)
+	mask := make([]byte, 4)
+	if _, err := br.Read(mask); err != nil {
+		return nil, fmt.Errorf("reading mask key: %w", err)
+	}
+
+	// Read and unmask payload
+	payload := make([]byte, payloadLen)
+	if _, err := io.ReadFull(br, payload); err != nil {
+		return nil, fmt.Errorf("reading payload: %w", err)
+	}
+	for i := range payload {
+		payload[i] ^= mask[i%4]
+	}
+
+	return payload, nil
+}
+
+// sendCloseFrame sends a WebSocket close frame with the given status code and reason.
+func sendCloseFrame(conn net.Conn, statusCode int, reason string) {
+	reasonBytes := []byte(reason)
+	if len(reasonBytes) > 123 {
+		reasonBytes = reasonBytes[:123]
+	}
+	frame := []byte{0x88} // FIN + close opcode
+	length := 2 + len(reasonBytes)
+	if length <= 125 {
+		frame = append(frame, byte(length))
+	} else {
+		frame = append(frame, 126, byte(length>>8), byte(length))
+	}
+	frame = append(frame, byte(statusCode>>8), byte(statusCode))
+	frame = append(frame, reasonBytes...)
+	conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+	conn.Write(frame)
 }
 
 // isValidOrigin checks if the Origin header is acceptable.

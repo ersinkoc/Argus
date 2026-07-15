@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"container/list"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -194,24 +195,28 @@ func (e *Engine) cacheKey(ctx *Context) string {
 	return hex.EncodeToString(h[:16])
 }
 
-// decisionCache is a bounded TTL cache for policy decisions.
-// When full, it evicts an arbitrary half of the map rather than tracking recency.
+// decisionCache is a bounded TTL cache for policy decisions with LRU eviction.
+// When full, the least recently used entry is evicted to make room for the new one.
+// Entries older than TTL are purged at the next set operation.
 type decisionCache struct {
-	entries     map[string]*cacheEntry
-	mu          sync.RWMutex
+	mu          sync.Mutex
+	entries     map[string]*list.Element // key → list element
+	order       *list.List               // LRU order: Front = most recently used
 	maxSize     int
 	ttl         time.Duration
 	lastCleanup time.Time
 }
 
 type cacheEntry struct {
+	key      string
 	decision *Decision
 	expiry   time.Time
 }
 
 func newDecisionCache(maxSize int, ttl time.Duration) *decisionCache {
 	return &decisionCache{
-		entries:     make(map[string]*cacheEntry, maxSize),
+		entries:     make(map[string]*list.Element, maxSize),
+		order:       list.New(),
 		maxSize:     maxSize,
 		ttl:         ttl,
 		lastCleanup: time.Now(),
@@ -219,16 +224,22 @@ func newDecisionCache(maxSize int, ttl time.Duration) *decisionCache {
 }
 
 func (c *decisionCache) get(key string) (*Decision, bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-	entry, ok := c.entries[key]
+	elem, ok := c.entries[key]
 	if !ok {
 		return nil, false
 	}
+
+	entry := elem.Value.(*cacheEntry)
 	if time.Now().After(entry.expiry) {
+		c.removeElement(elem)
 		return nil, false
 	}
+
+	// Move to front (most recently used)
+	c.order.MoveToFront(elem)
 	return entry.decision, true
 }
 
@@ -238,35 +249,66 @@ func (c *decisionCache) set(key string, d *Decision) {
 
 	// Periodic cleanup of expired entries (every TTL interval)
 	if time.Since(c.lastCleanup) > c.ttl {
-		now := time.Now()
-		for k, v := range c.entries {
-			if now.After(v.expiry) {
-				delete(c.entries, k)
-			}
-		}
+		c.purgeExpired()
 		c.lastCleanup = time.Now()
 	}
 
-	// Evict if full (simple: clear half)
-	if len(c.entries) >= c.maxSize {
-		count := 0
-		for k := range c.entries {
-			delete(c.entries, k)
-			count++
-			if count >= c.maxSize/2 {
-				break
-			}
-		}
+	// If the key already exists, update it and move to front
+	if elem, ok := c.entries[key]; ok {
+		elem.Value.(*cacheEntry).decision = d
+		elem.Value.(*cacheEntry).expiry = time.Now().Add(c.ttl)
+		c.order.MoveToFront(elem)
+		return
 	}
 
-	c.entries[key] = &cacheEntry{
+	// Evict LRU if full
+	if c.order.Len() >= c.maxSize {
+		c.evictLRU()
+	}
+
+	elem := c.order.PushFront(&cacheEntry{
+		key:      key,
 		decision: d,
 		expiry:   time.Now().Add(c.ttl),
-	}
+	})
+	c.entries[key] = elem
 }
 
 func (c *decisionCache) clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.entries = make(map[string]*cacheEntry, c.maxSize)
+	c.entries = make(map[string]*list.Element, c.maxSize)
+	c.order = list.New()
+}
+
+// evictLRU removes the single least recently used entry from the cache.
+func (c *decisionCache) evictLRU() {
+	elem := c.order.Back()
+	if elem == nil {
+		return
+	}
+	c.removeElement(elem)
+}
+
+// purgeExpired removes all entries whose TTL has expired.
+func (c *decisionCache) purgeExpired() {
+	now := time.Now()
+	for elem := c.order.Back(); elem != nil; {
+		entry := elem.Value.(*cacheEntry)
+		if now.After(entry.expiry) {
+			prev := elem.Prev()
+			c.removeElement(elem)
+			elem = prev
+		} else {
+			elem = elem.Prev()
+		}
+	}
+}
+
+// removeElement removes a list element and its map entry.
+// Must be called while c.mu is held.
+func (c *decisionCache) removeElement(elem *list.Element) {
+	entry := elem.Value.(*cacheEntry)
+	delete(c.entries, entry.key)
+	c.order.Remove(elem)
 }

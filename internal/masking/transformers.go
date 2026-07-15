@@ -121,9 +121,13 @@ func partialTC(value []byte) []byte {
 	return masked
 }
 
+// hashValue returns a hex-encoded SHA-256 prefix (16 bytes = 32 hex chars).
+// 128 bits provides a negligibly small collision probability
+// (≈2⁻⁶⁴ at 64K values under the birthday bound).
+// Downstream code must NOT depend on this length — it is an implementation detail.
 func hashValue(value []byte) []byte {
 	h := sha256.Sum256(value)
-	return []byte(hex.EncodeToString(h[:4])) // first 8 hex chars
+	return []byte(hex.EncodeToString(h[:16]))
 }
 
 func nullValue(value []byte) []byte {

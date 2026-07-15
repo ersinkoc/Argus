@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -201,8 +202,13 @@ func (s *Server) Start() error {
 		for _, p := range s.GatewayPublicPaths() {
 			auth.publicPaths[p] = true
 		}
-		// WebSocket live events and Admin UI are read-only observability (like health checks)
+		// WebSocket uses its own first-frame auth (not bearer header),
+		// so the HTTP upgrade path must be publicly accessible.
 		auth.publicPaths["/api/events/ws"] = true
+		// Wire the token validator into the EventStream for first-frame auth.
+		s.EventStream.SetAuth(func(token string) bool {
+			return subtle.ConstantTimeCompare([]byte(token), []byte(s.authToken)) == 1
+		})
 		// Admin UI paths must be public — the entire /ui/ tree is an SPA
 		auth.publicPrefixes = append(auth.publicPrefixes, "/ui/")
 		if len(s.allowedSources) > 0 {

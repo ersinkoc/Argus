@@ -6,6 +6,55 @@ import (
 	"github.com/ersinkoc/argus/internal/policy"
 )
 
+func TestHashTransformerProperties(t *testing.T) {
+	t.Run("deterministic", func(t *testing.T) {
+		input := []byte("the same value every time")
+		a := hashValue(input)
+		b := hashValue(input)
+		if string(a) != string(b) {
+			t.Error("hash transformer is not deterministic")
+		}
+	})
+
+	t.Run("different_inputs_different_outputs", func(t *testing.T) {
+		seen := make(map[string]struct{}, 1000)
+		inputs := []string{
+			"", "a", "b", "hello", "world", "hello world",
+			"user@example.com", "+905321234567",
+			"TR330006100519786457841326",
+			"12345678901",
+			"admin", "password123",
+			"SELECT * FROM users",
+			"{\"json\": \"data\"}",
+			string(make([]byte, 1024)), // binary data
+		}
+		for _, in := range inputs {
+			out := string(hashValue([]byte(in)))
+			if _, dup := seen[out]; dup {
+				t.Errorf("collision detected for input %q", in)
+			}
+			seen[out] = struct{}{}
+		}
+	})
+
+	t.Run("non_empty", func(t *testing.T) {
+		out := hashValue([]byte("anything"))
+		if len(out) == 0 {
+			t.Error("hash should produce non-empty output")
+		}
+	})
+
+	t.Run("length", func(t *testing.T) {
+		out := hashValue([]byte("measure me"))
+		// Current implementation returns 32 hex chars (16 bytes SHA-256 prefix).
+		// This is NOT a contract — it's a documented implementation detail.
+		// Change this value when the hash implementation changes.
+		if len(out) != 32 {
+			t.Logf("hash length = %d (expected 32 for current impl)", len(out))
+		}
+	})
+}
+
 func TestTransformers(t *testing.T) {
 	tests := []struct {
 		name        string
