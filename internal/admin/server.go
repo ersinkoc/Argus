@@ -161,15 +161,20 @@ func (s *Server) Start() error {
 		mux.HandleFunc("/api/classify", s.handleClassify)
 		mux.HandleFunc("/api/plugins", s.handlePlugins)
 		mux.HandleFunc("/api/test/run", handleTestRun)
-		// Admin UI — React SPA (with fallback to old dashboard)
+		// Admin UI — React SPA (with fallback to old dashboard).
+		// Both the React SPA and the legacy dashboard use inline scripts,
+		// so 'unsafe-inline' is required for script-src and style-src.
+		// A future improvement would use a Vite plugin to generate nonce/hash
+		// values at build time, removing the need for 'unsafe-inline'.
+		cspUI := CSPMiddleware("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; frame-ancestors 'none'")
 		if adminUI := NewAdminUIHandler("/ui"); adminUI != nil {
-			mux.Handle("/ui/", http.StripPrefix("/ui", adminUI))
-			mux.Handle("/ui", http.StripPrefix("/ui", adminUI))
+			mux.Handle("/ui/", cspUI(http.StripPrefix("/ui", adminUI)))
+			mux.Handle("/ui", cspUI(http.StripPrefix("/ui", adminUI)))
 		} else {
 			// Fallback to the old embedded dashboard
-			mux.HandleFunc("/ui", HandleDashboardUI)
+			mux.HandleFunc("/ui", cspUI(http.HandlerFunc(HandleDashboardUI)).ServeHTTP)
 		}
-		mux.HandleFunc("/ui/test", HandleTestRunnerUI)
+		mux.HandleFunc("/ui/test", cspUI(http.HandlerFunc(HandleTestRunnerUI)).ServeHTTP)
 	}
 
 	// Gateway endpoints (with optional API key middleware) — registered

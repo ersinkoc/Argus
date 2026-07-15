@@ -7,6 +7,41 @@ import (
 	"testing"
 )
 
+func TestCSPMiddleware(t *testing.T) {
+	policy := "default-src 'self'"
+	mw := CSPMiddleware(policy)
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		got := w.Header().Get(cspHeaderName)
+		if got != policy {
+			t.Errorf("CSP header = %q, want %q", got, policy)
+		}
+	})
+	handler := mw(inner)
+	req := httptest.NewRequest("GET", "/ui", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if !called {
+		t.Error("inner handler should have been called")
+	}
+}
+
+func TestCSPReportOnly(t *testing.T) {
+	policy := "default-src 'self'"
+	mw := CSPReportOnly(policy)
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got := w.Header().Get("Content-Security-Policy-Report-Only")
+		if got != policy {
+			t.Errorf("CSP-Report-Only header = %q, want %q", got, policy)
+		}
+	})
+	handler := mw(inner)
+	req := httptest.NewRequest("GET", "/ui", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+}
+
 func TestWriteAPIErrorShape(t *testing.T) {
 	rec := httptest.NewRecorder()
 
