@@ -30,10 +30,12 @@ type userProfile struct {
 	totalQueries  int64
 	firstSeen     time.Time
 	lastSeen      time.Time
-	// Frequency spike tracking: count queries in sliding windows
-	recentMinute int64     // queries in current minute
-	minuteStart  time.Time // start of current minute window
-	peakMinute   int64     // historical peak queries per minute
+	// Frequency spike tracking: sliding window of 6 × 10-second sub-buckets.
+	// This catches sharp bursts (e.g. 100 queries in 2 seconds) that a single
+	// per-minute counter would smooth into the minute average.
+	subBuckets    [6]int64    // 6 x 10s buckets in a rolling 1-minute window
+	bucketStart   time.Time   // start time of the current (index 0) bucket
+	peakSubRate   int64       // historical peak per-sub-bucket rate (×6 = minute-equivalent)
 }
 
 // AnomalyAlert represents a detected anomaly.
@@ -96,16 +98,47 @@ func (d *AnomalyDetector) Record(username string, cmdType CommandType, tables []
 	p.totalQueries++
 	p.lastSeen = ts
 
-	// Update frequency tracking
-	if ts.Sub(p.minuteStart) > time.Minute {
-		// New minute window
-		if p.recentMinute > p.peakMinute {
-			p.peakMinute = p.recentMinute
+	// Update frequency tracking with sub-bucket sliding window.
+	// Each bucket covers 10 seconds; 6 buckets = 1 minute rolling window.
+	if p.bucketStart.IsZero() {
+		p.bucketStart = ts
+	}
+	elapsed := ts.Sub(p.bucketStart)
+
+	// Advance buckets as needed (may skip multiple if time jumped)
+	if elapsed >= 10*time.Second {
+		steps := int(elapsed / (10 * time.Second))
+		if steps >= 6 {
+			// More than a full window elapsed — reset entirely
+			p.subBuckets = [6]int64{}
+			p.bucketStart = ts
+		} else {
+			// Shift buckets left by `steps` positions
+			copy(p.subBuckets[:], p.subBuckets[steps:])
+			for i := 6 - steps; i < 6; i++ {
+				p.subBuckets[i] = 0
+			}
+			p.bucketStart = p.bucketStart.Add(time.Duration(steps) * 10 * time.Second)
 		}
-		p.recentMinute = 1
-		p.minuteStart = ts
-	} else {
-		p.recentMinute++
+	}
+
+	// Increment current (front) bucket before peak detection so the peak
+	// reflects the state after this query (not before it).
+	p.subBuckets[0]++
+
+	// Update peak detection — compare the current sub-bucket rate
+	// (projected to minute-equivalent via ×6) against the historical peak.
+	// The max single bucket ×6 catches sharp bursts (e.g. 100 queries in
+	// 2 seconds) that a per-minute counter would smooth into the average.
+	var maxBucket int64
+	for _, v := range p.subBuckets {
+		if v > maxBucket {
+			maxBucket = v
+		}
+	}
+	minuteEq := maxBucket * 6
+	if minuteEq > p.peakSubRate {
+		p.peakSubRate = minuteEq
 	}
 }
 
@@ -164,12 +197,21 @@ func (d *AnomalyDetector) Check(username string, cmdType CommandType, tables []s
 		})
 	}
 
-	// Check frequency spike: current minute rate > 3x historical peak
-	if p.peakMinute > 0 && p.recentMinute > p.peakMinute*3 {
+	// Check frequency spike: current sub-bucket minute-equivalent rate
+	// > 3x historical peak. Using sub-buckets catches sharp bursts
+	// (e.g. 100 queries in 2 seconds) that a per-minute counter would hide.
+	var currentSubBucket int64
+	for _, v := range p.subBuckets {
+		if v > currentSubBucket {
+			currentSubBucket = v
+		}
+	}
+	burstRate := currentSubBucket * 6 // project to minute-equivalent
+	if p.peakSubRate > 0 && burstRate > p.peakSubRate*3 {
 		alerts = append(alerts, AnomalyAlert{
 			Username:    username,
 			Type:        "frequency_spike",
-			Description: fmt.Sprintf("query rate spike: %d/min vs peak %d/min", p.recentMinute, p.peakMinute),
+			Description: fmt.Sprintf("query rate spike: ~%d/min (sub-bucket peak %d/10s) vs historical peak %d/min", burstRate, currentSubBucket, p.peakSubRate),
 			Score:       0.9,
 			Timestamp:   ts,
 		})

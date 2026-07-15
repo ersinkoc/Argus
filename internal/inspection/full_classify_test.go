@@ -16,25 +16,28 @@ func TestAnomalyRecordPeakMinuteUpdate(t *testing.T) {
 		d.Record("user1", CommandSELECT, []string{"t"}, ts1)
 	}
 
-	// Verify recentMinute is 20
+	// Verify sub-bucket count is 20
 	d.mu.RLock()
 	p := d.profiles["user1"]
-	recent := p.recentMinute
+	subCount := p.subBuckets[0]
 	d.mu.RUnlock()
-	if recent != 20 {
-		t.Errorf("recentMinute = %d, want 20", recent)
+	if subCount != 20 {
+		t.Errorf("subBucket[0] = %d, want 20", subCount)
 	}
 
-	// Now record in a new minute window (>1 minute later).
-	// This should trigger the peak minute update (recentMinute > peakMinute).
+	// Now record in a new window (>60 seconds later, full window rollover).
+	// This should reset the sub-buckets and record peakSubRate.
 	ts2 := ts1.Add(2 * time.Minute)
 	d.Record("user1", CommandSELECT, []string{"t"}, ts2)
 
 	d.mu.RLock()
-	peak := d.profiles["user1"].peakMinute
+	peak := p.peakSubRate
 	d.mu.RUnlock()
-	if peak != 20 {
-		t.Errorf("peakMinute = %d, want 20 (updated from previous minute)", peak)
+	// 20 queries in one sub-bucket = 20*6 = 120/min minute-equivalent.
+	// With the increment-before-peak fix, the peak reflects the state
+	// after all 20 queries, so subBuckets[0]=20 → minuteEq=120.
+	if peak != 120 {
+		t.Errorf("peakSubRate = %d, want 120 (20*6 = 120/min equiv)", peak)
 	}
 }
 

@@ -72,15 +72,16 @@ func TestAnomalyFrequencySpike(t *testing.T) {
 	d := NewAnomalyDetector(0)
 	ts := fixedTime(14, 0)
 
-	// Build baseline: 200 queries, peak 10/min
+	// Build baseline: 200 queries, peak 10/min (represented as peakSubRate = 60 minute-equiv)
 	for i := 0; i < 200; i++ {
 		d.Record("spike_user", CommandSELECT, []string{"t"}, ts)
 	}
-	// Force minute rollover
+	// Force spike: sub-bucket peak 50 in one 10s bucket = 300/min minute-equiv
+	// which is > 3× peak of 60/min (10/min * 6).
 	d.mu.Lock()
 	p := d.profiles["spike_user"]
-	p.peakMinute = 10
-	p.recentMinute = 50 // 5x peak
+	p.subBuckets = [6]int64{50, 0, 0, 0, 0, 0} // 50/10s = 300/min equiv
+	p.peakSubRate = 60                          // 10/min * 6
 	d.mu.Unlock()
 
 	alerts := d.Check("spike_user", CommandSELECT, []string{"t"}, ts)
@@ -91,7 +92,7 @@ func TestAnomalyFrequencySpike(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("50/min vs peak 10/min should trigger frequency_spike")
+		t.Error("300/min (sub-bucket burst) vs peak 60/min should trigger frequency_spike")
 	}
 }
 
