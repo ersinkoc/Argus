@@ -1,6 +1,7 @@
 package masking
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/ersinkoc/argus/internal/policy"
@@ -51,6 +52,275 @@ func TestHashTransformerProperties(t *testing.T) {
 		// Change this value when the hash implementation changes.
 		if len(out) != 32 {
 			t.Logf("hash length = %d (expected 32 for current impl)", len(out))
+		}
+	})
+}
+
+// --- Property-based tests for all transformers ---
+
+func TestRedactProperties(t *testing.T) {
+	t.Run("replaces_non_empty_with_asterisks", func(t *testing.T) {
+		inputs := []string{"anything", "x", " ", "\n", "long text with spaces"}
+		for _, in := range inputs {
+			out := string(redact([]byte(in)))
+			if out != "***" {
+				t.Errorf("redact(%q) = %q, want ***", in, out)
+			}
+		}
+	})
+	t.Run("preserves_empty_input", func(t *testing.T) {
+		out := redact([]byte(""))
+		if len(out) != 0 {
+			t.Errorf("redact('') should preserve empty input, got %q", out)
+		}
+	})
+	t.Run("always_same_length", func(t *testing.T) {
+		for _, in := range []string{"a", "ab", "abc", "abcd", strings.Repeat("x", 1000)} {
+			out := string(redact([]byte(in)))
+			if out != "***" {
+				t.Errorf("redact(%q) = %q, want *** (len=%d)", in, out, len(in))
+			}
+		}
+	})
+}
+
+func TestPartialEmailProperties(t *testing.T) {
+	t.Run("preserves_domain", func(t *testing.T) {
+		inputs := []string{
+			"john@example.com",
+			"a@b.co",
+			"user.name+tag@domain.org",
+			"x@y",
+		}
+		for _, in := range inputs {
+			out := string(partialEmail([]byte(in)))
+			if !strings.Contains(out, "@") {
+				t.Errorf("partialEmail(%q) = %q, should contain @", in, out)
+				continue
+			}
+			parts := strings.SplitN(in, "@", 2)
+			if len(parts) == 2 && !strings.HasSuffix(out, parts[1]) {
+				t.Errorf("partialEmail(%q) = %q, should end with domain %q", in, out, parts[1])
+			}
+		}
+	})
+	t.Run("masks_local_part", func(t *testing.T) {
+		out := string(partialEmail([]byte("john@example.com")))
+		// Should start with first char + "***"
+		if !strings.HasPrefix(out, "j***") {
+			t.Errorf("partialEmail('john@example.com') = %q, want j***...", out)
+		}
+	})
+	t.Run("fallback_for_no_at", func(t *testing.T) {
+		inputs := []string{"", "invalid", "noatsign", "@"}
+		for _, in := range inputs {
+			out := string(partialEmail([]byte(in)))
+			if out != "***" {
+				t.Errorf("partialEmail(%q) = %q, want ***", in, out)
+			}
+		}
+	})
+
+}
+
+func TestPartialPhoneProperties(t *testing.T) {
+	t.Run("preserves_last_4_digits", func(t *testing.T) {
+		inputs := []string{
+			"+905321234567",
+			"5551234567",
+			"+1 (555) 123-4567",
+			"123456789012345",
+		}
+		for _, in := range inputs {
+			out := string(partialPhone([]byte(in)))
+			// Extract last 4 digits from input
+			var inDigits []byte
+			for _, ch := range in {
+				if ch >= '0' && ch <= '9' {
+					inDigits = append(inDigits, byte(ch))
+				}
+			}
+			if len(inDigits) >= 4 {
+				last4 := string(inDigits[len(inDigits)-4:])
+				if !strings.HasSuffix(out, last4) {
+					t.Errorf("partialPhone(%q) = %q, should end with %q", in, out, last4)
+				}
+			}
+		}
+	})
+	t.Run("format_is_asterisks_dash", func(t *testing.T) {
+		inputs := []string{"+905321234567", "5551234567", "1234567890"}
+		for _, in := range inputs {
+			out := string(partialPhone([]byte(in)))
+			if !strings.Contains(out, "***-***-") {
+				t.Errorf("partialPhone(%q) = %q, should contain ***-***-", in, out)
+			}
+		}
+	})
+	t.Run("fallback_for_short_input", func(t *testing.T) {
+		inputs := []string{"", "12", "abc", "12"}
+		for _, in := range inputs {
+			out := string(partialPhone([]byte(in)))
+			if out != "***" {
+				t.Errorf("partialPhone(%q) = %q, want ***", in, out)
+			}
+		}
+	})
+	t.Run("deterministic", func(t *testing.T) {
+		in := []byte("+905321234567")
+		a := string(partialPhone(in))
+		b := string(partialPhone(in))
+		if a != b {
+			t.Errorf("partialPhone not deterministic: %q vs %q", a, b)
+		}
+	})
+}
+
+func TestPartialCardProperties(t *testing.T) {
+	t.Run("preserves_last_4_digits", func(t *testing.T) {
+		inputs := []string{
+			"4532123456785678",
+			"4111111111111111",
+			"5500000000000004",
+			"12345678",
+		}
+		for _, in := range inputs {
+			out := string(partialCard([]byte(in)))
+			var inDigits []byte
+			for _, ch := range in {
+				if ch >= '0' && ch <= '9' {
+					inDigits = append(inDigits, byte(ch))
+				}
+			}
+			if len(inDigits) >= 4 {
+				last4 := string(inDigits[len(inDigits)-4:])
+				if !strings.HasSuffix(out, last4) {
+					t.Errorf("partialCard(%q) = %q, should end with %q", in, out, last4)
+				}
+			}
+		}
+	})
+	t.Run("format_is_asterisks_dash", func(t *testing.T) {
+		inputs := []string{"4532123456785678", "4111111111111111"}
+		for _, in := range inputs {
+			out := string(partialCard([]byte(in)))
+			if !strings.Contains(out, "****-****-****-") {
+				t.Errorf("partialCard(%q) = %q, should contain ****-****-****-", in, out)
+			}
+		}
+	})
+	t.Run("fallback_for_short_input", func(t *testing.T) {
+		in := "12"
+		out := string(partialCard([]byte(in)))
+		if out != "****-****-****-****" {
+			t.Errorf("partialCard(%q) = %q, want ****-****-****-****", in, out)
+		}
+	})
+	t.Run("deterministic", func(t *testing.T) {
+		in := []byte("4532123456785678")
+		a := string(partialCard(in))
+		b := string(partialCard(in))
+		if a != b {
+			t.Errorf("partialCard not deterministic: %q vs %q", a, b)
+		}
+	})
+}
+
+func TestPartialIBANProperties(t *testing.T) {
+	t.Run("preserves_country_and_last_two", func(t *testing.T) {
+		inputs := []string{
+			"TR330006100519786457841326",
+			"DE89370400440532013000",
+			"GB29NWBK60161331926819",
+		}
+		for _, in := range inputs {
+			out := string(partialIBAN([]byte(in)))
+			if len(in) >= 4 {
+				prefix := in[:2]
+				suffix := in[len(in)-2:]
+				if !strings.HasPrefix(out, prefix) {
+					t.Errorf("partialIBAN(%q) = %q, should start with %q", in, out, prefix)
+				}
+				if !strings.HasSuffix(out, suffix) {
+					t.Errorf("partialIBAN(%q) = %q, should end with %q", in, out, suffix)
+				}
+			}
+		}
+	})
+	t.Run("fallback_for_short_input", func(t *testing.T) {
+		inputs := []string{"", "AB", "ABC"}
+		for _, in := range inputs {
+			out := string(partialIBAN([]byte(in)))
+			if out != "***" {
+				t.Errorf("partialIBAN(%q) = %q, want ***", in, out)
+			}
+		}
+	})
+	t.Run("deterministic", func(t *testing.T) {
+		in := []byte("TR330006100519786457841326")
+		a := string(partialIBAN(in))
+		b := string(partialIBAN(in))
+		if a != b {
+			t.Errorf("partialIBAN not deterministic: %q vs %q", a, b)
+		}
+	})
+}
+
+func TestPartialTCProperties(t *testing.T) {
+	t.Run("preserves_last_2_digits", func(t *testing.T) {
+		inputs := []string{"12345678901", "98765432100", "11111111111"}
+		for _, in := range inputs {
+			out := string(partialTC([]byte(in)))
+			if len(in) >= 2 {
+				suffix := in[len(in)-2:]
+				if !strings.HasSuffix(out, suffix) {
+					t.Errorf("partialTC(%q) = %q, should end with %q", in, out, suffix)
+				}
+			}
+		}
+	})
+	t.Run("masks_with_asterisks_same_length", func(t *testing.T) {
+		inputs := []string{"12345678901", "98765432100", "abc123"}
+		for _, in := range inputs {
+			out := string(partialTC([]byte(in)))
+			if len(out) != len(in) {
+				t.Errorf("partialTC(%q) = %q (len=%d), should have same length %d", in, out, len(out), len(in))
+			}
+			// All but last 2 should be '*'
+			for i := 0; i < len(out)-2; i++ {
+				if out[i] != '*' {
+					t.Errorf("partialTC(%q) = %q, position %d should be '*'", in, out, i)
+				}
+			}
+		}
+	})
+	t.Run("fallback_for_short_input", func(t *testing.T) {
+		inputs := []string{"", "x", "a"}
+		for _, in := range inputs {
+			out := string(partialTC([]byte(in)))
+			if out != "***" {
+				t.Errorf("partialTC(%q) = %q, want ***", in, out)
+			}
+		}
+	})
+	t.Run("deterministic", func(t *testing.T) {
+		in := []byte("12345678901")
+		a := string(partialTC(in))
+		b := string(partialTC(in))
+		if a != b {
+			t.Errorf("partialTC not deterministic: %q vs %q", a, b)
+		}
+	})
+}
+
+func TestNullProperties(t *testing.T) {
+	t.Run("always_NULL", func(t *testing.T) {
+		inputs := []string{"", "anything", " ", "\n", strings.Repeat("x", 100)}
+		for _, in := range inputs {
+			out := string(nullValue([]byte(in)))
+			if out != "NULL" {
+				t.Errorf("nullValue(%q) = %q, want NULL", in, out)
+			}
 		}
 	})
 }
