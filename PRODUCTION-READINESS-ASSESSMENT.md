@@ -21,7 +21,7 @@
 | **Security** | ⚠️ Very Good (one known gap below) | Stable |
 | **Infrastructure** | ✅ Excellent (Docker, K8s, Helm, cross-compile) | Stable |
 
-**Bottom Line:** Argus is safe to deploy in production for PostgreSQL, MySQL, and MSSQL workloads behind a TLS-terminating reverse proxy. The single gap that blocks certain production scenarios is the **lack of proxy auth mode** (credential injection) — see §7 below.
+**Bottom Line:** Argus is safe to deploy in production for PostgreSQL, MySQL, and MSSQL workloads behind a TLS-terminating reverse proxy. Proxy auth mode (credential injection) is now implemented for all three protocols — see §7 below.
 
 ---
 
@@ -123,7 +123,7 @@ Argus **never** sees, validates, or replaces credentials. This means:
 
 - **End users must know the actual database password** to connect through Argus. There is no "proxy secret" that decouples the user's login from the database credential.
 - **Password rotation** requires updating every application that connects through Argus.
-- **Credential injection** (where Argus authenticates the client with a proxy secret, then authenticates to the database with a Vault-managed credential) does not exist.
+- **Credential injection** (where Argus authenticates the client with a proxy secret, then authenticates to the database with a Vault-managed credential) is implemented for PostgreSQL (SCRAM-SHA-256), MySQL (mysql_native_password), and MSSQL (TDS Login7) — see §7 below.
 
 **Per-protocol implementation effort (realistic estimates):**
 
@@ -211,11 +211,16 @@ type IdentityProvider interface {
 ```
 Clean interface, LDAP provider implements it.
 
-### Claim 4 (⚠️ PARTIALLY CORRECT): "Credential injection on Argus roadmap"
-**The documentation says it will happen, but the code does not implement it.** `docs/IMPLEMENTATION.md:26` states:
+### Claim 4 (✅ NOW IMPLEMENTED): "Credential injection on Argus roadmap"
+**The documentation said it would happen, and it has been implemented.** `docs/IMPLEMENTATION.md:26` stated:
 > "**Proxy auth mode** (Phase 2) will decouple client identity from database credentials."
 
-However, the task tracking in `docs/TASKS.md` marks Phase 2 as **"Complete"** — meaning this item was deferred or descoped from the original roadmap. It is **not** scheduled in any remaining task list.
+Proxy auth mode is now implemented for all three supported SQL protocols:
+- **PostgreSQL**: SCRAM-SHA-256 with full SASL state machine (`internal/protocol/pg/proxy_auth.go`)
+- **MySQL**: mysql_native_password with self-generated scramble (`internal/protocol/mysql/proxy_auth.go`)
+- **MSSQL**: TDS Login7 with encrypted password (`internal/protocol/mssql/proxy_auth.go`)
+
+The `-resolve-url` flag activates credential injection through an external identity provider (e.g. Monopam). See `PROXY-AUTH-DECISION.md` for the full architecture.
 
 ### Claim 5 (✅ CORRECT): "Pure passthrough — credentials relayed verbatim"
 Confirmed. `internal/core/pipeline.go:411-412` calls `handler.Handshake()` which in the PG case (`pg/auth.go:90`) calls `relayAuth()` — a pure message relay between client and backend. Argus observes the username but never replaces credentials.
@@ -406,7 +411,7 @@ The tests pass at 95.2% coverage with 2 known non-critical failures. The React 1
 │ Protocol Support (MongoDB) │ ████████░░░░░░░░░░░░  4/10          │
 │ Security                   │ ██████████████████░░  9/10          │
 │ Auth Passthrough           │ ████████████████████ 10/10          │
-│ Proxy Auth Mode            │ ░░░░░░░░░░░░░░░░░░░░  0/10          │
+│ Proxy Auth Mode            │ ████████████████████ 10/10          │
 │ Admin API                  │ ████████████████████ 10/10          │
 │ Admin UI                   │ ████████████████████ 10/10          │
 │ Audit & Observability      │ ██████████████████░░  9/10          │
@@ -414,7 +419,7 @@ The tests pass at 95.2% coverage with 2 known non-critical failures. The React 1
 │ Deployment (K8s)           │ ████████████████████ 10/10          │
 │ Operational Hardening      │ ████████████████░░░░  8/10          │
 ├────────────────────────────┼─────────────────────────────────────┤
-│ OVERALL                    │ ██████████████████░░  86/120 (72%)  │
+│ OVERALL                    │ ████████████████████  96/120 (80%)  │
 └────────────────────────────┴─────────────────────────────────────┘
 ```
 
