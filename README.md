@@ -176,6 +176,44 @@ Plus: role-based matching (`!dba`), command-type filtering, database/table wildc
 - **Plugin system** — custom transformers, audit writers, auth providers
 - **Web dashboard** — embedded real-time UI at `/ui` with auto-refresh + interactive test runner at `/ui/test`
 
+### Identity Resolution & Proxy Auth Mode
+
+Argus supports pluggable external identity resolution through a **PostAuth pipeline hook**. After each successful protocol handshake, Argus can call an external resolve API to determine the real database target and credential for the session.
+
+```
+Client → Argus → [handshake] → POST /api/db/resolve → Monopam/Vault → resolved target
+                                                        ↓
+                                              [log | block | inject]
+```
+
+**Two modes of operation:**
+
+| Mode | Behavior | Status |
+|------|----------|--------|
+| **Block mode** | Resolve API returns 403 → connection rejected (unknown users) | ✅ Available now |
+| **Inject mode** | Resolve API returns target + credential → Argus re-authenticates | 🔧 Planned (PG SCRAM-SHA-256, ~3wk) |
+
+**Command-line flags:**
+
+```bash
+argus -resolve-url http://monopam:5000/api/db/resolve \
+      -resolve-api-key mcp-key-xxx
+```
+
+**Resolve API contract** (Go `resolve` client ↔ Monopam .NET):
+
+```json
+POST /api/db/resolve
+{"username":"jane_app","database":"production","protocol":"postgresql","client_ip":"10.0.1.50"}
+
+200 OK
+{"host":"db-primary.internal","port":5432,"protocol":"postgresql",
+ "username":"monopam_svc","password":"vault-secret",
+ "auth_method":"scram_sha_256","roles":["app_service"]}
+```
+
+The [Monopam](https://github.com/ersinkoc/Monopam) .NET project implements the resolve API with HashiCorp Vault credential store, configurable target mappings, and production/development mode switching.
+
 ---
 
 ## Quick Start
