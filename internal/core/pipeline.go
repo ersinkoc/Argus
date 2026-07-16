@@ -450,7 +450,18 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 	// Create session
 	sess := p.sessionManager.Create(sessionInfo, clientConn)
 	sess.BackendConn = backendNetConn
-	sess.Roles = policy.ResolveUserRoles(sessionInfo.Username, p.policyEngine.Loader().Current().Roles)
+
+	// Resolve roles from current policy set. If no policies are loaded,
+	// Current() returns nil — use an empty map instead of panicking.
+	// The policy engine itself will block with "no policies loaded — fail-closed"
+	// when Evaluate() is called without policies.
+	ps := p.policyEngine.Loader().Current()
+	if ps != nil {
+		sess.Roles = policy.ResolveUserRoles(sessionInfo.Username, ps.Roles)
+	} else {
+		sess.Roles = nil
+		slog.Warn("no policy set loaded — connections will be blocked until policies are loaded")
+	}
 
 	metrics.Global.ConnectionsTotal.Add(1)
 	p.auditLogger.Log(audit.Event{
@@ -464,6 +475,32 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 	})
 
 	slog.Info("session opened", "session_id", sess.ID[:8], "user", sess.Username, "database", sess.Database, "client_ip", remoteAddr.IP)
+
+	// PostAuth hooks (identity resolution, external auth checks, target selection)
+	if p.hookChain.Count() > 0 {
+		hctx := &HookContext{
+			Stage: HookPostAuth,
+			Session: &SessionSnapshot{
+				ID:       sess.ID,
+				Username: sess.Username,
+				Database: sess.Database,
+				ClientIP: sess.ClientIP.String(),
+				Roles:    sess.Roles,
+			},
+		}
+		if err := p.hookChain.RunPostAuth(hctx); err != nil {
+			p.auditLogger.Log(audit.Event{
+				EventType: audit.AuthFailure.String(),
+				SessionID: sess.ID,
+				Username:  sess.Username,
+				ClientIP:  remoteAddr.IP.String(),
+				Action:    "block",
+				Error:     err.Error(),
+			})
+			handler.WriteError(context.Background(), clientConn, "28000", "Access denied: "+err.Error())
+			return
+		}
+	}
 
 	// Command loop
 	p.commandLoop(ctx, sess, handler, clientConn, backendNetConn)

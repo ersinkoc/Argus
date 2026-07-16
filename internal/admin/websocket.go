@@ -346,15 +346,19 @@ func sendCloseFrame(conn net.Conn, statusCode int, reason string) {
 // Empty Origin is allowed for non-browser clients. Browser-originated requests
 // must match the configured allowlist exactly.
 func (es *EventStream) isValidOrigin(origin string) bool {
+	// Empty Origin (no header) is always allowed for non-browser clients
+	// such as curl, CLI tools, and programmatic WebSocket consumers.
 	if origin == "" {
 		return true
 	}
 
 	es.mu.RLock()
 	defer es.mu.RUnlock()
-	// Empty allowlist means all origins are permitted.
+	// Empty allowlist with a non-empty Origin means reject all.
+	// Operators must explicitly configure allowed origins for browser clients.
 	if len(es.allowedOrigins) == 0 {
-		return true
+		slog.Warn("WebSocket origin rejected (allowlist empty)", "origin", origin)
+		return false
 	}
 	_, allowed := es.allowedOrigins[origin]
 	if !allowed {

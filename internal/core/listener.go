@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"runtime"
 	"sync"
 
 	"github.com/ersinkoc/argus/internal/config"
@@ -113,7 +114,10 @@ func (l *Listener) acceptLoop() {
 			defer func() { <-l.connSem }()
 			defer func() {
 				if r := recover(); r != nil {
-					slog.Error("panic in connection handler", "panic", r)
+					// Capture stack trace for debugging
+					buf := make([]byte, 4096)
+					n := runtime.Stack(buf, false)
+					slog.Error("panic in connection handler", "panic", r, "stack", string(buf[:n]))
 				}
 			}()
 			if l.handler != nil {

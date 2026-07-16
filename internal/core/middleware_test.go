@@ -12,6 +12,7 @@ import (
 
 type mockHook struct {
 	name        string
+	postAuthFn  func(hctx *HookContext) error
 	preEvalFn   func(hctx *HookContext) error
 	postEvalFn  func(hctx *HookContext) error
 	postExecFn  func(hctx *HookContext) error
@@ -19,6 +20,14 @@ type mockHook struct {
 }
 
 func (m *mockHook) Name() string { return m.name }
+
+func (m *mockHook) PostAuth(hctx *HookContext) error {
+	m.callCount.Add(1)
+	if m.postAuthFn != nil {
+		return m.postAuthFn(hctx)
+	}
+	return nil
+}
 
 func (m *mockHook) PreEval(hctx *HookContext) error {
 	m.callCount.Add(1)
@@ -94,6 +103,71 @@ func TestPipelineHookChainRunPreEval(t *testing.T) {
 
 	if len(callOrder) != 2 || callOrder[0] != "a" || callOrder[1] != "b" {
 		t.Errorf("call order = %v, want [a b]", callOrder)
+	}
+}
+
+func TestPipelineHookChainRunPostAuth(t *testing.T) {
+	chain := NewPipelineHookChain()
+	var callOrder []string
+	var mu mockMutex
+
+	h1 := &mockHook{
+		name: "hook_a",
+		postAuthFn: func(hctx *HookContext) error {
+			mu.Lock()
+			callOrder = append(callOrder, "a")
+			mu.Unlock()
+			return nil
+		},
+	}
+	h2 := &mockHook{
+		name: "hook_b",
+		postAuthFn: func(hctx *HookContext) error {
+			mu.Lock()
+			callOrder = append(callOrder, "b")
+			mu.Unlock()
+			return nil
+		},
+	}
+
+	chain.Add(h1)
+	chain.Add(h2)
+
+	hctx := &HookContext{Stage: HookPostAuth, Session: &SessionSnapshot{ID: "s1"}}
+	if err := chain.RunPostAuth(hctx); err != nil {
+		t.Fatalf("RunPostAuth failed: %v", err)
+	}
+
+	if len(callOrder) != 2 || callOrder[0] != "a" || callOrder[1] != "b" {
+		t.Errorf("call order = %v, want [a b]", callOrder)
+	}
+}
+
+func TestPipelineHookChainPostAuthErrorStopsChain(t *testing.T) {
+	chain := NewPipelineHookChain()
+	var hookBCalled bool
+
+	chain.Add(&mockHook{
+		name: "failing",
+		postAuthFn: func(hctx *HookContext) error {
+			return errors.New("fail")
+		},
+	})
+	chain.Add(&mockHook{
+		name: "after_fail",
+		postAuthFn: func(hctx *HookContext) error {
+			hookBCalled = true
+			return nil
+		},
+	})
+
+	hctx := &HookContext{Stage: HookPostAuth, Session: &SessionSnapshot{ID: "s1"}}
+	if err := chain.RunPostAuth(hctx); err == nil {
+		t.Error("expected error from failing hook")
+	}
+
+	if hookBCalled {
+		t.Error("second hook should not be called after first fails")
 	}
 }
 
@@ -183,6 +257,16 @@ func TestPipelineHookContextStage(t *testing.T) {
 
 	chain.Add(&mockHook{
 		name: "stage_check",
+		postAuthFn: func(hctx *HookContext) error {
+			stages["postauth"] = hctx.Stage
+			if hctx.Session == nil {
+				t.Error("PostAuth: Session should not be nil")
+			}
+			if hctx.Session.ID != "s1" {
+				t.Errorf("PostAuth: Session.ID = %s", hctx.Session.ID)
+			}
+			return nil
+		},
 		preEvalFn: func(hctx *HookContext) error {
 			stages["pre"] = hctx.Stage
 			if hctx.Session == nil {
@@ -203,6 +287,10 @@ func TestPipelineHookContextStage(t *testing.T) {
 		},
 	})
 
+	chain.RunPostAuth(&HookContext{
+		Stage:   HookPostAuth,
+		Session: &SessionSnapshot{ID: "s1"},
+	})
 	chain.RunPreEval(&HookContext{
 		Stage:   HookPreEval,
 		Session: &SessionSnapshot{ID: "s1"},
@@ -218,6 +306,9 @@ func TestPipelineHookContextStage(t *testing.T) {
 		Session:  &SessionSnapshot{ID: "s1"},
 	})
 
+	if stages["postauth"] != HookPostAuth {
+		t.Errorf("postauth stage = %v, want %v", stages["postauth"], HookPostAuth)
+	}
 	if stages["pre"] != HookPreEval {
 		t.Errorf("pre stage = %v, want %v", stages["pre"], HookPreEval)
 	}
@@ -233,6 +324,9 @@ func TestPipelineHookChainEmpty(t *testing.T) {
 	chain := NewPipelineHookChain()
 
 	// Should not panic
+	if err := chain.RunPostAuth(&HookContext{}); err != nil {
+		t.Errorf("empty chain RunPostAuth: %v", err)
+	}
 	if err := chain.RunPreEval(&HookContext{}); err != nil {
 		t.Errorf("empty chain RunPreEval: %v", err)
 	}

@@ -19,6 +19,7 @@ import (
 	"github.com/ersinkoc/argus/internal/inspection"
 	"github.com/ersinkoc/argus/internal/masking"
 	"github.com/ersinkoc/argus/internal/policy"
+	"github.com/ersinkoc/argus/internal/resolve"
 	"github.com/ersinkoc/argus/internal/session"
 )
 
@@ -31,6 +32,8 @@ func main() {
 	configPath := flag.String("config", "argus.json", "Path to configuration file")
 	showVersion := flag.Bool("version", false, "Show version and exit")
 	validateOnly := flag.Bool("validate", false, "Validate configuration and exit")
+	resolveURL := flag.String("resolve-url", "", "Monopam resolve API endpoint (e.g. http://monopam:8080/api/db/resolve)")
+	resolveAPIKey := flag.String("resolve-api-key", "", "API key for the resolve endpoint")
 	flag.Parse()
 
 	if *showVersion {
@@ -45,14 +48,14 @@ func main() {
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
-	if err := run(context.Background(), *configPath, *validateOnly, sigCh, os.Stdout); err != nil {
+	if err := run(context.Background(), *configPath, *validateOnly, *resolveURL, *resolveAPIKey, sigCh, os.Stdout); err != nil {
 		slog.Error("fatal", "error", err)
 		os.Exit(1)
 	}
 }
 
 // run executes the main application logic. sigCh can be nil (defaults to OS signals).
-func run(ctx context.Context, configPath string, validateOnly bool, sigCh <-chan os.Signal, output io.Writer) error {
+func run(ctx context.Context, configPath string, validateOnly bool, resolveURL, resolveAPIKey string, sigCh <-chan os.Signal, output io.Writer) error {
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -104,6 +107,18 @@ func run(ctx context.Context, configPath string, validateOnly bool, sigCh <-chan
 
 	setupRewriter(cfg, proxy)
 	setupSlowQueryLogger(cfg, proxy, auditLogger)
+
+	// Identity resolution hook (optional).
+	// When a resolve URL is configured, Argus calls Monopam's /api/db/resolve
+	// after each protocol handshake to resolve the real database target and
+	// credential for the session.
+	if resolveURL != "" {
+		resolveClient := resolve.NewClient(resolveURL, resolveAPIKey)
+		resolveAdapter := &monopamResolver{client: resolveClient}
+		resolveHook := core.NewIdentityResolverHook(resolveAdapter)
+		proxy.SetPipelineHooks(resolveHook)
+		slog.Info("identity resolution enabled", "endpoint", resolveURL)
+	}
 
 	if err := proxy.Start(); err != nil {
 		return fmt.Errorf("failed to start proxy: %w", err)
@@ -413,4 +428,35 @@ func countErrors(issues []policy.ValidationIssue) int {
 		}
 	}
 	return n
+}
+
+// ── Resolve API adapter ─────────────────────────────────────────────
+
+// monopamResolver adapts resolve.Client to the core.IdentityResolver interface.
+// It converts between the resolve package types and the core package types.
+type monopamResolver struct {
+	client *resolve.Client
+}
+
+func (a *monopamResolver) Resolve(ctx context.Context, identity *core.ResolveIdentity) (*core.ResolvedIdentity, error) {
+	req := &resolve.ResolveRequest{
+		Username: identity.Username,
+		Database: identity.Database,
+		ClientIP: identity.ClientIP,
+		Protocol: identity.Protocol,
+	}
+
+	target, err := a.client.Resolve(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return &core.ResolvedIdentity{
+		Host:       target.Host,
+		Port:       target.Port,
+		Username:   target.Username,
+		Password:   target.Password,
+		AuthMethod: target.AuthMethod,
+		Roles:      target.Roles,
+	}, nil
 }

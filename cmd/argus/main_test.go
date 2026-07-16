@@ -322,7 +322,7 @@ func TestSetupAdminSeparateAddresses(t *testing.T) {
 func TestRunValidateOnly(t *testing.T) {
 	cfgPath := writeTestConfig(t, nil)
 	var buf bytes.Buffer
-	err := run(context.Background(), cfgPath, true, nil, &buf)
+	err := run(context.Background(), cfgPath, true, "", "", nil, &buf)
 	if err != nil {
 		t.Fatalf("run validate-only: %v", err)
 	}
@@ -332,7 +332,7 @@ func TestRunValidateOnly(t *testing.T) {
 }
 
 func TestRunConfigLoadError(t *testing.T) {
-	err := run(context.Background(), "/nonexistent/path.json", false, nil, &bytes.Buffer{})
+	err := run(context.Background(), "/nonexistent/path.json", false, "", "", nil, &bytes.Buffer{})
 	if err == nil {
 		t.Fatal("expected error for nonexistent config")
 	}
@@ -346,7 +346,7 @@ func TestRunMinimalStartAndShutdown(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfgPath, false, sigCh, &buf)
+		done <- run(context.Background(), cfgPath, false, "", "", sigCh, &buf)
 	}()
 
 	// Give it time to start
@@ -373,7 +373,7 @@ func TestRunWithSIGHUPThenSIGINT(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfgPath, false, sigCh, &buf)
+		done <- run(context.Background(), cfgPath, false, "", "", sigCh, &buf)
 	}()
 
 	time.Sleep(200 * time.Millisecond)
@@ -404,7 +404,7 @@ func TestRunWithMetricsEnabled(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfgPath, false, sigCh, &buf)
+		done <- run(context.Background(), cfgPath, false, "", "", sigCh, &buf)
 	}()
 
 	time.Sleep(300 * time.Millisecond)
@@ -435,7 +435,7 @@ func TestRunWithAuditFileOutput(t *testing.T) {
 	sigCh := make(chan os.Signal, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfgPath, false, sigCh, &bytes.Buffer{})
+		done <- run(context.Background(), cfgPath, false, "", "", sigCh, &bytes.Buffer{})
 	}()
 
 	time.Sleep(200 * time.Millisecond)
@@ -473,7 +473,7 @@ func TestRunWithAuditRotation(t *testing.T) {
 	sigCh := make(chan os.Signal, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfgPath, false, sigCh, &bytes.Buffer{})
+		done <- run(context.Background(), cfgPath, false, "", "", sigCh, &bytes.Buffer{})
 	}()
 
 	time.Sleep(200 * time.Millisecond)
@@ -502,7 +502,7 @@ func TestRunWithStdoutAudit(t *testing.T) {
 	sigCh := make(chan os.Signal, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfgPath, false, sigCh, &bytes.Buffer{})
+		done <- run(context.Background(), cfgPath, false, "", "", sigCh, &bytes.Buffer{})
 	}()
 
 	time.Sleep(200 * time.Millisecond)
@@ -532,7 +532,7 @@ func TestRunWithWebhook(t *testing.T) {
 	sigCh := make(chan os.Signal, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfgPath, false, sigCh, &bytes.Buffer{})
+		done <- run(context.Background(), cfgPath, false, "", "", sigCh, &bytes.Buffer{})
 	}()
 
 	time.Sleep(200 * time.Millisecond)
@@ -560,7 +560,7 @@ func TestRunWithSessionLimiter(t *testing.T) {
 	sigCh := make(chan os.Signal, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfgPath, false, sigCh, &bytes.Buffer{})
+		done <- run(context.Background(), cfgPath, false, "", "", sigCh, &bytes.Buffer{})
 	}()
 
 	time.Sleep(200 * time.Millisecond)
@@ -587,7 +587,7 @@ func TestRunWithRewriter(t *testing.T) {
 	sigCh := make(chan os.Signal, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfgPath, false, sigCh, &bytes.Buffer{})
+		done <- run(context.Background(), cfgPath, false, "", "", sigCh, &bytes.Buffer{})
 	}()
 
 	time.Sleep(200 * time.Millisecond)
@@ -611,7 +611,7 @@ func TestRunWithSlowQuery(t *testing.T) {
 	sigCh := make(chan os.Signal, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfgPath, false, sigCh, &bytes.Buffer{})
+		done <- run(context.Background(), cfgPath, false, "", "", sigCh, &bytes.Buffer{})
 	}()
 
 	time.Sleep(200 * time.Millisecond)
@@ -635,7 +635,7 @@ func TestRunWithSlowQueryInvalidThreshold(t *testing.T) {
 	sigCh := make(chan os.Signal, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfgPath, false, sigCh, &bytes.Buffer{})
+		done <- run(context.Background(), cfgPath, false, "", "", sigCh, &bytes.Buffer{})
 	}()
 
 	time.Sleep(200 * time.Millisecond)
@@ -669,7 +669,7 @@ func TestRunWithPolicyFiles(t *testing.T) {
 	sigCh := make(chan os.Signal, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfgPath, false, sigCh, &bytes.Buffer{})
+		done <- run(context.Background(), cfgPath, false, "", "", sigCh, &bytes.Buffer{})
 	}()
 
 	time.Sleep(200 * time.Millisecond)
@@ -703,7 +703,7 @@ func TestRunWithBadPolicyFiles(t *testing.T) {
 	sigCh := make(chan os.Signal, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfgPath, false, sigCh, &bytes.Buffer{})
+		done <- run(context.Background(), cfgPath, false, "", "", sigCh, &bytes.Buffer{})
 	}()
 
 	time.Sleep(200 * time.Millisecond)
@@ -735,7 +735,7 @@ func TestRunWithRecordFile(t *testing.T) {
 	sigCh := make(chan os.Signal, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfgPath, false, sigCh, &bytes.Buffer{})
+		done <- run(context.Background(), cfgPath, false, "", "", sigCh, &bytes.Buffer{})
 	}()
 
 	time.Sleep(200 * time.Millisecond)
@@ -765,7 +765,7 @@ func TestRunWithBadRecordFile(t *testing.T) {
 	sigCh := make(chan os.Signal, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfgPath, false, sigCh, &bytes.Buffer{})
+		done <- run(context.Background(), cfgPath, false, "", "", sigCh, &bytes.Buffer{})
 	}()
 
 	time.Sleep(200 * time.Millisecond)
@@ -800,7 +800,7 @@ func TestRunWithMetricsAndAdminFull(t *testing.T) {
 	sigCh := make(chan os.Signal, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfgPath, false, sigCh, &bytes.Buffer{})
+		done <- run(context.Background(), cfgPath, false, "", "", sigCh, &bytes.Buffer{})
 	}()
 
 	time.Sleep(300 * time.Millisecond)
@@ -833,7 +833,7 @@ func TestRunWithGateway(t *testing.T) {
 	sigCh := make(chan os.Signal, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfgPath, false, sigCh, &bytes.Buffer{})
+		done <- run(context.Background(), cfgPath, false, "", "", sigCh, &bytes.Buffer{})
 	}()
 
 	time.Sleep(300 * time.Millisecond)
@@ -875,7 +875,7 @@ func TestRunWithGatewayWebhookAndPII(t *testing.T) {
 	sigCh := make(chan os.Signal, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfgPath, false, sigCh, &bytes.Buffer{})
+		done <- run(context.Background(), cfgPath, false, "", "", sigCh, &bytes.Buffer{})
 	}()
 
 	time.Sleep(300 * time.Millisecond)
@@ -914,7 +914,7 @@ func TestRunWithTestRunnerPGAndMySQL(t *testing.T) {
 	sigCh := make(chan os.Signal, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfgPath, false, sigCh, &bytes.Buffer{})
+		done <- run(context.Background(), cfgPath, false, "", "", sigCh, &bytes.Buffer{})
 	}()
 
 	time.Sleep(300 * time.Millisecond)
@@ -950,7 +950,7 @@ func TestSetupAuditOutputsBadFilePath(t *testing.T) {
 	sigCh := make(chan os.Signal, 1)
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- run(context.Background(), cfgPath, false, sigCh, &bytes.Buffer{})
+		errCh <- run(context.Background(), cfgPath, false, "", "", sigCh, &bytes.Buffer{})
 	}()
 
 	select {
@@ -1017,7 +1017,7 @@ func TestRunWithRewriterMaxLimitOnly(t *testing.T) {
 	sigCh := make(chan os.Signal, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfgPath, false, sigCh, &bytes.Buffer{})
+		done <- run(context.Background(), cfgPath, false, "", "", sigCh, &bytes.Buffer{})
 	}()
 
 	time.Sleep(200 * time.Millisecond)
@@ -1041,7 +1041,7 @@ func TestRunWithRewriterForceWhereOnly(t *testing.T) {
 	sigCh := make(chan os.Signal, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfgPath, false, sigCh, &bytes.Buffer{})
+		done <- run(context.Background(), cfgPath, false, "", "", sigCh, &bytes.Buffer{})
 	}()
 
 	time.Sleep(200 * time.Millisecond)
@@ -1071,7 +1071,7 @@ func TestSetupTestRunnerNoTargets(t *testing.T) {
 	sigCh := make(chan os.Signal, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfg, false, sigCh, &bytes.Buffer{})
+		done <- run(context.Background(), cfg, false, "", "", sigCh, &bytes.Buffer{})
 	}()
 
 	time.Sleep(300 * time.Millisecond)
@@ -1114,7 +1114,7 @@ func TestRunWithConfigExporterTLSRedaction(t *testing.T) {
 	sigCh := make(chan os.Signal, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfgPath, false, sigCh, &bytes.Buffer{})
+		done <- run(context.Background(), cfgPath, false, "", "", sigCh, &bytes.Buffer{})
 	}()
 
 	time.Sleep(300 * time.Millisecond)
@@ -1411,7 +1411,7 @@ func TestRunPolicyLoadSuccess(t *testing.T) {
 	sigCh := make(chan os.Signal, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), cfgPath, false, sigCh, &bytes.Buffer{})
+		done <- run(context.Background(), cfgPath, false, "", "", sigCh, &bytes.Buffer{})
 	}()
 
 	time.Sleep(200 * time.Millisecond)
@@ -1437,7 +1437,7 @@ func TestRunProxyStartError(t *testing.T) {
 	})
 
 	sigCh := make(chan os.Signal, 1)
-	err := run(context.Background(), cfgPath, false, sigCh, &bytes.Buffer{})
+	err := run(context.Background(), cfgPath, false, "", "", sigCh, &bytes.Buffer{})
 	if err == nil {
 		t.Fatal("expected error for invalid listener address")
 	}

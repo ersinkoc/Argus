@@ -12,9 +12,16 @@ import (
 type HookStage int
 
 const (
+	// HookPostAuth runs after the protocol handshake completes and session
+	// identity is known, but before the command loop begins.
+	// Use cases: external identity resolution, dynamic target selection,
+	// credential injection preload, custom auth checks, deny-fast on unknown users.
+	// Returning an error rejects the connection before any command is processed.
+	HookPostAuth HookStage = iota
+
 	// HookPreEval runs after the policy context is built but before policy evaluation.
 	// Use cases: request enrichment, geo-IP resolution, tenant extraction, custom logging.
-	HookPreEval HookStage = iota
+	HookPreEval
 
 	// HookPostEval runs after the policy decision and rate-limit check,
 	// but before the action switch (block/allow/mask).
@@ -53,10 +60,15 @@ type SessionSnapshot struct {
 //
 // Hook lifecycle:
 //
-//	ReadCommand → PreEval → PolicyEval → RateLimit → PostEval → ActionSwitch → PostExec
+//	Handshake → PostAuth → ReadCommand → PreEval → PolicyEval → RateLimit → PostEval → ActionSwitch → PostExec
 type PipelineHook interface {
 	// Name returns a unique identifier for this hook.
 	Name() string
+
+	// PostAuth is called after the handshake completes with session identity known,
+	// before any command is read. An error returned here closes the connection immediately.
+	// Use: external identity resolution, target selection, credential preload.
+	PostAuth(hctx *HookContext) error
 
 	// PreEval is called after the policy context is built, before policy evaluation.
 	PreEval(hctx *HookContext) error
@@ -85,6 +97,21 @@ func (c *PipelineHookChain) Add(hook PipelineHook) {
 	defer c.mu.Unlock()
 	c.hooks = append(c.hooks, hook)
 	slog.Info("pipeline hook registered", "name", hook.Name())
+}
+
+// RunPostAuth invokes all registered PostAuth hooks in order.
+// If any hook returns an error, remaining hooks are skipped and the
+// caller should reject the connection.
+func (c *PipelineHookChain) RunPostAuth(hctx *HookContext) error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for _, h := range c.hooks {
+		if err := h.PostAuth(hctx); err != nil {
+			slog.Warn("pipeline hook PostAuth failed", "name", h.Name(), "error", err)
+			return err
+		}
+	}
+	return nil
 }
 
 // RunPreEval invokes all registered PreEval hooks in order.
