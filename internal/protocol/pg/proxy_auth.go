@@ -86,13 +86,21 @@ func ProxyAuthClient(ctx context.Context, backend net.Conn, password string) err
 		int32(authReq.Payload[2])<<8 | int32(authReq.Payload[3])
 
 	switch authType {
+	case AuthOK:
+		// Backend accepted without challenge (trust, cert, or already authenticated).
+		return nil
 	case AuthSASL:
 		clientNonce, err := scram.GenerateNonce()
 		if err != nil {
 			return fmt.Errorf("generating nonce: %w", err)
 		}
 		cf := scram.ClientFirst("argus_proxy", clientNonce)
+		// SASLInitialResponse per lib/pq format:
+		//   mechanism (null-terminated string)
+		//   int32 length of initial data
+		//   initial data bytes
 		saslResp := append([]byte("SCRAM-SHA-256"), 0)
+		saslResp = append(saslResp, byte(len(cf)>>24), byte(len(cf)>>16), byte(len(cf)>>8), byte(len(cf)))
 		saslResp = append(saslResp, []byte(cf)...)
 		if err := WriteMessage(backend, &Message{Type: MsgPassword, Payload: saslResp}); err != nil {
 			return fmt.Errorf("sending SASL initial: %w", err)
