@@ -307,11 +307,11 @@ func encryptTDSPassword(passUTF16 []byte, nonce []byte) []byte {
 	}
 
 	// Append a simple checksum (sum of password bytes mod 256)
-	var sum byte
+	var sum uint32
 	for _, b := range passUTF16 {
-		sum += b
+		sum += uint32(b)
 	}
-	result = append(result, sum, sum>>8, sum>>16, sum>>24)
+	result = append(result, byte(uint32(sum)), byte(uint32(sum)>>8), byte(uint32(sum)>>16), byte(uint32(sum)>>24))
 
 	return result
 }
