@@ -2,114 +2,88 @@ package mysql
 
 import (
 	"crypto/sha1"
+	"encoding/binary"
 	"fmt"
-	"log/slog"
 	"net"
 )
 
-const scrambleLen = 20
-
-const (
-	okPacket     = 0x00
-	errPacket    = 0xFF
-	authSwitch   = 0xFE
-	authMoreData = 0x01
-)
-
-func ProxyAuthServer(client net.Conn, password string) (*HandshakeResponse, []byte, error) {
-	scramble := make([]byte, scrambleLen)
-	copy(scramble, []byte("argus-auth-scramble-!"))
-
+func ProxyAuthServer(client net.Conn, password string) (*HandshakeResponse, error) {
+	scramble := make([]byte, 20)
+	for i := range scramble {
+		scramble[i] = byte(i*17 + 31)
+	}
 	greeting := buildProxyGreeting(scramble)
 	if err := WritePacket(client, greeting); err != nil {
-		return nil, nil, fmt.Errorf("sending greeting: %w", err)
+		return nil, fmt.Errorf("writing greeting: %w", err)
 	}
-
-	response, err := ReadPacket(client)
+	rp, err := ReadPacket(client)
 	if err != nil {
-		return nil, nil, fmt.Errorf("reading handshake response: %w", err)
+		return nil, fmt.Errorf("reading handshake: %w", err)
 	}
-	handshake, err := ParseHandshakeResponse41(response.Payload)
+	resp, err := ParseHandshakeResponse41(rp.Payload)
 	if err != nil {
-		return nil, nil, fmt.Errorf("parsing handshake: %w", err)
+		return nil, fmt.Errorf("parsing handshake: %w", err)
 	}
-
-	if password != "" && len(handshake.AuthResponse) > 0 {
-		expected := mysqlNativePassword(password, scramble)
-		if !constantTimeEqual(handshake.AuthResponse, expected) {
-			WritePacket(client, BuildErrPacket(1, 1045, "Access denied"))
-			return nil, nil, fmt.Errorf("mysql auth failed for %q", handshake.Username)
-		}
+	exp := mysqlNativePassword(password, scramble)
+	if !constTimeEq(resp.AuthResponse, exp) {
+		WritePacket(client, BuildErrPacket(2, 1045, "Access denied"))
+		return nil, fmt.Errorf("password mismatch")
 	}
-
-	if err := WritePacket(client, BuildOKPacket(1, 0, 0)); err != nil {
-		return nil, nil, fmt.Errorf("sending OK: %w", err)
+	if err := WritePacket(client, BuildOKPacket(2, 0, 0)); err != nil {
+		return nil, fmt.Errorf("writing OK: %w", err)
 	}
-	slog.Debug("mysql proxy auth: client authenticated", "user", handshake.Username)
-	return handshake, scramble, nil
+	return resp, nil
 }
 
-func ProxyAuthClient(backend net.Conn, username, database string, password string) error {
-	greetingPkt, err := ReadPacket(backend)
+func ProxyAuthClient(backend net.Conn, username, database, password string) error {
+	g, err := ReadPacket(backend)
 	if err != nil {
-		return fmt.Errorf("reading backend greeting: %w", err)
+		return fmt.Errorf("reading greeting: %w", err)
 	}
-	scramble, plugin := extractScrambleFromGreeting(greetingPkt.Payload)
-
-	var authResp []byte
-	if plugin == "caching_sha2_password" || plugin == "" {
-		authResp = mysqlNativePassword(password, scramble)
-	} else {
-		authResp = mysqlNativePassword(password, scramble)
+	scramble := extractScramble(g.Payload)
+	ar := mysqlNativePassword(password, scramble)
+	rp := buildClientResponse(username, database, ar)
+	rp.SequenceID = 1
+	if err := WritePacket(backend, rp); err != nil {
+		return fmt.Errorf("writing handshake: %w", err)
 	}
-
-	respPayload := buildHandshakeResponse(username, database, authResp, plugin)
-	respPkt := &Packet{SequenceID: 1, Payload: respPayload}
-	if err := WritePacket(backend, respPkt); err != nil {
-		return fmt.Errorf("sending handshake: %w", err)
-	}
-
-	result, err := ReadPacket(backend)
+	res, err := ReadPacket(backend)
 	if err != nil {
-		return fmt.Errorf("reading auth result: %w", err)
+		return fmt.Errorf("reading result: %w", err)
 	}
-	if len(result.Payload) > 0 {
-		switch result.Payload[0] {
-		case okPacket:
-			return nil
-		case errPacket:
-			return fmt.Errorf("backend auth failed")
-		case authSwitch:
-			return handleAuthSwitch(backend, password, result.Payload)
-		case authMoreData:
-			return handleAuthMoreData(backend, password, scramble, result.Payload)
-		}
+	if len(res.Payload) == 0 {
+		return fmt.Errorf("empty result")
 	}
-	return nil
+	switch res.Payload[0] {
+	case 0x00:
+		return nil
+	case 0xFF:
+		return fmt.Errorf("auth error: code=%d", uint16(res.Payload[1])|uint16(res.Payload[2])<<8)
+	case 0x01:
+		return handleMoreData(backend, password, scramble, res.Payload)
+	default:
+		return fmt.Errorf("unexpected: 0x%02x", res.Payload[0])
+	}
 }
 
 func mysqlNativePassword(password string, scramble []byte) []byte {
 	h := sha1.New()
 	h.Write([]byte(password))
-	stage1 := h.Sum(nil)
-
+	hp := h.Sum(nil)
 	h.Reset()
-	h.Write(stage1)
-	stage2 := h.Sum(nil)
-
+	h.Write(hp)
+	hps := h.Sum(nil)
 	h.Reset()
 	h.Write(scramble)
-	h.Write(stage2)
-	digest := h.Sum(nil)
-
-	result := make([]byte, scrambleLen)
-	for i := range stage1 {
-		result[i] = digest[i] ^ stage1[i]
+	h.Write(hps)
+	r := h.Sum(nil)
+	for i := range r {
+		r[i] ^= hp[i]
 	}
-	return result
+	return r
 }
 
-func constantTimeEqual(a, b []byte) bool {
+func constTimeEq(a, b []byte) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -121,57 +95,46 @@ func constantTimeEqual(a, b []byte) bool {
 }
 
 func buildProxyGreeting(scramble []byte) *Packet {
-	payload := make([]byte, 0, 128)
-	payload = append(payload, 10)
-	payload = append(payload, []byte("8.0.35-argus-proxy\x00")...)
-	payload = append(payload, 0x01, 0x00, 0x00, 0x00)
-	if len(scramble) >= 8 {
-		payload = append(payload, scramble[:8]...)
-	} else {
-		payload = append(payload, make([]byte, 8)...)
-	}
-	payload = append(payload, 0)
-	payload = append(payload, 0xFF, 0xF7)
-	payload = append(payload, 45)
-	payload = append(payload, 0x02, 0x00)
-	payload = append(payload, 0x81, 0x15)
-	payload = append(payload, 21)
-	payload = append(payload, make([]byte, 10)...)
-	if len(scramble) >= 20 {
-		payload = append(payload, scramble[8:20]...)
-	} else {
-		payload = append(payload, make([]byte, 12)...)
-	}
-	payload = append(payload, 0)
-	payload = append(payload, []byte("mysql_native_password\x00")...)
-	return &Packet{SequenceID: 0, Payload: payload}
+	var p []byte
+	p = append(p, 10)
+	p = append(p, []byte("Argus Proxy\x00")...)
+	p = append(p, 0, 0, 0, 0)
+	p = append(p, scramble[:8]...)
+	p = append(p, 0)
+	p = append(p, 0xFF, 0xFF)
+	p = append(p, 45)
+	p = append(p, 0x02, 0x00)
+	p = append(p, 0x00, 0x00)
+	p = append(p, 21)
+	p = append(p, make([]byte, 10)...)
+	p = append(p, scramble[8:]...)
+	p = append(p, 0)
+	p = append(p, []byte("mysql_native_password\x00")...)
+	return &Packet{SequenceID: 0, Payload: p}
 }
 
-func buildHandshakeResponse(username, database string, authResp []byte, plugin string) []byte {
-	capFlags := uint32(0x00F7FF)
-	payload := make([]byte, 0, 128)
-	payload = append(payload, byte(capFlags), byte(capFlags>>8), byte(capFlags>>16), byte(capFlags>>24))
-	payload = append(payload, 0x00, 0x00, 0x00, 0x01)
-	payload = append(payload, 45)
-	payload = append(payload, make([]byte, 23)...)
-	payload = append(payload, []byte(username)...)
-	payload = append(payload, 0)
-	payload = append(payload, byte(len(authResp)))
-	payload = append(payload, authResp...)
+func buildClientResponse(username, database string, ar []byte) *Packet {
+	var p []byte
+	f := make([]byte, 4)
+	binary.LittleEndian.PutUint32(f, 0x0001|0x8000|0x0008)
+	p = append(p, f...)
+	p = append(p, 0x00, 0x00, 0x00, 0x01)
+	p = append(p, 45)
+	p = append(p, make([]byte, 23)...)
+	p = append(p, []byte(username)...)
+	p = append(p, 0)
+	p = append(p, byte(len(ar)))
+	p = append(p, ar...)
 	if database != "" {
-		payload = append(payload, []byte(database)...)
-		payload = append(payload, 0)
+		p = append(p, []byte(database)...)
+		p = append(p, 0)
 	}
-	if plugin != "" {
-		payload = append(payload, []byte(plugin)...)
-		payload = append(payload, 0)
-	}
-	return payload
+	return &Packet{SequenceID: 1, Payload: p}
 }
 
-func extractScrambleFromGreeting(payload []byte) ([]byte, string) {
+func extractScramble(payload []byte) []byte {
 	if len(payload) < 45 {
-		return nil, ""
+		return nil
 	}
 	i := 1
 	for i < len(payload) && payload[i] != 0 {
@@ -179,50 +142,37 @@ func extractScrambleFromGreeting(payload []byte) ([]byte, string) {
 	}
 	i++
 	i += 4
-	if i+8 > len(payload) {
-		return nil, ""
-	}
 	part1 := payload[i : i+8]
-	i += 8 + 1
-	i += 7
+	i += 8 + 1 + 2 + 1 + 2 + 2
 	if i >= len(payload) {
-		return nil, ""
+		return nil
 	}
-	authDataLen := int(payload[i])
+	adl := int(payload[i])
 	i++
 	i += 10
-	if authDataLen > 8 {
-		part2Len := authDataLen - 8
-		if part2Len > 13 {
-			part2Len = 13
-		}
-		if i+part2Len > len(payload) {
-			return nil, ""
-		}
-		part2 := payload[i : i+part2Len]
-		scramble := make([]byte, 0, 20)
-		scramble = append(scramble, part1...)
-		scramble = append(scramble, part2[:len(part2)-1]...)
-		return scramble, ""
+	pl := adl - 9
+	if pl < 0 {
+		pl = 12
 	}
-	return part1, ""
+	if i+pl > len(payload) {
+		pl = len(payload) - i
+		if pl < 0 {
+			pl = 0
+		}
+	}
+	return append(part1, payload[i:i+pl]...)
 }
 
-func handleAuthSwitch(backend net.Conn, password string, payload []byte) error {
-	_ = password
-	return nil
-}
-
-func handleAuthMoreData(backend net.Conn, password string, scramble []byte, payload []byte) error {
-	if len(payload) >= 2 && payload[1] == 0x04 {
-		result, err := ReadPacket(backend)
-		if err != nil {
-			return err
-		}
-		if len(result.Payload) > 0 && result.Payload[0] == okPacket {
-			return nil
-		}
-		return fmt.Errorf("backend auth failed after fast auth")
+func handleMoreData(backend net.Conn, password string, scramble []byte, payload []byte) error {
+	if len(payload) < 2 {
+		return fmt.Errorf("too short")
 	}
-	return nil
+	switch payload[1] {
+	case 2:
+		return WritePacket(backend, &Packet{SequenceID: 1, Payload: mysqlNativePassword(password, scramble)})
+	case 3:
+		return WritePacket(backend, &Packet{SequenceID: 1, Payload: append([]byte(password), 0)})
+	default:
+		return fmt.Errorf("unexpected stage: %d", payload[1])
+	}
 }

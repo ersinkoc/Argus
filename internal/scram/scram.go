@@ -1,4 +1,3 @@
-// Package scram implements SCRAM-SHA-256 (RFC 7677, RFC 5802) for PostgreSQL proxy auth.
 package scram
 
 import (
@@ -16,8 +15,6 @@ const (
 	DefaultIterations = 4096
 	SaltLen           = 16
 )
-
-// --- PBKDF2 ---
 
 func pbkdf2(password, salt []byte, iter, keyLen int) []byte {
 	prf := hmac.New(sha256.New, password)
@@ -191,7 +188,6 @@ func (s *Server) ServerFirst(clientFirst string) (string, error) {
 		return "", fmt.Errorf("scram: client-first missing nonce")
 	}
 	s.clientNonce = cf.Nonce
-
 	serverNonce, err := GenerateNonce()
 	if err != nil {
 		return "", err
@@ -201,9 +197,7 @@ func (s *Server) ServerFirst(clientFirst string) (string, error) {
 		return "", err
 	}
 	s.serverFirstMsg = &ServerFirstMessage{
-		Nonce:      cf.Nonce + serverNonce,
-		Salt:       salt,
-		Iterations: DefaultIterations,
+		Nonce: cf.Nonce + serverNonce, Salt: salt, Iterations: DefaultIterations,
 	}
 	s.serverFirst = s.serverFirstMsg.Marshal()
 	return s.serverFirst, nil
@@ -211,7 +205,6 @@ func (s *Server) ServerFirst(clientFirst string) (string, error) {
 
 func (s *Server) ClientFinal(clientFinal string) (string, error) {
 	s.clientFinal = clientFinal
-
 	cf := &struct {
 		Nonce string
 		Proof []byte
@@ -233,55 +226,50 @@ func (s *Server) ClientFinal(clientFinal string) (string, error) {
 	if cf.Nonce != s.serverFirstMsg.Nonce {
 		return "", fmt.Errorf("scram: nonce mismatch")
 	}
-
-	saltedPass := SaltedPassword(s.password, s.serverFirstMsg.Salt, s.serverFirstMsg.Iterations)
-	s.saltedPassword = saltedPass
-	clientKey := ClientKey(saltedPass)
-	storedKey := StoredKey(clientKey)
-
-	bareClientFirst := ClientFirstMessageBare(s.clientFirst)
-	clientFinalNoProof := ClientFinalMessageWithoutProof(s.clientFinal)
-	authMsg := AuthMessage(bareClientFirst, s.serverFirst) + clientFinalNoProof
-
-	clientSig := ClientSignature(storedKey, []byte(authMsg))
-	expectedProof := ClientProof(clientKey, clientSig)
-
-	if !hmac.Equal(cf.Proof, expectedProof) {
-		return "", fmt.Errorf("scram: authentication failed")
+	sp := SaltedPassword(s.password, s.serverFirstMsg.Salt, s.serverFirstMsg.Iterations)
+	s.saltedPassword = sp
+	ck := ClientKey(sp)
+	sk := StoredKey(ck)
+	bc := ClientFirstMessageBare(s.clientFirst)
+	cn := ClientFinalMessageWithoutProof(s.clientFinal)
+	am := AuthMessage(bc, s.serverFirst) + cn
+	cs := ClientSignature(sk, []byte(am))
+	ep := ClientProof(ck, cs)
+	if !hmac.Equal(cf.Proof, ep) {
+		return "", fmt.Errorf("scram: auth failed")
 	}
-
-	serverKey := ServerKey(saltedPass)
-	serverSig := ServerSignature(serverKey, []byte(authMsg))
-	return "v=" + base64.StdEncoding.EncodeToString(serverSig), nil
+	svk := ServerKey(sp)
+	ss := ServerSignature(svk, []byte(am))
+	return "v=" + base64.StdEncoding.EncodeToString(ss), nil
 }
 
 func ClientFirst(username, clientNonce string) string {
 	return "n,,n=" + username + ",r=" + clientNonce
 }
 
-func ClientFinalProof(password string, serverFirst *ServerFirstMessage, clientFirst, clientFinalBare string) []byte {
-	saltedPass := SaltedPassword(password, serverFirst.Salt, serverFirst.Iterations)
-	clientKey := ClientKey(saltedPass)
-	storedKey := StoredKey(clientKey)
-	bareClientFirst := ClientFirstMessageBare(clientFirst)
-	authMsg := AuthMessage(bareClientFirst, serverFirst.Marshal()) + clientFinalBare
-	clientSig := ClientSignature(storedKey, []byte(authMsg))
-	return ClientProof(clientKey, clientSig)
+func ClientFinalProof(password string, sf *ServerFirstMessage, cf, cb string) []byte {
+	sp := SaltedPassword(password, sf.Salt, sf.Iterations)
+	ck := ClientKey(sp)
+	sk := StoredKey(ck)
+	bc := ClientFirstMessageBare(cf)
+	am := AuthMessage(bc, sf.Marshal()) + cb
+	cs := ClientSignature(sk, []byte(am))
+	return ClientProof(ck, cs)
 }
 
-func VerifyServerSignature(password string, serverFirst *ServerFirstMessage, authMessage string, serverFinalMsg string) error {
-	saltedPass := SaltedPassword(password, serverFirst.Salt, serverFirst.Iterations)
-	serverKey := ServerKey(saltedPass)
-	expectedSig := ServerSignature(serverKey, []byte(authMessage))
-	if !strings.HasPrefix(serverFinalMsg, "v=") {
-		return fmt.Errorf("scram: invalid server-final-message")
+func VerifyServerSignature(password string, sf *ServerFirstMessage, am, sfm string) error {
+	sp := SaltedPassword(password, sf.Salt, sf.Iterations)
+	svk := ServerKey(sp)
+	es := ServerSignature(svk, []byte(am))
+	if !strings.HasPrefix(sfm, "v=") {
+		return fmt.Errorf("scram: invalid server-final")
 	}
-	gotSig, err := base64.StdEncoding.DecodeString(serverFinalMsg[2:])
+	gs, err := base64.StdEncoding.DecodeString(sfm[2:])
 	if err != nil {
-		return fmt.Errorf("scram: decoding server signature: %w", err)
+		return fmt.Errorf("scram: decoding sig: %w", err)
 	}
-	if !hmac.Equal(expectedSig, gotSig) {
-		return fmt.Errorf("scram: server signature mismatch")
+	if !hmac.Equal(es, gs) {
+		return fmt.Errorf("scram: sig mismatch")
 	}
 	return nil
 }
