@@ -46,6 +46,7 @@ type Proxy struct {
 	rlCleanupInterval time.Duration // default 5 min; override in tests
 	drainTimeout      time.Duration // default 10s; override in tests
 	hookChain         *PipelineHookChain
+	identityResolver  IdentityResolver // for proxy auth mode (nil = passthrough)
 }
 
 // NewProxy creates a new proxy engine.
@@ -87,6 +88,14 @@ func (p *Proxy) SetPipelineHooks(hooks ...PipelineHook) {
 	for _, h := range hooks {
 		p.hookChain.Add(h)
 	}
+}
+
+// SetIdentityResolver sets the identity resolver for proxy auth mode.
+// When set, the proxy reads the client startup, calls the resolver to get
+// the real target and credential, then performs proxy auth instead of
+// the standard passthrough handshake.
+func (p *Proxy) SetIdentityResolver(r IdentityResolver) {
+	p.identityResolver = r
 }
 
 // SetRewriter enables query rewriting.
@@ -336,6 +345,12 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 		return
 	}
 
+	// Proxy auth mode for PostgreSQL: read startup, resolve identity, authenticate
+	if protocolName == "postgresql" && p.identityResolver != nil {
+		p.handleProxyAuthPG(clientConn, remoteAddr, handler)
+		return
+	}
+
 	// Resolve target — first try protocol-matched target, then default
 	var target *config.Target
 	for i := range p.cfg.Targets {
@@ -516,6 +531,82 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 		Action:    "close",
 	})
 
+	cmdCount, _, _ := sess.Stats()
+	slog.Info("session closed", "session_id", sess.ID[:8], "commands", cmdCount)
+}
+
+// handleProxyAuthPG handles the proxy auth flow for PostgreSQL connections.
+// It reads the startup, resolves identity via the external resolver, connects to
+// the resolved target, performs SASL/SCRAM auth on both sides, then continues
+// with the standard session creation and command loop.
+func (p *Proxy) handleProxyAuthPG(clientConn net.Conn, remoteAddr *net.TCPAddr, handler protocol.Handler) {
+	ctx := context.Background()
+
+	sessionInfo, backendConn, err := p.PostAuthClientAndServer(clientConn, remoteAddr, handler.Name())
+	if err != nil {
+		slog.Error("proxy auth failed", "error", err)
+		p.auditLogger.Log(audit.Event{
+			EventType: audit.AuthFailure.String(),
+			ClientIP:  remoteAddr.IP.String(),
+			Action:    "block",
+			Error:     err.Error(),
+		})
+		return
+	}
+
+	// Check concurrent session limit
+	if p.sessionLimiter != nil {
+		if !p.sessionLimiter.Acquire(sessionInfo.Username) {
+			handler.WriteError(context.Background(), clientConn, "53300",
+				"Too many connections for user "+sessionInfo.Username)
+			p.auditLogger.Log(audit.Event{
+				EventType: audit.ConnectionClose.String(),
+				Username:  sessionInfo.Username,
+				ClientIP:  remoteAddr.IP.String(),
+				Action:    "rejected",
+				Reason:    "concurrent session limit exceeded",
+			})
+			return
+		}
+		defer p.sessionLimiter.Release(sessionInfo.Username)
+	}
+
+	// Create session
+	sess := p.sessionManager.Create(sessionInfo, clientConn)
+	sess.BackendConn = backendConn
+	ps := p.policyEngine.Loader().Current()
+	if ps != nil {
+		sess.Roles = policy.ResolveUserRoles(sessionInfo.Username, ps.Roles)
+	} else {
+		sess.Roles = nil
+	}
+
+	metrics.Global.ConnectionsTotal.Add(1)
+	p.auditLogger.Log(audit.Event{
+		EventType: audit.AuthSuccess.String(),
+		SessionID: sess.ID,
+		Username:  sess.Username,
+		Roles:     sess.Roles,
+		ClientIP:  remoteAddr.IP.String(),
+		Database:  sess.Database,
+		Action:    "allow",
+	})
+
+	slog.Info("session opened", "session_id", sess.ID[:8], "user", sess.Username, "database", sess.Database, "client_ip", remoteAddr.IP)
+
+	// Command loop
+	p.commandLoop(ctx, sess, handler, clientConn, backendConn)
+
+	// Session end
+	p.sessionManager.Remove(sess.ID)
+	p.auditLogger.Log(audit.Event{
+		EventType: audit.ConnectionClose.String(),
+		SessionID: sess.ID,
+		Username:  sess.Username,
+		ClientIP:  remoteAddr.IP.String(),
+		Database:  sess.Database,
+		Action:    "close",
+	})
 	cmdCount, _, _ := sess.Stats()
 	slog.Info("session closed", "session_id", sess.ID[:8], "commands", cmdCount)
 }

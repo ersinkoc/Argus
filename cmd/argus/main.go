@@ -108,16 +108,25 @@ func run(ctx context.Context, configPath string, validateOnly bool, resolveURL, 
 	setupRewriter(cfg, proxy)
 	setupSlowQueryLogger(cfg, proxy, auditLogger)
 
-	// Identity resolution hook (optional).
+	// Identity resolution and proxy auth (optional).
 	// When a resolve URL is configured, Argus calls Monopam's /api/db/resolve
-	// after each protocol handshake to resolve the real database target and
-	// credential for the session.
+	// to resolve the real database target and credential for the session.
+	// In proxy auth mode, this replaces the standard passthrough handshake
+	// with a full SASL/SCRAM authentication exchange on both sides.
 	if resolveURL != "" {
 		resolveClient := resolve.NewClient(resolveURL, resolveAPIKey)
 		resolveAdapter := &monopamResolver{client: resolveClient}
+
+		// Set the identity resolver for proxy auth mode (PG).
+		// This enables reading the startup, resolving the target, and
+		// performing SASL/SCRAM auth with both the client and backend.
+		proxy.SetIdentityResolver(resolveAdapter)
+
+		// Also register a PostAuth hook for logging and non-PG protocols.
 		resolveHook := core.NewIdentityResolverHook(resolveAdapter)
 		proxy.SetPipelineHooks(resolveHook)
-		slog.Info("identity resolution enabled", "endpoint", resolveURL)
+
+		slog.Info("proxy auth mode enabled", "endpoint", resolveURL)
 	}
 
 	if err := proxy.Start(); err != nil {
