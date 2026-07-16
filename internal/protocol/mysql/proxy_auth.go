@@ -24,13 +24,16 @@ func ProxyAuthServer(client net.Conn, password string) (*HandshakeResponse, erro
 	if err != nil {
 		return nil, fmt.Errorf("parsing handshake: %w", err)
 	}
-	exp := mysqlNativePassword(password, scramble)
-	if !constTimeEq(resp.AuthResponse, exp) {
-		WritePacket(client, BuildErrPacket(2, 1045, "Access denied"))
-		return nil, fmt.Errorf("password mismatch")
-	}
-	if err := WritePacket(client, BuildOKPacket(2, 0, 0)); err != nil {
-		return nil, fmt.Errorf("writing OK: %w", err)
+	// Validate password only if one was provided (proxy auth resolves after extracting username)
+	if password != "" {
+		exp := mysqlNativePassword(password, scramble)
+		if !constTimeEq(resp.AuthResponse, exp) {
+			WritePacket(client, BuildErrPacket(2, 1045, "Access denied"))
+			return nil, fmt.Errorf("password mismatch")
+		}
+		if err := WritePacket(client, BuildOKPacket(2, 0, 0)); err != nil {
+			return nil, fmt.Errorf("writing OK: %w", err)
+		}
 	}
 	return resp, nil
 }

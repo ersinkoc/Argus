@@ -1,0 +1,13 @@
+services:
+  todo:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      TODO_DB_PATH: /data/todos.db
+    volumes:
+      - todo-data:/data
+
+volumes:
+  todo-data:

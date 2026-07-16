@@ -1,0 +1,33 @@
+# Version control
+.git/
+.gitignore
+
+# Build artifacts
+todo-server
+*.test
+*.out
+
+# Runtime data
+todos.db
+*.db
+*.db-wal
+*.db-shm
+
+# IDE and editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Docker files (not needed for the build context)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# CI and task files
+Makefile

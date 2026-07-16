@@ -138,6 +138,11 @@ func (p *Proxy) handleProxyAuthMySQL(clientConn net.Conn, remoteAddr *net.TCPAdd
 		bc.Close()
 		return
 	}
+	// Send OK back to client (ProxyAuthServer skipped it since password wasn't known at extract time)
+	if err := mysql.WritePacket(clientConn, mysql.BuildOKPacket(2, 0, 0)); err != nil {
+		bc.Close()
+		return
+	}
 	setupAuthSession(p, context.Background(), clientConn, bc,
 		&session.Info{Username: hs.Username, Database: hs.Database, ClientIP: remoteAddr.IP, AuthMethod: "proxy_mysql_native"},
 		remoteAddr, handler)
