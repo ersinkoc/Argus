@@ -28,7 +28,7 @@ func TestFullExchange(t *testing.T) {
 	}
 
 	// Parse the server's challenge
-	sf, err := scram.ParseServerFirstMessage(serverFirst)
+	sf, err := scram.ParseSFMsg(serverFirst)
 	if err != nil {
 		t.Fatalf("ParseServerFirstMessage: %v", err)
 	}
@@ -37,8 +37,8 @@ func TestFullExchange(t *testing.T) {
 	if !strings.HasPrefix(sf.Nonce, clientNonce) {
 		t.Errorf("combined nonce doesn't start with client nonce: %q", sf.Nonce)
 	}
-	if sf.Iterations <= 0 {
-		t.Errorf("invalid iterations: %d", sf.Iterations)
+	if sf.Iter <= 0 {
+		t.Errorf("invalid iterations: %d", sf.Iter)
 	}
 	if len(sf.Salt) == 0 {
 		t.Errorf("empty salt")
@@ -65,12 +65,12 @@ func TestFullExchange(t *testing.T) {
 	}
 
 	// Client verifies server signature
-	bareClientFirst := scram.ClientFirstMessageBare(clientFirst)
-	clientFinalNoProof := scram.ClientFinalMessageWithoutProof(clientFinal)
-	authMsg := scram.AuthMessage(bareClientFirst, serverFirst)
+	bareClientFirst := scram.CFBare(clientFirst)
+	clientFinalNoProof := scram.CFNoProof(clientFinal)
+	authMsg := scram.AuthMsg(bareClientFirst, serverFirst)
 	authMsg += clientFinalNoProof
 
-	err = scram.VerifyServerSignature(password, sf, authMsg, serverFinal)
+	err = scram.VerifySig(password, sf, authMsg, serverFinal)
 	if err != nil {
 		t.Fatalf("VerifyServerSignature failed: %v", err)
 	}
@@ -117,18 +117,18 @@ func TestAuthMessageComputation(t *testing.T) {
 	serverFirst := "r=abc123def,s=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096"
 	clientFinal := "c=biws,r=abc123def,p=someproofvalue"
 
-	bareClient := scram.ClientFirstMessageBare(clientFirst)
+	bareClient := scram.CFBare(clientFirst)
 	if bareClient != "n=user,r=abc123" {
 		t.Errorf("bare client first = %q, want %q", bareClient, "n=user,r=abc123")
 	}
 
-	noProof := scram.ClientFinalMessageWithoutProof(clientFinal)
+	noProof := scram.CFNoProof(clientFinal)
 	expectedNoProof := "c=biws,r=abc123def"
 	if noProof != expectedNoProof {
 		t.Errorf("client final no proof = %q, want %q", noProof, expectedNoProof)
 	}
 
-	authMsg := scram.AuthMessage(bareClient, serverFirst)
+	authMsg := scram.AuthMsg(bareClient, serverFirst)
 	authMsg += noProof
 
 	expected := "n=user,r=abc123,r=abc123def,s=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096,c=biws,r=abc123def"
@@ -151,7 +151,7 @@ func TestWrongPassword(t *testing.T) {
 		t.Fatalf("ServerFirst: %v", err)
 	}
 
-	sf, _ := scram.ParseServerFirstMessage(serverFirst)
+	sf, _ := scram.ParseSFMsg(serverFirst)
 	clientFinalBare := "c=biws,r=" + sf.Nonce
 	proof := scram.ClientFinalProof("wrong_password", sf, clientFirst, clientFinalBare)
 	clientFinal := clientFinalBare + ",p=" + base64.StdEncoding.EncodeToString(proof)
@@ -227,7 +227,7 @@ func TestVerifyServerSignatureValid(t *testing.T) {
 		t.Fatalf("ServerFirst: %v", err)
 	}
 
-	sf, _ := scram.ParseServerFirstMessage(serverFirst)
+	sf, _ := scram.ParseSFMsg(serverFirst)
 	clientFinalBare := "c=biws,r=" + sf.Nonce
 	proof := scram.ClientFinalProof(password, sf, clientFirst, clientFinalBare)
 	clientFinal := clientFinalBare + ",p=" + base64.StdEncoding.EncodeToString(proof)
@@ -238,11 +238,11 @@ func TestVerifyServerSignatureValid(t *testing.T) {
 	}
 
 	// Client verification
-	bareClient := scram.ClientFirstMessageBare(clientFirst)
-	clientFinalNoProof := scram.ClientFinalMessageWithoutProof(clientFinal)
-	authMsg := scram.AuthMessage(bareClient, serverFirst) + clientFinalNoProof
+	bareClient := scram.CFBare(clientFirst)
+	clientFinalNoProof := scram.CFNoProof(clientFinal)
+	authMsg := scram.AuthMsg(bareClient, serverFirst) + clientFinalNoProof
 
-	if err := scram.VerifyServerSignature(password, sf, authMsg, serverFinal); err != nil {
+	if err := scram.VerifySig(password, sf, authMsg, serverFinal); err != nil {
 		t.Fatalf("VerifyServerSignature: %v", err)
 	}
 }
@@ -268,7 +268,7 @@ func TestServerClientConversation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sfParsed, _ := scram.ParseServerFirstMessage(sf)
+	sfParsed, _ := scram.ParseSFMsg(sf)
 
 	// Client computes response
 	cfBare := "c=" + base64.StdEncoding.EncodeToString([]byte("n,,")) + ",r=" + sfParsed.Nonce
@@ -282,11 +282,11 @@ func TestServerClientConversation(t *testing.T) {
 	}
 
 	// Client verifies server
-	bareCF := scram.ClientFirstMessageBare(cf)
-	cfNoProof := scram.ClientFinalMessageWithoutProof(cf2)
-	authMsg := scram.AuthMessage(bareCF, sf) + cfNoProof
+	bareCF := scram.CFBare(cf)
+	cfNoProof := scram.CFNoProof(cf2)
+	authMsg := scram.AuthMsg(bareCF, sf) + cfNoProof
 
-	if err := scram.VerifyServerSignature(password, sfParsed, authMsg, sf2); err != nil {
+	if err := scram.VerifySig(password, sfParsed, authMsg, sf2); err != nil {
 		t.Fatal(err)
 	}
 }

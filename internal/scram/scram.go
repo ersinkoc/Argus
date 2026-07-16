@@ -1,3 +1,4 @@
+// Package scram implements SCRAM-SHA-256 (RFC 7677, RFC 5802) for PostgreSQL proxy auth.
 package scram
 
 import (
@@ -42,234 +43,224 @@ func pbkdf2(password, salt []byte, iter, keyLen int) []byte {
 	return dk[:keyLen]
 }
 
-func SaltedPassword(password string, salt []byte, iterations int) []byte {
-	return pbkdf2([]byte(password), salt, iterations, 32)
+func SaltedPassword(password string, salt []byte, iter int) []byte {
+	return pbkdf2([]byte(password), salt, iter, 32)
 }
 
-func ClientKey(saltedPassword []byte) []byte {
-	mac := hmac.New(sha256.New, saltedPassword)
-	mac.Write([]byte("Client Key"))
-	return mac.Sum(nil)
+func ClientKey(sp []byte) []byte {
+	m := hmac.New(sha256.New, sp)
+	m.Write([]byte("Client Key"))
+	return m.Sum(nil)
 }
 
-func StoredKey(clientKey []byte) []byte {
-	h := sha256.Sum256(clientKey)
+func StoredKey(ck []byte) []byte {
+	h := sha256.Sum256(ck)
 	return h[:]
 }
 
-func ServerKey(saltedPassword []byte) []byte {
-	mac := hmac.New(sha256.New, saltedPassword)
-	mac.Write([]byte("Server Key"))
-	return mac.Sum(nil)
+func ServerKey(sp []byte) []byte {
+	m := hmac.New(sha256.New, sp)
+	m.Write([]byte("Server Key"))
+	return m.Sum(nil)
 }
 
-func ClientSignature(storedKey, authMessage []byte) []byte {
-	mac := hmac.New(sha256.New, storedKey)
-	mac.Write(authMessage)
-	return mac.Sum(nil)
+func ClientSignature(sk, am []byte) []byte {
+	m := hmac.New(sha256.New, sk)
+	m.Write(am)
+	return m.Sum(nil)
 }
 
-func ClientProof(clientKey, clientSignature []byte) []byte {
-	proof := make([]byte, len(clientKey))
-	for i := range clientKey {
-		proof[i] = clientKey[i] ^ clientSignature[i]
+func ClientProof(ck, cs []byte) []byte {
+	p := make([]byte, len(ck))
+	for i := range ck {
+		p[i] = ck[i] ^ cs[i]
 	}
-	return proof
+	return p
 }
 
-func ServerSignature(serverKey, authMessage []byte) []byte {
-	mac := hmac.New(sha256.New, serverKey)
-	mac.Write(authMessage)
-	return mac.Sum(nil)
+func ServerSignature(svk, am []byte) []byte {
+	m := hmac.New(sha256.New, svk)
+	m.Write(am)
+	return m.Sum(nil)
 }
 
 func GenerateNonce() (string, error) {
 	b := make([]byte, NonceLen)
 	if _, err := rand.Read(b); err != nil {
-		return "", fmt.Errorf("scram: generating nonce: %w", err)
+		return "", fmt.Errorf("nonce: %w", err)
 	}
 	return base64.StdEncoding.EncodeToString(b), nil
 }
 
 func GenerateSalt() ([]byte, error) {
-	salt := make([]byte, SaltLen)
-	if _, err := rand.Read(salt); err != nil {
-		return nil, fmt.Errorf("scram: generating salt: %w", err)
+	s := make([]byte, SaltLen)
+	if _, err := rand.Read(s); err != nil {
+		return nil, fmt.Errorf("salt: %w", err)
 	}
-	return salt, nil
+	return s, nil
 }
 
-type ServerFirstMessage struct {
-	Nonce      string
-	Salt       []byte
-	Iterations int
+type SFMsg struct {
+	Nonce string
+	Salt  []byte
+	Iter  int
 }
 
-func (m *ServerFirstMessage) Marshal() string {
-	return fmt.Sprintf("r=%s,s=%s,i=%d", m.Nonce, base64.StdEncoding.EncodeToString(m.Salt), m.Iterations)
+func (m *SFMsg) String() string {
+	return fmt.Sprintf("r=%s,s=%s,i=%d", m.Nonce, base64.StdEncoding.EncodeToString(m.Salt), m.Iter)
 }
 
-func ParseServerFirstMessage(msg string) (*ServerFirstMessage, error) {
-	sm := &ServerFirstMessage{}
-	for _, part := range strings.Split(msg, ",") {
-		if len(part) < 2 || part[1] != '=' {
+func ParseSFMsg(msg string) (*SFMsg, error) {
+	sm := &SFMsg{}
+	for _, p := range strings.Split(msg, ",") {
+		if len(p) < 2 || p[1] != '=' {
 			continue
 		}
-		switch part[0] {
+		switch p[0] {
 		case 'r':
-			sm.Nonce = part[2:]
+			sm.Nonce = p[2:]
 		case 's':
-			salt, err := base64.StdEncoding.DecodeString(part[2:])
+			s, err := base64.StdEncoding.DecodeString(p[2:])
 			if err != nil {
-				return nil, fmt.Errorf("scram: decoding salt: %w", err)
+				return nil, fmt.Errorf("salt: %w", err)
 			}
-			sm.Salt = salt
+			sm.Salt = s
 		case 'i':
-			i, err := strconv.Atoi(part[2:])
+			i, err := strconv.Atoi(p[2:])
 			if err != nil {
-				return nil, fmt.Errorf("scram: parsing iterations: %w", err)
+				return nil, fmt.Errorf("iter: %w", err)
 			}
-			sm.Iterations = i
+			sm.Iter = i
 		}
 	}
-	if sm.Nonce == "" || len(sm.Salt) == 0 || sm.Iterations == 0 {
-		return nil, fmt.Errorf("scram: incomplete server-first-message: %q", msg)
+	if sm.Nonce == "" || len(sm.Salt) == 0 || sm.Iter == 0 {
+		return nil, fmt.Errorf("incomplete: %q", msg)
 	}
 	return sm, nil
 }
 
-func ClientFirstMessageBare(msg string) string {
-	first := strings.IndexByte(msg, ',')
-	if first < 0 {
+func CFBare(msg string) string {
+	f := strings.IndexByte(msg, ',')
+	if f < 0 {
 		return msg
 	}
-	second := strings.IndexByte(msg[first+1:], ',')
-	if second < 0 {
-		return msg[first+1:]
+	s := strings.IndexByte(msg[f+1:], ',')
+	if s < 0 {
+		return msg[f+1:]
 	}
-	return msg[first+second+2:]
+	return msg[f+s+2:]
 }
 
-func ClientFinalMessageWithoutProof(msg string) string {
-	pIdx := strings.LastIndex(msg, ",p=")
-	if pIdx < 0 {
+func CFNoProof(msg string) string {
+	i := strings.LastIndex(msg, ",p=")
+	if i < 0 {
 		return msg
 	}
-	return msg[:pIdx]
+	return msg[:i]
 }
 
-func AuthMessage(bareClientFirst, serverFirst string) string {
-	return bareClientFirst + "," + serverFirst + ","
+func AuthMsg(bcf, sf string) string {
+	return bcf + "," + sf + ","
 }
 
 type Server struct {
-	password       string
-	clientFirst    string
-	serverFirst    string
-	clientFinal    string
-	clientNonce    string
-	saltedPassword []byte
-	serverFirstMsg *ServerFirstMessage
+	pw       string
+	cf       string
+	sf       string
+	sfmsg    *SFMsg
 }
 
-func NewServer(password string) *Server {
-	return &Server{password: password}
+func NewServer(pw string) *Server {
+	return &Server{pw: pw}
 }
 
-func (s *Server) ServerFirst(clientFirst string) (string, error) {
-	s.clientFirst = clientFirst
-	cf := &struct{ Nonce string }{}
-	for _, part := range strings.Split(clientFirst, ",") {
-		if strings.HasPrefix(part, "r=") {
-			cf.Nonce = part[2:]
+func (s *Server) ServerFirst(cf string) (string, error) {
+	s.cf = cf
+	nc := ""
+	for _, p := range strings.Split(cf, ",") {
+		if strings.HasPrefix(p, "r=") {
+			nc = p[2:]
 		}
 	}
-	if cf.Nonce == "" {
-		return "", fmt.Errorf("scram: client-first missing nonce")
+	if nc == "" {
+		return "", fmt.Errorf("missing nonce")
 	}
-	s.clientNonce = cf.Nonce
-	serverNonce, err := GenerateNonce()
+	sn, err := GenerateNonce()
 	if err != nil {
 		return "", err
 	}
-	salt, err := GenerateSalt()
+	sl, err := GenerateSalt()
 	if err != nil {
 		return "", err
 	}
-	s.serverFirstMsg = &ServerFirstMessage{
-		Nonce: cf.Nonce + serverNonce, Salt: salt, Iterations: DefaultIterations,
-	}
-	s.serverFirst = s.serverFirstMsg.Marshal()
-	return s.serverFirst, nil
+	s.sfmsg = &SFMsg{Nonce: nc + sn, Salt: sl, Iter: DefaultIterations}
+	s.sf = s.sfmsg.String()
+	return s.sf, nil
 }
 
-func (s *Server) ClientFinal(clientFinal string) (string, error) {
-	s.clientFinal = clientFinal
-	cf := &struct {
-		Nonce string
-		Proof []byte
-	}{}
-	for _, part := range strings.Split(clientFinal, ",") {
-		if strings.HasPrefix(part, "r=") {
-			cf.Nonce = part[2:]
-		} else if strings.HasPrefix(part, "p=") {
-			p, err := base64.StdEncoding.DecodeString(part[2:])
+func (s *Server) ClientFinal(cf string) (string, error) {
+	var nc string
+	var pf []byte
+	for _, p := range strings.Split(cf, ",") {
+		if strings.HasPrefix(p, "r=") {
+			nc = p[2:]
+		} else if strings.HasPrefix(p, "p=") {
+			v, err := base64.StdEncoding.DecodeString(p[2:])
 			if err != nil {
-				return "", fmt.Errorf("scram: decoding proof: %w", err)
+				return "", fmt.Errorf("proof: %w", err)
 			}
-			cf.Proof = p
+			pf = v
 		}
 	}
-	if cf.Nonce == "" || len(cf.Proof) == 0 {
-		return "", fmt.Errorf("scram: incomplete client-final-message")
+	if nc == "" || len(pf) == 0 {
+		return "", fmt.Errorf("incomplete")
 	}
-	if cf.Nonce != s.serverFirstMsg.Nonce {
-		return "", fmt.Errorf("scram: nonce mismatch")
+	if nc != s.sfmsg.Nonce {
+		return "", fmt.Errorf("nonce mismatch")
 	}
-	sp := SaltedPassword(s.password, s.serverFirstMsg.Salt, s.serverFirstMsg.Iterations)
-	s.saltedPassword = sp
+	sp := SaltedPassword(s.pw, s.sfmsg.Salt, s.sfmsg.Iter)
 	ck := ClientKey(sp)
 	sk := StoredKey(ck)
-	bc := ClientFirstMessageBare(s.clientFirst)
-	cn := ClientFinalMessageWithoutProof(s.clientFinal)
-	am := AuthMessage(bc, s.serverFirst) + cn
+	bcf := CFBare(s.cf)
+	cnp := CFNoProof(cf)
+	am := AuthMsg(bcf, s.sf) + cnp
 	cs := ClientSignature(sk, []byte(am))
 	ep := ClientProof(ck, cs)
-	if !hmac.Equal(cf.Proof, ep) {
-		return "", fmt.Errorf("scram: auth failed")
+	if !hmac.Equal(pf, ep) {
+		return "", fmt.Errorf("auth failed")
 	}
 	svk := ServerKey(sp)
 	ss := ServerSignature(svk, []byte(am))
 	return "v=" + base64.StdEncoding.EncodeToString(ss), nil
 }
 
-func ClientFirst(username, clientNonce string) string {
-	return "n,,n=" + username + ",r=" + clientNonce
+func ClientFirst(user, nc string) string {
+	return "n,,n=" + user + ",r=" + nc
 }
 
-func ClientFinalProof(password string, sf *ServerFirstMessage, cf, cb string) []byte {
-	sp := SaltedPassword(password, sf.Salt, sf.Iterations)
+func ClientFinalProof(pw string, sf *SFMsg, cf, cb string) []byte {
+	sp := SaltedPassword(pw, sf.Salt, sf.Iter)
 	ck := ClientKey(sp)
 	sk := StoredKey(ck)
-	bc := ClientFirstMessageBare(cf)
-	am := AuthMessage(bc, sf.Marshal()) + cb
+	bcf := CFBare(cf)
+	am := AuthMsg(bcf, sf.String()) + cb
 	cs := ClientSignature(sk, []byte(am))
 	return ClientProof(ck, cs)
 }
 
-func VerifyServerSignature(password string, sf *ServerFirstMessage, am, sfm string) error {
-	sp := SaltedPassword(password, sf.Salt, sf.Iterations)
+func VerifySig(pw string, sf *SFMsg, am, sfm string) error {
+	sp := SaltedPassword(pw, sf.Salt, sf.Iter)
 	svk := ServerKey(sp)
 	es := ServerSignature(svk, []byte(am))
 	if !strings.HasPrefix(sfm, "v=") {
-		return fmt.Errorf("scram: invalid server-final")
+		return fmt.Errorf("invalid")
 	}
 	gs, err := base64.StdEncoding.DecodeString(sfm[2:])
 	if err != nil {
-		return fmt.Errorf("scram: decoding sig: %w", err)
+		return fmt.Errorf("decode: %w", err)
 	}
 	if !hmac.Equal(es, gs) {
-		return fmt.Errorf("scram: sig mismatch")
+		return fmt.Errorf("mismatch")
 	}
 	return nil
 }
