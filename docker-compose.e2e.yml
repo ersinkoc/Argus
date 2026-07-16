@@ -1,0 +1,138 @@
+# Argus E2E proxy auth stack
+# Deploys PostgreSQL + Vault + Monopam + Argus in one command.
+# argus runs with -resolve-url pointing at Monopam for credential injection.
+#
+# Usage:
+#   docker compose -f docker-compose.e2e.yml up -d
+#   # Connect through Argus:
+#   PGPASSWORD=app_pass_456 psql -h localhost -p 15433 -U app_user -d proddb -c "SELECT 1"
+#   # Follow the auth flow:
+#   docker compose -f docker-compose.e2e.yml logs -f argus | grep "proxy auth"
+#
+# To test Monopam resolve directly:
+#   curl http://localhost:5001/api/db/resolve \
+#     -H "Content-Type: application/json" \
+#     -d '{"username":"jane_app","database":"production","protocol":"postgresql"}'
+
+volumes:
+  vault-data:
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: app_pass_456
+      POSTGRES_DB: proddb
+    ports:
+      - "15433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d proddb"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  vault:
+    image: hashicorp/vault:latest
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: e2e-root-token
+    ports:
+      - "8201:8200"
+    volumes:
+      - vault-data:/vault/file
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  vault-setup:
+    image: hashicorp/vault:latest
+    depends_on:
+      vault:
+        condition: service_healthy
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: e2e-root-token
+    entrypoint: |
+      sh -c "
+        vault kv put secret/monopam/targets/production-pg \
+          username=app_user \
+          password=app_pass_456 \
+          auth_method=scram_sha_256
+        vault kv put secret/monopam/targets/analytics-pg \
+          username=analyst_user \
+          password=analyst_pass_789 \
+          auth_method=scram_sha_256
+        echo 'Vault seeded'
+      "
+
+  monopam:
+    image: mcr.microsoft.com/dotnet/sdk:9.0
+    depends_on:
+      vault:
+        condition: service_healthy
+      vault-setup:
+        condition: service_completed_successfully
+    ports:
+      - "5001:5000"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://0.0.0.0:5000
+      Monopam__Vault__Address: http://vault:8200
+      Monopam__Vault__Token: e2e-root-token
+      Monopam__Targets__0__Host: postgres
+      Monopam__Targets__0__Port: 5432
+      Monopam__Mappings__0__Username: jane_app
+      Monopam__Mappings__0__Database: production
+      Monopam__Mappings__0__TargetId: production-pg
+    working_dir: /app
+    entrypoint: |
+      sh -c "
+        git clone https://github.com/ersinkoc/Monopam.git /app 2>/dev/null || true
+        cd /app && dotnet publish src/Monopam.Api -c Release -o /publish -q
+        dotnet /publish/Monopam.Api.dll
+      "
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:5000/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  argus:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      monopam:
+        condition: service_healthy
+    ports:
+      - "15433:15432"
+      - "9092:9090"
+      - "9093:9091"
+    environment:
+      ARGUS_ADMIN_TOKEN: e2e-admin-token
+    entrypoint: |
+      sh -c "
+        /usr/local/bin/argus -config /etc/argus/argus-e2e.json \
+          -resolve-url http://monopam:5000/api/db/resolve
+      "
+
+  # Test runner — verifies the full chain works
+  e2e-test:
+    image: postgres:16-alpine
+    depends_on:
+      argus:
+        condition: service_started
+    entrypoint: |
+      sh -c "
+        sleep 10
+        echo '=== E2E: Connecting through Argus proxy auth ==='
+        PGPASSWORD=app_pass_456 psql -h argus -p 15432 -U app_user -d proddb \
+          -c 'SELECT current_user, current_database(), version()'
+        echo '=== E2E: Proxy auth chain verified ==='
+      "
+    profiles:
+      - test
