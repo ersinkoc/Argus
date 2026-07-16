@@ -35,6 +35,21 @@ func (p *Proxy) PostAuthClientAndServer(
 		return nil, nil, fmt.Errorf("parsing startup: %w", err)
 	}
 
+	// Handle SSLRequest: respond 'N' (no TLS) and read the real startup.
+	if startup.IsSSLRequest {
+		if _, err := clientConn.Write([]byte{'N'}); err != nil {
+			return nil, nil, fmt.Errorf("writing SSL reject: %w", err)
+		}
+		startupData, err = pg.ReadStartupMessage(clientConn)
+		if err != nil {
+			return nil, nil, fmt.Errorf("reading post-SSL startup: %w", err)
+		}
+		startup, err = pg.ParseStartupMessage(startupData)
+		if err != nil {
+			return nil, nil, fmt.Errorf("parsing post-SSL startup: %w", err)
+		}
+	}
+
 	username := startup.Parameters["user"]
 	database := startup.Parameters["database"]
 	if database == "" {
