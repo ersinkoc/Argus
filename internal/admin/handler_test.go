@@ -29,8 +29,8 @@ func TestHandleHealthDegraded(t *testing.T) {
 	w := httptest.NewRecorder()
 	s.handleHealth(w, req)
 
-	if w.Code != http.StatusServiceUnavailable {
-		t.Errorf("degraded health should return 503, got %d", w.Code)
+	if w.Code != http.StatusOK {
+		t.Errorf("degraded health should return 200, got %d", w.Code)
 	}
 }
 
