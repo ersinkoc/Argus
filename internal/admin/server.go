@@ -214,8 +214,11 @@ func (s *Server) Start() error {
 		s.EventStream.SetAuth(func(token string) bool {
 			return subtle.ConstantTimeCompare([]byte(token), []byte(s.authToken)) == 1
 		})
-		// Admin UI paths must be public — the entire /ui/ tree is an SPA
-		auth.publicPrefixes = append(auth.publicPrefixes, "/ui/")
+		// Admin UI paths must be public — the entire /ui/ tree is an SPA.
+		// Both /ui (exact) and /ui/ (prefix) need to be public because the
+		// browser may navigate to either, and the auth middleware's prefix check
+		// is exact-string-prefix, not a route match.
+		auth.publicPrefixes = append(auth.publicPrefixes, "/ui", "/ui/")
 		if len(s.allowedSources) > 0 {
 			auth = auth.WithAllowedSources(s.allowedSources)
 		}
