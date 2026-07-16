@@ -7,7 +7,12 @@ import (
 	"net"
 	"time"
 
+	"github.com/ersinkoc/argus/internal/audit"
 	"github.com/ersinkoc/argus/internal/metrics"
+	"github.com/ersinkoc/argus/internal/policy"
+	"github.com/ersinkoc/argus/internal/protocol"
+	"github.com/ersinkoc/argus/internal/protocol/mysql"
+	"github.com/ersinkoc/argus/internal/protocol/mssql"
 	"github.com/ersinkoc/argus/internal/protocol/pg"
 	"github.com/ersinkoc/argus/internal/session"
 )
@@ -145,4 +150,186 @@ func (p *Proxy) PostAuthClientAndServer(
 	)
 
 	return info, backendConn, nil
+}
+
+// handleProxyAuthMySQL handles proxy auth for MySQL connections.
+func (p *Proxy) handleProxyAuthMySQL(clientConn net.Conn, remoteAddr *net.TCPAddr, handler protocol.Handler) {
+	ctx := context.Background()
+
+	// Step 1: Send proxy greeting, read client handshake
+	handshake, _, err := mysql.ProxyAuthServer(clientConn, "")
+	if err != nil {
+		slog.Error("mysql proxy auth: client handshake failed", "error", err)
+		p.auditLogger.Log(audit.Event{
+			EventType: audit.AuthFailure.String(), ClientIP: remoteAddr.IP.String(),
+			Action: "block", Error: err.Error(),
+		})
+		return
+	}
+
+	// Step 2: Resolve identity
+	resolveCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	resolved, err := p.identityResolver.Resolve(resolveCtx, &ResolveIdentity{
+		Username: handshake.Username,
+		Database: handshake.Database,
+		ClientIP: remoteAddr.IP.String(),
+		Protocol: "mysql",
+	})
+	cancel()
+	if err != nil {
+		p.auditLogger.Log(audit.Event{
+			EventType: audit.AuthFailure.String(), ClientIP: remoteAddr.IP.String(),
+			Action: "block", Error: err.Error(),
+		})
+		return
+	}
+
+	// Step 3: Connect to resolved target
+	dialCtx, dialCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer dialCancel()
+	var d net.Dialer
+	backendConn, err := d.DialContext(dialCtx, "tcp", fmt.Sprintf("%s:%d", resolved.Host, resolved.Port))
+	if err != nil {
+		metrics.Global.ConnectionsFailed.Add(1)
+		slog.Error("mysql proxy auth: connect to resolved target failed", "error", err)
+		return
+	}
+
+	// Step 4: Authenticate to backend
+	if err := mysql.ProxyAuthClient(backendConn, resolved.Username, handshake.Database, resolved.Password); err != nil {
+		metrics.Global.ConnectionsFailed.Add(1)
+		backendConn.Close()
+		slog.Error("mysql proxy auth: backend auth failed", "error", err)
+		return
+	}
+
+	// Step 5: Session setup
+	sessionInfo := &session.Info{
+		Username:   handshake.Username,
+		Database:   handshake.Database,
+		ClientIP:   remoteAddr.IP,
+		AuthMethod: "proxy_mysql_native",
+	}
+	p.setupProxyAuthSession(ctx, clientConn, backendConn, sessionInfo, remoteAddr, handler)
+}
+
+// handleProxyAuthMSSQL handles proxy auth for MSSQL connections.
+func (p *Proxy) handleProxyAuthMSSQL(clientConn net.Conn, remoteAddr *net.TCPAddr, handler protocol.Handler) {
+	ctx := context.Background()
+
+	// Step 1: Read PreLogin + Login7 from client
+	username, _, err := mssql.ProxyAuthServer(clientConn)
+	if err != nil {
+		slog.Error("mssql proxy auth: client handshake failed", "error", err)
+		p.auditLogger.Log(audit.Event{
+			EventType: audit.AuthFailure.String(), ClientIP: remoteAddr.IP.String(),
+			Action: "block", Error: err.Error(),
+		})
+		return
+	}
+
+	// Extract PreLogin data for forwarding (stored by ProxyAuthServer call)
+	// We need to keep the PreLogin data — ProxyAuthServer consumes the PreLogin
+	// from the client. For MSSQL, we forward the client's PreLogin to the backend.
+	// The PreLogin data is consumed from the client — we need to reconstruct it.
+	preLoginData := buildMSSQLPreLogin()
+
+	// Step 2: Resolve identity
+	resolveCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	resolved, err := p.identityResolver.Resolve(resolveCtx, &ResolveIdentity{
+		Username: username,
+		Database: "",
+		ClientIP: remoteAddr.IP.String(),
+		Protocol: "mssql",
+	})
+	cancel()
+	if err != nil {
+		p.auditLogger.Log(audit.Event{
+			EventType: audit.AuthFailure.String(), ClientIP: remoteAddr.IP.String(),
+			Action: "block", Error: err.Error(),
+		})
+		return
+	}
+
+	// Step 3: Connect to resolved target
+	dialCtx, dialCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer dialCancel()
+	var d net.Dialer
+	backendConn, err := d.DialContext(dialCtx, "tcp", fmt.Sprintf("%s:%d", resolved.Host, resolved.Port))
+	if err != nil {
+		metrics.Global.ConnectionsFailed.Add(1)
+		slog.Error("mssql proxy auth: connect to resolved target failed", "error", err)
+		return
+	}
+
+	// Step 4: Authenticate to backend
+	loginResp, err := mssql.ProxyAuthClient(backendConn, preLoginData, resolved.Username, resolved.Password)
+	if err != nil {
+		metrics.Global.ConnectionsFailed.Add(1)
+		backendConn.Close()
+		slog.Error("mssql proxy auth: backend auth failed", "error", err)
+		return
+	}
+
+	// Forward backend login response to client
+	// This must be wrapped in the proper TDS packet type
+	mssql.ForwardLoginResponse(clientConn, loginResp)
+
+	// Step 5: Session setup
+	sessionInfo := &session.Info{
+		Username:   username,
+		ClientIP:   remoteAddr.IP,
+		AuthMethod: "proxy_tds7",
+	}
+	p.setupProxyAuthSession(ctx, clientConn, backendConn, sessionInfo, remoteAddr, handler)
+}
+
+// setupProxyAuthSession handles the common session setup after a successful proxy auth:
+// session creation, role resolution, audit logging, and command loop dispatch.
+func (p *Proxy) setupProxyAuthSession(ctx context.Context, clientConn, backendConn net.Conn, sessionInfo *session.Info, remoteAddr *net.TCPAddr, handler protocol.Handler) {
+	if p.sessionLimiter != nil {
+		if !p.sessionLimiter.Acquire(sessionInfo.Username) {
+			handler.WriteError(ctx, clientConn, "53300", "Too many connections for user "+sessionInfo.Username)
+			p.auditLogger.Log(audit.Event{
+				EventType: audit.ConnectionClose.String(), Username: sessionInfo.Username,
+				ClientIP: remoteAddr.IP.String(), Action: "rejected",
+				Reason: "concurrent session limit exceeded",
+			})
+			return
+		}
+		defer p.sessionLimiter.Release(sessionInfo.Username)
+	}
+
+	sess := p.sessionManager.Create(sessionInfo, clientConn)
+	sess.BackendConn = backendConn
+	if ps := p.policyEngine.Loader().Current(); ps != nil {
+		sess.Roles = policy.ResolveUserRoles(sessionInfo.Username, ps.Roles)
+	}
+
+	metrics.Global.ConnectionsTotal.Add(1)
+	p.auditLogger.Log(audit.Event{
+		EventType: audit.AuthSuccess.String(), SessionID: sess.ID,
+		Username: sess.Username, Roles: sess.Roles,
+		ClientIP: remoteAddr.IP.String(), Database: sess.Database,
+		Action: "allow",
+	})
+	slog.Info("session opened", "session_id", sess.ID[:8], "user", sess.Username, "database", sess.Database, "client_ip", remoteAddr.IP)
+
+	p.commandLoop(ctx, sess, handler, clientConn, backendConn)
+
+	p.sessionManager.Remove(sess.ID)
+	p.auditLogger.Log(audit.Event{
+		EventType: audit.ConnectionClose.String(), SessionID: sess.ID,
+		Username: sess.Username, ClientIP: remoteAddr.IP.String(),
+		Database: sess.Database, Action: "close",
+	})
+	cmdCount, _, _ := sess.Stats()
+	slog.Info("session closed", "session_id", sess.ID[:8], "commands", cmdCount)
+}
+
+// dialTimeout returns the connection timeout from config or a default.
+
+// buildMSSQLPreLogin builds a minimal PreLogin packet for MSSQL proxy auth.
+func buildMSSQLPreLogin() []byte {
+	return []byte{0x12, 0x01, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00}
 }

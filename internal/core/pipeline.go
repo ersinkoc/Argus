@@ -345,10 +345,19 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 		return
 	}
 
-	// Proxy auth mode for PostgreSQL: read startup, resolve identity, authenticate
-	if protocolName == "postgresql" && p.identityResolver != nil {
-		p.handleProxyAuthPG(clientConn, remoteAddr, handler)
-		return
+	// Proxy auth mode: read startup, resolve identity, authenticate
+	if p.identityResolver != nil {
+		switch protocolName {
+		case "postgresql":
+			p.handleProxyAuthPG(clientConn, remoteAddr, handler)
+			return
+		case "mysql":
+			p.handleProxyAuthMySQL(clientConn, remoteAddr, handler)
+			return
+		case "mssql":
+			p.handleProxyAuthMSSQL(clientConn, remoteAddr, handler)
+			return
+		}
 	}
 
 	// Resolve target — first try protocol-matched target, then default

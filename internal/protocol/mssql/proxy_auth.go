@@ -317,3 +317,13 @@ func encryptTDSPassword(passUTF16 []byte, nonce []byte) []byte {
 }
 
 // toUTF16LE converts a string to UTF-16LE byte array.
+
+// ForwardLoginResponse sends a raw TDS login response to the client.
+func ForwardLoginResponse(client net.Conn, data []byte) error {
+	pkt := &Packet{
+		Type:   PacketReply,
+		Status: StatusEOM,
+		Data:   data,
+	}
+	return WritePacket(client, pkt)
+}
