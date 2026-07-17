@@ -62,6 +62,16 @@ func TestHandleExecuteUnknown(t *testing.T) {
 	}
 }
 
+func TestHandleExecuteShortPayload(t *testing.T) {
+	store := NewStmtStore()
+	store.Add(&PreparedStatement{ID: 1, SQL: "SELECT 1"})
+
+	stmtID, sql := HandleExecute(&Packet{Payload: []byte{ComStmtExecute, 0x01}}, store)
+	if stmtID != 0 || sql != "" {
+		t.Errorf("short payload should return zero values, got (%d, %q)", stmtID, sql)
+	}
+}
+
 func TestHandleClose(t *testing.T) {
 	store := NewStmtStore()
 	store.Add(&PreparedStatement{ID: 10, SQL: "SELECT 1"})
@@ -74,5 +84,16 @@ func TestHandleClose(t *testing.T) {
 
 	if store.Get(10) != nil {
 		t.Error("statement should be removed after close")
+	}
+}
+
+func TestHandleCloseShortPayload(t *testing.T) {
+	store := NewStmtStore()
+	store.Add(&PreparedStatement{ID: 10, SQL: "SELECT 1"})
+
+	HandleClose(&Packet{Payload: []byte{ComStmtClose, 0x0A}}, store)
+
+	if store.Get(10) == nil {
+		t.Error("short payload must not remove any statement")
 	}
 }

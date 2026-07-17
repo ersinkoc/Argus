@@ -170,6 +170,9 @@ func extractScramble(payload []byte) []byte {
 	}
 	i++
 	i += 4
+	if i+8 > len(payload) {
+		return nil
+	}
 	part1 := payload[i : i+8]
 	i += 8 + 1 + 2 + 1 + 2 + 2
 	if i >= len(payload) {
@@ -178,6 +181,9 @@ func extractScramble(payload []byte) []byte {
 	adl := int(payload[i])
 	i++
 	i += 10
+	if i > len(payload) {
+		i = len(payload)
+	}
 	pl := adl - 9
 	if pl < 0 {
 		pl = 12
