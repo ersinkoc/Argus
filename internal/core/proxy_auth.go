@@ -104,9 +104,6 @@ func (p *Proxy) PostAuthClientAndServer(
 		ClientIP: remoteAddr.IP, Parameters: su.Parameters,
 		AuthMethod: "proxy_scram_sha_256",
 	}
-	if info.Database == "" {
-		info.Database = info.Username
-	}
 	return info, bc, nil
 }
 
@@ -124,6 +121,7 @@ func (p *Proxy) handleProxyAuthMySQL(clientConn net.Conn, remoteAddr *net.TCPAdd
 	cancel()
 	if err != nil {
 		authFailLog(p, "mysql", remoteAddr, err)
+		handler.WriteError(context.Background(), clientConn, "28000", "Access denied")
 		return
 	}
 	if err := hs.ValidateClientSecret(clientConn, resolved.ClientSecret); err != nil {
@@ -136,11 +134,13 @@ func (p *Proxy) handleProxyAuthMySQL(clientConn net.Conn, remoteAddr *net.TCPAdd
 	bc, err := d.DialContext(dc, "tcp", fmt.Sprintf("%s:%d", resolved.Host, resolved.Port))
 	if err != nil {
 		metrics.Global.ConnectionsFailed.Add(1)
+		handler.WriteError(context.Background(), clientConn, "08001", "Backend connection failed")
 		return
 	}
 	if err := mysql.ProxyAuthClient(bc, resolved.Username, hs.Response.Database, resolved.Password); err != nil {
 		metrics.Global.ConnectionsFailed.Add(1)
 		bc.Close()
+		handler.WriteError(context.Background(), clientConn, "08001", "Backend authentication failed")
 		return
 	}
 	// Send OK back to client (ProxyAuthServer skipped it since password wasn't known at extract time)
@@ -169,11 +169,13 @@ func (p *Proxy) handleProxyAuthMSSQL(clientConn net.Conn, remoteAddr *net.TCPAdd
 	cancel()
 	if err != nil {
 		authFailLog(p, "mssql", remoteAddr, err)
+		handler.WriteError(context.Background(), securedClientConn, "28000", "Access denied")
 		return
 	}
 	slog.Info("mssql validating client secret")
 	if err := login.ValidateClientSecret(resolved.ClientSecret); err != nil {
 		authFailLog(p, "mssql", remoteAddr, err)
+		handler.WriteError(context.Background(), securedClientConn, "28000", "Login failed")
 		return
 	}
 	slog.Info("mssql client secret validated")
@@ -183,6 +185,7 @@ func (p *Proxy) handleProxyAuthMSSQL(clientConn net.Conn, remoteAddr *net.TCPAdd
 	bc, err := d.DialContext(dc, "tcp", fmt.Sprintf("%s:%d", resolved.Host, resolved.Port))
 	if err != nil {
 		metrics.Global.ConnectionsFailed.Add(1)
+		handler.WriteError(context.Background(), securedClientConn, "08001", "Backend connection failed")
 		return
 	}
 	slog.Info("mssql backend auth start", "user", resolved.Username)
@@ -190,6 +193,7 @@ func (p *Proxy) handleProxyAuthMSSQL(clientConn net.Conn, remoteAddr *net.TCPAdd
 	if err != nil {
 		metrics.Global.ConnectionsFailed.Add(1)
 		bc.Close()
+		handler.WriteError(context.Background(), securedClientConn, "08001", "Backend authentication failed")
 		return
 	}
 	slog.Info("mssql backend auth complete", "response_bytes", len(lr))
@@ -221,13 +225,15 @@ func setupAuthSession(p *Proxy, ctx context.Context, clientConn, backendConn net
 	}
 	sess := p.sessionManager.Create(si, clientConn)
 	sess.BackendConn = backendConn
+	var roles []string
 	if ps := p.policyEngine.Loader().Current(); ps != nil {
-		sess.Roles = policy.ResolveUserRoles(si.Username, ps.Roles)
+		roles = policy.ResolveUserRoles(si.Username, ps.Roles)
 	}
+	sess.SetRoles(roles)
 	metrics.Global.ConnectionsTotal.Add(1)
 	p.auditLogger.Log(audit.Event{
 		EventType: audit.AuthSuccess.String(), SessionID: sess.ID,
-		Username: sess.Username, Roles: sess.Roles,
+		Username: sess.Username, Roles: roles,
 		ClientIP: remoteAddr.IP.String(), Database: sess.Database, Action: "allow",
 	})
 	p.commandLoop(ctx, sess, handler, clientConn, backendConn)

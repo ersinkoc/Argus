@@ -480,19 +480,20 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string, tlsCo
 	// The policy engine itself will block with "no policies loaded — fail-closed"
 	// when Evaluate() is called without policies.
 	ps := p.policyEngine.Loader().Current()
+	var roles []string
 	if ps != nil {
-		sess.Roles = policy.ResolveUserRoles(sessionInfo.Username, ps.Roles)
+		roles = policy.ResolveUserRoles(sessionInfo.Username, ps.Roles)
 	} else {
-		sess.Roles = nil
 		slog.Warn("no policy set loaded — connections will be blocked until policies are loaded")
 	}
+	sess.SetRoles(roles)
 
 	metrics.Global.ConnectionsTotal.Add(1)
 	p.auditLogger.Log(audit.Event{
 		EventType: audit.AuthSuccess.String(),
 		SessionID: sess.ID,
 		Username:  sess.Username,
-		Roles:     sess.Roles,
+		Roles:     roles,
 		ClientIP:  remoteAddr.IP.String(),
 		Database:  sess.Database,
 		Action:    "allow",
@@ -509,7 +510,7 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string, tlsCo
 				Username: sess.Username,
 				Database: sess.Database,
 				ClientIP: sess.ClientIP.String(),
-				Roles:    sess.Roles,
+				Roles:    roles,
 			},
 		}
 		if err := p.hookChain.RunPostAuth(hctx); err != nil {
@@ -584,18 +585,18 @@ func (p *Proxy) handleProxyAuthPG(clientConn net.Conn, remoteAddr *net.TCPAddr, 
 	sess := p.sessionManager.Create(sessionInfo, clientConn)
 	sess.BackendConn = backendConn
 	ps := p.policyEngine.Loader().Current()
+	var roles []string
 	if ps != nil {
-		sess.Roles = policy.ResolveUserRoles(sessionInfo.Username, ps.Roles)
-	} else {
-		sess.Roles = nil
+		roles = policy.ResolveUserRoles(sessionInfo.Username, ps.Roles)
 	}
+	sess.SetRoles(roles)
 
 	metrics.Global.ConnectionsTotal.Add(1)
 	p.auditLogger.Log(audit.Event{
 		EventType: audit.AuthSuccess.String(),
 		SessionID: sess.ID,
 		Username:  sess.Username,
-		Roles:     sess.Roles,
+		Roles:     roles,
 		ClientIP:  remoteAddr.IP.String(),
 		Database:  sess.Database,
 		Action:    "allow",
