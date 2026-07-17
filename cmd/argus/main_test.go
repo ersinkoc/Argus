@@ -1020,16 +1020,18 @@ func TestSetupAuditOutputsDirectCall(t *testing.T) {
 func TestSetupAuditOutputsRotatingError(t *testing.T) {
 	auditLogger := audit.NewLogger(10, audit.ParseLogLevel("minimal"), 100)
 
-	// Use a path on non-existent drive (Windows) or /dev/null path (Unix)
-	badPath := "Z:\\nonexistent_drive_xyz\\audit.log"
+	// A path whose parent is a regular file fails to open on every platform.
+	parent := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(parent, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	badPath := filepath.Join(parent, "audit.log")
 	cfg := &config.Config{}
 	cfg.Audit.Outputs = []config.AuditOutput{
 		{Type: "file", Path: badPath, Rotation: &config.RotationConfig{MaxSizeMB: 10, MaxFiles: 3}},
 	}
-	err := setupAuditOutputs(auditLogger, cfg)
-	if err == nil {
-		// If this somehow works (unlikely), just skip
-		t.Skip("bad path did not cause error, skipping")
+	if err := setupAuditOutputs(auditLogger, cfg); err == nil {
+		t.Fatal("bad path should cause error")
 	}
 }
 

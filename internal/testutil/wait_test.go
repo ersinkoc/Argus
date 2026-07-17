@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -14,10 +15,10 @@ func TestEventuallyPasses(t *testing.T) {
 }
 
 func TestWaitForPasses(t *testing.T) {
-	ready := false
+	var ready atomic.Bool
 	go func() {
 		time.Sleep(20 * time.Millisecond)
-		ready = true
+		ready.Store(true)
 	}()
-	WaitFor(t, time.Second, func() bool { return ready }, "goroutine should set ready")
+	WaitFor(t, time.Second, func() bool { return ready.Load() }, "goroutine should set ready")
 }
