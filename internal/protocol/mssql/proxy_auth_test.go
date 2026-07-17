@@ -54,7 +54,26 @@ func TestProxyAuthServerWithTDSTLS(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	go relayODBCStyleTLSHandshake(t, relayServer, relayClient)
+	go func() {
+		// The pre-login exchange happens before TLS starts and crosses the wire
+		// as plain TDS packets. Forward it unchanged, then hand the stream to
+		// the ODBC-style TLS relay for the handshake itself.
+		preLogin, err := ReadPacket(relayClient)
+		if err != nil {
+			return
+		}
+		if err := WritePacket(relayServer, preLogin); err != nil {
+			return
+		}
+		preLoginResponse, err := ReadPacket(relayServer)
+		if err != nil {
+			return
+		}
+		if err := WritePacket(relayClient, preLoginResponse); err != nil {
+			return
+		}
+		relayODBCStyleTLSHandshake(t, relayServer, relayClient)
+	}()
 
 	cert := proxyAuthTestCertificate(t)
 	tlsCfg := &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12, MaxVersion: tls.VersionTLS12}

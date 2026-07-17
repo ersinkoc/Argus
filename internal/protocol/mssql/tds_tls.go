@@ -3,8 +3,8 @@ package mssql
 import (
 	"encoding/binary"
 	"fmt"
-	"log/slog"
 	"io"
+	"log/slog"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -28,9 +28,10 @@ const (
 type TDSTLSHandshakeConn struct {
 	conn net.Conn
 
-	readMu        sync.Mutex
-	pending       []byte
-	handshakeRaw  atomic.Bool
+	readMu       sync.Mutex
+	pending      []byte
+	handshakeRaw atomic.Bool
+	rawSeen      atomic.Bool
 
 	writeMu  sync.Mutex
 	packetID byte
@@ -66,7 +67,13 @@ func (c *TDSTLSHandshakeConn) Read(p []byte) (int, error) {
 		}
 
 		if c.passthrough.Load() || c.handshakeRaw.Load() {
-			return c.conn.Read(p)
+			n, err := c.conn.Read(p)
+			if n > 0 {
+				// The client has switched to raw TLS records mid-handshake.
+				// The server's next flight must be raw as well.
+				c.rawSeen.Store(true)
+			}
+			return n, err
 		}
 
 		pkt, err := ReadPacket(c.conn)
@@ -95,8 +102,10 @@ func (c *TDSTLSHandshakeConn) Read(p []byte) (int, error) {
 	}
 }
 
-// Write wraps p in one or more TDS PRELOGIN packets. It reports p as written
-// only after every byte of every corresponding TDS packet has been written.
+// Write wraps p in one or more TDS PRELOGIN packets until the peer switches
+// to raw TLS records (see Read) or passthrough is enabled; after that, p is
+// written unmodified. It reports p as written only after every byte of every
+// corresponding TDS packet has been written.
 func (c *TDSTLSHandshakeConn) Write(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
@@ -105,7 +114,7 @@ func (c *TDSTLSHandshakeConn) Write(p []byte) (int, error) {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 
-	if c.passthrough.Load() {
+	if c.passthrough.Load() || c.rawSeen.Load() {
 		return c.conn.Write(p)
 	}
 
