@@ -11,11 +11,11 @@ import (
 // AuthMiddleware provides token-based authentication for admin API endpoints.
 // If no token is configured, all requests are allowed.
 type AuthMiddleware struct {
-	token           string
-	publicPaths     map[string]bool   // exact paths that don't require auth
-	publicPrefixes  []string          // path prefixes that don't require auth (e.g. /ui/)
-	allowedSources  []net.IPNet       // IP ranges allowed to access admin API
-	trustedProxies  []net.IPNet       // proxy IP ranges whose X-Forwarded-For is trusted
+	token          string
+	publicPaths    map[string]bool // exact paths that don't require auth
+	publicPrefixes []string        // path prefixes that don't require auth (e.g. /ui/)
+	allowedSources []net.IPNet     // IP ranges allowed to access admin API
+	trustedProxies []net.IPNet     // proxy IP ranges whose X-Forwarded-For is trusted
 }
 
 // NewAuthMiddleware creates an auth middleware with the given bearer token.

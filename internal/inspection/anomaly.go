@@ -33,9 +33,9 @@ type userProfile struct {
 	// Frequency spike tracking: sliding window of 6 × 10-second sub-buckets.
 	// This catches sharp bursts (e.g. 100 queries in 2 seconds) that a single
 	// per-minute counter would smooth into the minute average.
-	subBuckets    [6]int64    // 6 x 10s buckets in a rolling 1-minute window
-	bucketStart   time.Time   // start time of the current (index 0) bucket
-	peakSubRate   int64       // historical peak per-sub-bucket rate (×6 = minute-equivalent)
+	subBuckets  [6]int64  // 6 x 10s buckets in a rolling 1-minute window
+	bucketStart time.Time // start time of the current (index 0) bucket
+	peakSubRate int64     // historical peak per-sub-bucket rate (×6 = minute-equivalent)
 }
 
 // AnomalyAlert represents a detected anomaly.

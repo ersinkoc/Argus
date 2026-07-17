@@ -120,15 +120,15 @@ func expandEnvInConfig(cfg *Config) {
 
 // ExpandEnvValue replaces $ENV{VAR} and $FILE{PATH} patterns with their values.
 //
-//   $ENV{VAR}  — replaced by the value of environment variable VAR.
-//                If VAR is unset, the pattern is replaced with an empty string
-//                and a warning is logged.
+//	$ENV{VAR}  — replaced by the value of environment variable VAR.
+//	             If VAR is unset, the pattern is replaced with an empty string
+//	             and a warning is logged.
 //
-//   $FILE{PATH} — replaced by the contents of the file at PATH (trailing
-//                 newlines trimmed). If PATH does not exist or cannot be read,
-//                 the pattern is replaced with an empty string and a warning
-//                 is logged. This is designed for Docker secrets, K8s mounted
-//                 secrets, and Vault agent files.
+//	$FILE{PATH} — replaced by the contents of the file at PATH (trailing
+//	              newlines trimmed). If PATH does not exist or cannot be read,
+//	              the pattern is replaced with an empty string and a warning
+//	              is logged. This is designed for Docker secrets, K8s mounted
+//	              secrets, and Vault agent files.
 func ExpandEnvValue(s string) string {
 	// Expand $ENV{VAR} patterns
 	s = expandEnvPattern(s)

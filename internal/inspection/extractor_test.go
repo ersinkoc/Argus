@@ -81,7 +81,7 @@ func TestAnomalyFrequencySpike(t *testing.T) {
 	d.mu.Lock()
 	p := d.profiles["spike_user"]
 	p.subBuckets = [6]int64{50, 0, 0, 0, 0, 0} // 50/10s = 300/min equiv
-	p.peakSubRate = 60                          // 10/min * 6
+	p.peakSubRate = 60                         // 10/min * 6
 	d.mu.Unlock()
 
 	alerts := d.Check("spike_user", CommandSELECT, []string{"t"}, ts)

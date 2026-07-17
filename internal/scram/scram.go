@@ -164,10 +164,10 @@ func AuthMsg(bcf, sf string) string {
 }
 
 type Server struct {
-	pw       string
-	cf       string
-	sf       string
-	sfmsg    *SFMsg
+	pw    string
+	cf    string
+	sf    string
+	sfmsg *SFMsg
 }
 
 func NewServer(pw string) *Server {

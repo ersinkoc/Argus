@@ -8,8 +8,8 @@ import (
 // In development, admin UI runs on a different port (5173) and needs CORS.
 // In production, both UI and API are served from the same origin.
 type CORS struct {
-	next       http.Handler
-	allowAll   bool
+	next         http.Handler
+	allowAll     bool
 	allowOrigins []string
 }
 

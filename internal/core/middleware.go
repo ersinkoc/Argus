@@ -38,12 +38,12 @@ const (
 // HookContext carries pipeline state at each hook stage.
 // Not all fields are populated at every stage — check HookStage for what's available.
 type HookContext struct {
-	Stage    HookStage
-	Session  *SessionSnapshot
-	Command  *inspection.Command
-	Decision *policy.Decision
+	Stage     HookStage
+	Session   *SessionSnapshot
+	Command   *inspection.Command
+	Decision  *policy.Decision
 	PolicyCtx *policy.Context
-	Error    string // set if the hook itself or a previous stage failed
+	Error     string // set if the hook itself or a previous stage failed
 }
 
 // SessionSnapshot is a read-only snapshot of session state at hook time.

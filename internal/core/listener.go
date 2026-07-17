@@ -22,10 +22,10 @@ type Listener struct {
 	tlsConfig *tls.Config
 	tdsTLS    bool
 	handler   func(net.Conn)
-	wg       sync.WaitGroup
-	ctx      context.Context
-	cancel   context.CancelFunc
-	connSem  chan struct{} // connection semaphore
+	wg        sync.WaitGroup
+	ctx       context.Context
+	cancel    context.CancelFunc
+	connSem   chan struct{} // connection semaphore
 }
 
 // NewListener creates a new TCP listener.

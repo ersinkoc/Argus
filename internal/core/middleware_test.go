@@ -11,12 +11,12 @@ import (
 // ── Mock pipeline hook ─────────────────────────────────────────────────
 
 type mockHook struct {
-	name        string
-	postAuthFn  func(hctx *HookContext) error
-	preEvalFn   func(hctx *HookContext) error
-	postEvalFn  func(hctx *HookContext) error
-	postExecFn  func(hctx *HookContext) error
-	callCount   atomic.Int64
+	name       string
+	postAuthFn func(hctx *HookContext) error
+	preEvalFn  func(hctx *HookContext) error
+	postEvalFn func(hctx *HookContext) error
+	postExecFn func(hctx *HookContext) error
+	callCount  atomic.Int64
 }
 
 func (m *mockHook) Name() string { return m.name }
