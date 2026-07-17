@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net"
@@ -11,8 +12,8 @@ import (
 	"github.com/ersinkoc/argus/internal/metrics"
 	"github.com/ersinkoc/argus/internal/policy"
 	"github.com/ersinkoc/argus/internal/protocol"
-	"github.com/ersinkoc/argus/internal/protocol/mysql"
 	"github.com/ersinkoc/argus/internal/protocol/mssql"
+	"github.com/ersinkoc/argus/internal/protocol/mysql"
 	"github.com/ersinkoc/argus/internal/protocol/pg"
 	"github.com/ersinkoc/argus/internal/session"
 )
@@ -90,7 +91,7 @@ func (p *Proxy) PostAuthClientAndServer(
 		bc.Close()
 		return nil, nil, fmt.Errorf("backend auth: %w", err)
 	}
-	if err := pg.ProxyAuthServer(ctx, clientConn, resolved.Password); err != nil {
+	if err := pg.ProxyAuthServer(ctx, clientConn, resolved.ClientSecret); err != nil {
 		bc.Close()
 		return nil, nil, fmt.Errorf("client auth: %w", err)
 	}
@@ -110,18 +111,22 @@ func (p *Proxy) PostAuthClientAndServer(
 }
 
 func (p *Proxy) handleProxyAuthMySQL(clientConn net.Conn, remoteAddr *net.TCPAddr, handler protocol.Handler) {
-	hs, err := mysql.ProxyAuthServer(clientConn, "")
+	hs, err := mysql.ProxyAuthServer(clientConn)
 	if err != nil {
 		authFailLog(p, "mysql", remoteAddr, err)
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	resolved, err := p.identityResolver.Resolve(ctx, &ResolveIdentity{
-		Username: hs.Username, Database: hs.Database,
+		Username: hs.Response.Username, Database: hs.Response.Database,
 		ClientIP: remoteAddr.IP.String(), Protocol: "mysql",
 	})
 	cancel()
 	if err != nil {
+		authFailLog(p, "mysql", remoteAddr, err)
+		return
+	}
+	if err := hs.ValidateClientSecret(clientConn, resolved.ClientSecret); err != nil {
 		authFailLog(p, "mysql", remoteAddr, err)
 		return
 	}
@@ -133,7 +138,7 @@ func (p *Proxy) handleProxyAuthMySQL(clientConn net.Conn, remoteAddr *net.TCPAdd
 		metrics.Global.ConnectionsFailed.Add(1)
 		return
 	}
-	if err := mysql.ProxyAuthClient(bc, resolved.Username, hs.Database, resolved.Password); err != nil {
+	if err := mysql.ProxyAuthClient(bc, resolved.Username, hs.Response.Database, resolved.Password); err != nil {
 		metrics.Global.ConnectionsFailed.Add(1)
 		bc.Close()
 		return
@@ -144,20 +149,21 @@ func (p *Proxy) handleProxyAuthMySQL(clientConn net.Conn, remoteAddr *net.TCPAdd
 		return
 	}
 	setupAuthSession(p, context.Background(), clientConn, bc,
-		&session.Info{Username: hs.Username, Database: hs.Database, ClientIP: remoteAddr.IP, AuthMethod: "proxy_mysql_native"},
+		&session.Info{Username: hs.Response.Username, Database: hs.Response.Database, ClientIP: remoteAddr.IP, AuthMethod: "proxy_mysql_native"},
 		remoteAddr, handler)
 }
 
-func (p *Proxy) handleProxyAuthMSSQL(clientConn net.Conn, remoteAddr *net.TCPAddr, handler protocol.Handler) {
-	username, err := mssql.ProxyAuthServer(clientConn)
+func (p *Proxy) handleProxyAuthMSSQL(clientConn net.Conn, remoteAddr *net.TCPAddr, handler protocol.Handler, tlsConfig *tls.Config, useTDSTLS bool) {
+	authCtx, authCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer authCancel()
+	securedClientConn, login, err := mssql.ProxyAuthServer(authCtx, clientConn, tlsConfig, useTDSTLS)
 	if err != nil {
 		authFailLog(p, "mssql", remoteAddr, err)
 		return
 	}
-	pld := []byte{0x12, 0x01, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	resolved, err := p.identityResolver.Resolve(ctx, &ResolveIdentity{
-		Username: username, Database: "",
+		Username: login.Username, Database: "",
 		ClientIP: remoteAddr.IP.String(), Protocol: "mssql",
 	})
 	cancel()
@@ -165,6 +171,12 @@ func (p *Proxy) handleProxyAuthMSSQL(clientConn net.Conn, remoteAddr *net.TCPAdd
 		authFailLog(p, "mssql", remoteAddr, err)
 		return
 	}
+	slog.Info("mssql validating client secret")
+	if err := login.ValidateClientSecret(resolved.ClientSecret); err != nil {
+		authFailLog(p, "mssql", remoteAddr, err)
+		return
+	}
+	slog.Info("mssql client secret validated")
 	dc, dl := context.WithTimeout(context.Background(), 10*time.Second)
 	defer dl()
 	var d net.Dialer
@@ -173,15 +185,21 @@ func (p *Proxy) handleProxyAuthMSSQL(clientConn net.Conn, remoteAddr *net.TCPAdd
 		metrics.Global.ConnectionsFailed.Add(1)
 		return
 	}
-	lr, err := mssql.ProxyAuthClient(bc, pld, resolved.Username, resolved.Password)
+	slog.Info("mssql backend auth start", "user", resolved.Username)
+	lr, err := mssql.ProxyAuthClient(bc, login.PreLoginRequest(), resolved.Username, resolved.Password)
 	if err != nil {
 		metrics.Global.ConnectionsFailed.Add(1)
 		bc.Close()
 		return
 	}
-	mssql.ForwardLoginResponse(clientConn, lr)
-	setupAuthSession(p, context.Background(), clientConn, bc,
-		&session.Info{Username: username, ClientIP: remoteAddr.IP, AuthMethod: "proxy_tds7"},
+	slog.Info("mssql backend auth complete", "response_bytes", len(lr))
+	if err := mssql.ForwardLoginResponse(securedClientConn, lr); err != nil {
+		bc.Close()
+		return
+	}
+	slog.Info("mssql login response forwarded")
+	setupAuthSession(p, context.Background(), securedClientConn, bc,
+		&session.Info{Username: login.Username, ClientIP: remoteAddr.IP, AuthMethod: "proxy_tds7"},
 		remoteAddr, handler)
 }
 

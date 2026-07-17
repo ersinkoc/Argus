@@ -218,7 +218,7 @@ func (p *Proxy) Start() error {
 		l := NewListener(listenerCfg)
 		protocolName := listenerCfg.Protocol
 		l.OnConnection(func(conn net.Conn) {
-			p.handleConnection(conn, protocolName)
+			p.handleConnection(conn, protocolName, l.TLSConfig(), l.UsesTDSTLS())
 		})
 		if err := l.Start(); err != nil {
 			return fmt.Errorf("starting listener: %w", err)
@@ -331,7 +331,7 @@ func (p *Proxy) AnomalyDetector() *inspection.AnomalyDetector {
 	return p.anomalyDetector
 }
 
-func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
+func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string, tlsConfig *tls.Config, useTDSTLS bool) {
 	defer clientConn.Close()
 
 	remoteAddr, ok := clientConn.RemoteAddr().(*net.TCPAddr)
@@ -355,7 +355,7 @@ func (p *Proxy) handleConnection(clientConn net.Conn, protocolName string) {
 			p.handleProxyAuthMySQL(clientConn, remoteAddr, handler)
 			return
 		case "mssql":
-			p.handleProxyAuthMSSQL(clientConn, remoteAddr, handler)
+			p.handleProxyAuthMSSQL(clientConn, remoteAddr, handler, tlsConfig, useTDSTLS)
 			return
 		}
 	}

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -95,5 +96,28 @@ func TestListenerStartTLS(t *testing.T) {
 	if err == nil {
 		t.Error("TLS with missing cert should fail")
 		l.Stop()
+	}
+}
+
+func TestListenerStartMSSQLUsesTDSTLS(t *testing.T) {
+	dir := t.TempDir()
+	certFile := filepath.Join(dir, "s.crt")
+	keyFile := filepath.Join(dir, "s.key")
+	generateTestCert(t, certFile, keyFile)
+
+	l := NewListener(config.ListenerConfig{
+		Address:  "127.0.0.1:0",
+		Protocol: "mssql",
+		TLS:      config.TLSConfig{Enabled: true, CertFile: certFile, KeyFile: keyFile},
+	})
+	if err := l.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer l.Stop()
+	if !l.UsesTDSTLS() {
+		t.Fatal("expected MSSQL listener to negotiate TLS inside TDS")
+	}
+	if l.TLSConfig() == nil {
+		t.Fatal("expected MSSQL listener TLS config to be available")
 	}
 }

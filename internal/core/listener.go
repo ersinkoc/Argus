@@ -17,9 +17,11 @@ const maxConcurrentConns = 10000
 
 // Listener manages TCP listeners for incoming connections.
 type Listener struct {
-	cfg      config.ListenerConfig
-	listener net.Listener
-	handler  func(net.Conn)
+	cfg       config.ListenerConfig
+	listener  net.Listener
+	tlsConfig *tls.Config
+	tdsTLS    bool
+	handler   func(net.Conn)
 	wg       sync.WaitGroup
 	ctx      context.Context
 	cancel   context.CancelFunc
@@ -42,6 +44,16 @@ func (l *Listener) OnConnection(handler func(net.Conn)) {
 	l.handler = handler
 }
 
+// TLSConfig returns the listener's configured server TLS settings after Start.
+func (l *Listener) TLSConfig() *tls.Config {
+	return l.tlsConfig
+}
+
+// UsesTDSTLS reports whether TLS is negotiated inside the MSSQL protocol.
+func (l *Listener) UsesTDSTLS() bool {
+	return l.tdsTLS
+}
+
 // SetConnectionLimit sets the listener connection limit.
 // It must be called before Start.
 func (l *Listener) SetConnectionLimit(limit int) {
@@ -59,7 +71,15 @@ func (l *Listener) Start() error {
 		if tlsErr != nil {
 			return fmt.Errorf("TLS config: %w", tlsErr)
 		}
-		l.listener, err = tls.Listen("tcp", l.cfg.Address, tlsCfg)
+		l.tlsConfig = tlsCfg
+		if l.cfg.Protocol == "mssql" {
+			// TDS 7.x negotiates TLS after plaintext PRELOGIN. The MSSQL
+			// proxy-auth state machine performs the protocol-aware upgrade.
+			l.tdsTLS = true
+			l.listener, err = net.Listen("tcp", l.cfg.Address)
+		} else {
+			l.listener, err = tls.Listen("tcp", l.cfg.Address, tlsCfg)
+		}
 	} else {
 		l.listener, err = net.Listen("tcp", l.cfg.Address)
 	}

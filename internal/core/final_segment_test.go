@@ -503,7 +503,7 @@ func TestProxyHandleConnectionNonTCP(t *testing.T) {
 	defer server.Close()
 
 	// This should hit the non-TCP branch and return immediately
-	proxy.handleConnection(client, "postgresql")
+	proxy.handleConnection(client, "postgresql", nil, false)
 
 	// Client should be closed by handleConnection
 	client.Close()

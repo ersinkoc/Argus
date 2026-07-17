@@ -1,163 +1,181 @@
 package mssql
 
 import (
-	"crypto/sha256"
+	"context"
+	"crypto/subtle"
+	"crypto/tls"
 	"encoding/binary"
 	"fmt"
+	"log/slog"
 	"net"
+	"time"
 	"unicode/utf16"
 )
 
-func ProxyAuthServer(client net.Conn) (username string, err error) {
-	pp, err := ReadPacket(client)
+type ProxyLogin struct {
+	Username string
+	preLogin []byte
+	login    []byte
+}
+
+func ProxyAuthServer(ctx context.Context, client net.Conn, tlsConfig *tls.Config, requireTLS bool) (net.Conn, *ProxyLogin, error) {
+	preLoginData, preLoginType, err := ReadAllPackets(client)
 	if err != nil {
-		return "", fmt.Errorf("reading pre-login: %w", err)
+		return nil, nil, fmt.Errorf("reading pre-login: %w", err)
 	}
-	if pp.Type != PacketPreLogin {
-		return "", fmt.Errorf("expected pre-login (0x12), got 0x%02x", pp.Type)
+	if preLoginType != PacketPreLogin {
+		return nil, nil, fmt.Errorf("expected pre-login (0x12), got 0x%02x", preLoginType)
 	}
-	nonce := make([]byte, 32)
-	for i := range nonce {
-		nonce[i] = byte(i*13 + 37)
-	}
-	pr := BuildProxyPreLoginResponse(nonce)
-	if err := WritePacket(client, &Packet{Type: PacketPreLogin, Status: StatusEOM, Data: pr}); err != nil {
-		return "", fmt.Errorf("writing pre-login response: %w", err)
-	}
-	lp, err := ReadPacket(client)
-	if err != nil {
-		return "", fmt.Errorf("reading login7: %w", err)
-	}
-	if lp.Type != PacketTDS7Login {
-		return "", fmt.Errorf("expected login7 (0x10), got 0x%02x", lp.Type)
-	}
-	u := extractLogin7Username(lp.Data)
-	if u == "" {
-		return "", fmt.Errorf("empty username")
-	}
-	return u, nil
-}
-
-func ProxyAuthClient(backend net.Conn, preLoginData []byte, user, pass string) ([]byte, error) {
-	if err := WritePacket(backend, &Packet{Type: PacketPreLogin, Status: StatusEOM, Data: preLoginData}); err != nil {
-		return nil, fmt.Errorf("sending pre-login: %w", err)
-	}
-	pr, err := ReadPacket(backend)
-	if err != nil {
-		return nil, fmt.Errorf("reading pre-login response: %w", err)
-	}
-	nonce := extractPreLoginNonce(pr.Data)
-	lp := BuildProxyLogin7(user, pass, nonce)
-	if err := WritePacket(backend, lp); err != nil {
-		return nil, fmt.Errorf("sending login7: %w", err)
-	}
-	lr, err := ReadPacket(backend)
-	if err != nil {
-		return nil, fmt.Errorf("reading login response: %w", err)
-	}
-	return lr.Data, nil
-}
-
-func BuildProxyLogin7(username, password string, nonce []byte) *Packet {
-	uu := utf16.Encode([]rune(username))
-	pp := utf16.Encode([]rune(password))
-	ub := utf16ToBytes(uu)
-	pb := utf16ToBytes(pp)
-	ep := encryptTDSPassword(pb, nonce)
-
-	hs := 94
-	var vd []byte
-	uo := hs + len(vd)
-	vd = append(vd, ub...)
-	po := hs + len(vd)
-	vd = append(vd, ep...)
-
-	h := make([]byte, hs)
-	binary.LittleEndian.PutUint32(h[0:4], uint32(hs+len(vd)))
-	binary.LittleEndian.PutUint32(h[4:8], 0x74000004)
-	binary.LittleEndian.PutUint32(h[8:12], 0x74000004)
-	binary.LittleEndian.PutUint32(h[12:16], 4096)
-	binary.LittleEndian.PutUint32(h[20:24], 0x01000000)
-	binary.LittleEndian.PutUint32(h[24:28], 1234)
-	binary.LittleEndian.PutUint32(h[28:32], 0)
-	h[36] = 0xE0
-	h[39] = 0x0A
-	h[42] = 0x00
-	binary.LittleEndian.PutUint32(h[44:48], 0)
-	binary.LittleEndian.PutUint32(h[48:52], 0x0409)
-	setU16(h, 48, uint16(uo))
-	setU16(h, 50, uint16(len(ub)/2))
-	setU16(h, 52, uint16(po))
-	setU16(h, 54, uint16(len(ep)))
-	setStr(h, hs, &vd, 64, 66, "")
-	setStr(h, hs, &vd, 68, 70, "")
-	setStr(h, hs, &vd, 72, 74, "")
-	setStr(h, hs, &vd, 76, 78, "")
-	setStr(h, hs, &vd, 88, 90, "")
-	return &Packet{Type: PacketTDS7Login, Status: StatusEOM, Data: append(h, vd...)}
-}
-
-func BuildProxyPreLoginResponse(nonce []byte) []byte {
-	var d []byte
-	d = append(d, 0x01, 0x01, 0x00, 0x01, 0x00)
-	d = append(d, 0x04, 0x05, 0x00)
-	d = append(d, byte(len(nonce)), 0x00)
-	d = append(d, 0xFF)
-	d[5] = 8
-	d[6] = 0
-	d = append(d, 1)
-	d = append(d, nonce...)
-	return d
-}
-
-func ForwardLoginResponse(client net.Conn, data []byte) error {
-	return WritePacket(client, &Packet{Type: PacketTDS7Login, Status: StatusEOM, Data: data})
-}
-
-func setU16(data []byte, off int, v uint16) {
-	binary.LittleEndian.PutUint16(data[off:off+2], v)
-}
-
-func setStr(header []byte, hs int, vdp *[]byte, oo, lo int, s string) {
-	b := utf16ToBytes(utf16.Encode([]rune(s)))
-	off := hs + len(*vdp)
-	*vdp = append(*vdp, b...)
-	binary.LittleEndian.PutUint16(header[oo:oo+2], uint16(off))
-	binary.LittleEndian.PutUint16(header[lo:lo+2], uint16(len(b)))
-}
-
-func extractPreLoginNonce(data []byte) []byte {
-	i := 0
-	for i < len(data) {
-		t := data[i]
-		if t == 0xFF {
-			break
+	_ = preLoginData
+	encryption := byte(0x02)
+	if requireTLS {
+		if tlsConfig == nil {
+			return nil, nil, fmt.Errorf("mssql tls requested but listener tls config is nil")
 		}
-		i++
-		if i+3 >= len(data) {
-			break
+		// ENCRYPT_OFF means TLS is used for the login packet, then the session
+		// returns to plaintext TDS so the proxy can continue inspecting traffic.
+		encryption = 0x00
+	}
+	pr := BuildPreLoginResponseWithEncryption(encryption)
+	if err := WritePacket(client, pr); err != nil {
+		return nil, nil, fmt.Errorf("writing pre-login response: %w", err)
+	}
+	loginConn := net.Conn(client)
+	if requireTLS {
+		wrapped := NewTDSTLSHandshakeConn(client)
+		serverTLSConfig := tlsConfig.Clone()
+		serverTLSConfig.SessionTicketsDisabled = true
+		tlsConn := tls.Server(wrapped, serverTLSConfig)
+		slog.Info("mssql tds tls handshake start")
+		if err := tlsConn.HandshakeContext(ctx); err != nil {
+			return nil, nil, fmt.Errorf("tds tls handshake: %w", err)
 		}
-		off := int(binary.LittleEndian.Uint16(data[i:i+2]))
-		ln := int(binary.LittleEndian.Uint16(data[i+2:i+4]))
-		i += 4
-		if t == 0x04 && off+ln <= len(data) {
-			return data[off : off+ln]
-		}
+		slog.Info("mssql tds tls handshake complete")
+		loginConn = tlsConn
+	}
+	slog.Info("mssql reading login7", "tls", requireTLS, "conn_type", fmt.Sprintf("%T", loginConn))
+	_ = loginConn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	loginData, loginType, err := readLogin7FromConn(loginConn)
+	if err != nil {
+		return nil, nil, fmt.Errorf("reading login7: %w", err)
+	}
+	if loginType != PacketTDS7Login {
+		return nil, nil, fmt.Errorf("expected login7 (0x10), got 0x%02x", loginType)
+	}
+	username := extractLogin7Username(loginData)
+	if username == "" {
+		return nil, nil, fmt.Errorf("empty username")
+	}
+	patchedPreLogin := append([]byte(nil), preLoginData...)
+	patchPreLoginEncryption(patchedPreLogin)
+	return client, &ProxyLogin{Username: username, preLogin: patchedPreLogin, login: append([]byte(nil), loginData...)}, nil
+}
+
+func (l *ProxyLogin) PreLoginRequest() []byte {
+	if l == nil || len(l.preLogin) == 0 {
+		return BuildProxyPreLoginResponse(nil)
+	}
+	return l.preLogin
+}
+
+func (l *ProxyLogin) ValidateClientSecret(secret string) error {
+	if l == nil || secret == "" || len(l.login) < 94 {
+		return fmt.Errorf("invalid client credential")
+	}
+	offset := int(binary.LittleEndian.Uint16(l.login[44:46]))
+	characters := int(binary.LittleEndian.Uint16(l.login[46:48]))
+	length := characters * 2
+	if offset < 94 || characters == 0 || offset+length > len(l.login) {
+		return fmt.Errorf("invalid client credential")
+	}
+	expected := obfuscateTDSPassword(utf16ToBytes(utf16.Encode([]rune(secret))))
+	if subtle.ConstantTimeCompare(l.login[offset:offset+length], expected) != 1 {
+		return fmt.Errorf("invalid client credential")
 	}
 	return nil
 }
 
-func encryptTDSPassword(passUTF16 []byte, nonce []byte) []byte {
-	h := sha256.Sum256(passUTF16)
-	e := make([]byte, len(h))
-	for i := range h {
-		if len(nonce) > 0 {
-			e[i] = h[i] ^ nonce[i%len(nonce)]
-		} else {
-			e[i] = h[i]
-		}
+func ProxyAuthClient(backend net.Conn, preLoginData []byte, user, pass string) ([]byte, error) {
+	slog.Debug("mssql backend: sending prelogin", "bytes", len(preLoginData))
+	if err := WritePacket(backend, &Packet{Type: PacketPreLogin, Status: StatusEOM, Data: preLoginData}); err != nil {
+		return nil, fmt.Errorf("sending pre-login: %w", err)
 	}
-	return e
+	slog.Debug("mssql backend: reading prelogin response")
+	pr, err := ReadPacket(backend)
+	if err != nil {
+		return nil, fmt.Errorf("reading pre-login response: %w", err)
+	}
+	slog.Debug("mssql backend: got prelogin response", "type", fmt.Sprintf("0x%02x", pr.Type), "data_len", len(pr.Data))
+	if pr.Type != PacketReply {
+		return nil, fmt.Errorf("expected pre-login reply, got 0x%02x", pr.Type)
+	}
+	slog.Debug("mssql backend: sending login7", "user", user)
+	lp := BuildProxyLogin7(user, pass, nil)
+	if err := WritePacket(backend, lp); err != nil {
+		return nil, fmt.Errorf("sending login7: %w", err)
+	}
+	slog.Debug("mssql backend: reading login response")
+	lr, err := ReadPacket(backend)
+	if err != nil {
+		return nil, fmt.Errorf("reading login response: %w", err)
+	}
+	slog.Debug("mssql backend: login response received", "data_len", len(lr.Data))
+	return lr.Data, nil
+}
+
+func BuildProxyLogin7(username, password string, _ []byte) *Packet {
+	const headerSize = 94
+	header := make([]byte, headerSize)
+	variable := make([]byte, 0, 128)
+
+	binary.LittleEndian.PutUint32(header[4:8], 0x74000004)
+	binary.LittleEndian.PutUint32(header[8:12], 4096)
+	binary.LittleEndian.PutUint32(header[12:16], 0x01000000)
+	binary.LittleEndian.PutUint32(header[16:20], 1234)
+	header[24] = 0xE0
+	header[25] = 0x03
+	binary.LittleEndian.PutUint32(header[32:36], 0x0409)
+
+	appendLoginString(header, &variable, 36, 38, "argus")
+	appendLoginString(header, &variable, 40, 42, username)
+	appendLoginBytes(header, &variable, 44, 46,
+		obfuscateTDSPassword(utf16ToBytes(utf16.Encode([]rune(password)))))
+	appendLoginString(header, &variable, 48, 50, "argus")
+	appendLoginString(header, &variable, 52, 54, "")
+	appendLoginString(header, &variable, 60, 62, "go-argus")
+	appendLoginString(header, &variable, 64, 66, "")
+	appendLoginString(header, &variable, 68, 70, "")
+
+	binary.LittleEndian.PutUint32(header[0:4], uint32(headerSize+len(variable)))
+	return &Packet{Type: PacketTDS7Login, Status: StatusEOM, Data: append(header, variable...)}
+}
+
+func BuildProxyPreLoginResponse(_ []byte) []byte {
+	return BuildPreLoginResponse().Data
+}
+
+func ForwardLoginResponse(client net.Conn, data []byte) error {
+	return WritePacket(client, &Packet{Type: PacketReply, Status: StatusEOM, Data: data})
+}
+
+func appendLoginString(header []byte, variable *[]byte, offsetField, lengthField int, value string) {
+	appendLoginBytes(header, variable, offsetField, lengthField,
+		utf16ToBytes(utf16.Encode([]rune(value))))
+}
+
+func appendLoginBytes(header []byte, variable *[]byte, offsetField, lengthField int, value []byte) {
+	offset := len(header) + len(*variable)
+	binary.LittleEndian.PutUint16(header[offsetField:offsetField+2], uint16(offset))
+	binary.LittleEndian.PutUint16(header[lengthField:lengthField+2], uint16(len(value)/2))
+	*variable = append(*variable, value...)
+}
+
+func obfuscateTDSPassword(password []byte) []byte {
+	obfuscated := make([]byte, len(password))
+	for i, value := range password {
+		obfuscated[i] = ((value << 4) | (value >> 4)) ^ 0xA5
+	}
+	return obfuscated
 }
 
 func utf16ToBytes(runes []uint16) []byte {
