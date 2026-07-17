@@ -44,8 +44,8 @@ func TestEventStreamOriginValidation(t *testing.T) {
 	if !es.isValidOrigin("") {
 		t.Fatal("empty Origin should be allowed for non-browser clients")
 	}
-	if es.isValidOrigin("https://admin.example.com") {
-		t.Fatal("unexpected origin should be rejected when allowlist is empty")
+	if !es.isValidOrigin("https://admin.example.com") {
+		t.Fatal("any origin should be allowed when allowlist is empty (same-origin default)")
 	}
 	es.SetAllowedOrigins([]string{"https://admin.example.com"})
 	if !es.isValidOrigin("https://admin.example.com") {
