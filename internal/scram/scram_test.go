@@ -290,3 +290,183 @@ func TestServerClientConversation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestParseSFMsgErrors covers malformed server-first-message parsing.
+func TestParseSFMsgErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  string
+	}{
+		{"empty", ""},
+		{"invalid salt base64", "r=nonce,s=!!!notbase64!!!,i=4096"},
+		{"invalid iterations", "r=nonce,s=W22ZaJ0SNY7soEsUEjb6gQ==,i=notanumber"},
+		{"missing nonce", "s=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096"},
+		{"missing salt", "r=nonce,i=4096"},
+		{"missing iterations", "r=nonce,s=W22ZaJ0SNY7soEsUEjb6gQ=="},
+		{"garbage parts only", "x,y,zz"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := scram.ParseSFMsg(tt.msg); err == nil {
+				t.Errorf("ParseSFMsg(%q): expected error, got nil", tt.msg)
+			}
+		})
+	}
+}
+
+// TestParseSFMsgSkipsMalformedParts verifies parts without '=' are ignored
+// while a complete message still parses.
+func TestParseSFMsgSkipsMalformedParts(t *testing.T) {
+	sm, err := scram.ParseSFMsg("junk,r=nonce123,s=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096,x")
+	if err != nil {
+		t.Fatalf("ParseSFMsg: %v", err)
+	}
+	if sm.Nonce != "nonce123" {
+		t.Errorf("nonce = %q, want %q", sm.Nonce, "nonce123")
+	}
+	if sm.Iter != 4096 {
+		t.Errorf("iter = %d, want 4096", sm.Iter)
+	}
+	if len(sm.Salt) == 0 {
+		t.Error("empty salt")
+	}
+}
+
+// TestSFMsgStringRoundTrip verifies String output re-parses to the same values.
+func TestSFMsgStringRoundTrip(t *testing.T) {
+	orig := &scram.SFMsg{Nonce: "abc123", Salt: []byte("0123456789abcdef"), Iter: 4096}
+	parsed, err := scram.ParseSFMsg(orig.String())
+	if err != nil {
+		t.Fatalf("ParseSFMsg: %v", err)
+	}
+	if parsed.Nonce != orig.Nonce || parsed.Iter != orig.Iter || string(parsed.Salt) != string(orig.Salt) {
+		t.Errorf("round trip mismatch: got %+v, want %+v", parsed, orig)
+	}
+}
+
+// TestCFBareEdgeCases covers messages with fewer than two commas.
+func TestCFBareEdgeCases(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  string
+		want string
+	}{
+		{"no comma", "n=user", "n=user"},
+		{"one comma", "n,n=user", "n=user"},
+		{"two commas", "n,,n=user,r=abc", "n=user,r=abc"},
+		{"empty", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := scram.CFBare(tt.msg); got != tt.want {
+				t.Errorf("CFBare(%q) = %q, want %q", tt.msg, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestCFNoProofWithoutProof verifies a message lacking ",p=" is returned unchanged.
+func TestCFNoProofWithoutProof(t *testing.T) {
+	msg := "c=biws,r=abc123def"
+	if got := scram.CFNoProof(msg); got != msg {
+		t.Errorf("CFNoProof(%q) = %q, want unchanged", msg, got)
+	}
+}
+
+// TestServerFirstMissingNonce verifies ServerFirst rejects a client-first
+// message with no nonce attribute.
+func TestServerFirstMissingNonce(t *testing.T) {
+	server := scram.NewServer("pw")
+	if _, err := server.ServerFirst("n,,n=user"); err == nil {
+		t.Fatal("expected error for missing nonce, got nil")
+	}
+}
+
+// TestClientFinalErrors covers malformed client-final-message handling.
+func TestClientFinalErrors(t *testing.T) {
+	newStartedServer := func(t *testing.T) (*scram.Server, *scram.SFMsg) {
+		t.Helper()
+		server := scram.NewServer("pw")
+		serverFirst, err := server.ServerFirst(scram.ClientFirst("user", "nonce-abc"))
+		if err != nil {
+			t.Fatalf("ServerFirst: %v", err)
+		}
+		sf, err := scram.ParseSFMsg(serverFirst)
+		if err != nil {
+			t.Fatalf("ParseSFMsg: %v", err)
+		}
+		return server, sf
+	}
+
+	t.Run("invalid proof base64", func(t *testing.T) {
+		server, sf := newStartedServer(t)
+		if _, err := server.ClientFinal("c=biws,r=" + sf.Nonce + ",p=!!!notbase64!!!"); err == nil {
+			t.Fatal("expected error for invalid proof base64, got nil")
+		}
+	})
+
+	t.Run("missing nonce", func(t *testing.T) {
+		server, _ := newStartedServer(t)
+		if _, err := server.ClientFinal("c=biws,p=" + base64.StdEncoding.EncodeToString([]byte("proof"))); err == nil {
+			t.Fatal("expected error for missing nonce, got nil")
+		}
+	})
+
+	t.Run("missing proof", func(t *testing.T) {
+		server, sf := newStartedServer(t)
+		if _, err := server.ClientFinal("c=biws,r=" + sf.Nonce); err == nil {
+			t.Fatal("expected error for missing proof, got nil")
+		}
+	})
+
+	t.Run("nonce mismatch", func(t *testing.T) {
+		server, _ := newStartedServer(t)
+		cf := "c=biws,r=wrong-nonce,p=" + base64.StdEncoding.EncodeToString([]byte("proof"))
+		if _, err := server.ClientFinal(cf); err == nil {
+			t.Fatal("expected error for nonce mismatch, got nil")
+		}
+	})
+}
+
+// TestVerifySigErrors covers malformed and mismatched server-final-messages.
+func TestVerifySigErrors(t *testing.T) {
+	sf := &scram.SFMsg{Nonce: "abc", Salt: []byte("0123456789abcdef"), Iter: 4096}
+	authMsg := "n=user,r=abc,r=abcdef,s=MDEyMzQ1Njc4OWFiY2RlZg==,i=4096,c=biws,r=abcdef"
+
+	t.Run("missing v= prefix", func(t *testing.T) {
+		if err := scram.VerifySig("pw", sf, authMsg, "e=other-error"); err == nil {
+			t.Fatal("expected error for missing v= prefix, got nil")
+		}
+	})
+
+	t.Run("invalid base64", func(t *testing.T) {
+		if err := scram.VerifySig("pw", sf, authMsg, "v=!!!notbase64!!!"); err == nil {
+			t.Fatal("expected error for invalid base64, got nil")
+		}
+	})
+
+	t.Run("signature mismatch", func(t *testing.T) {
+		wrong := "v=" + base64.StdEncoding.EncodeToString([]byte("wrong signature bytes here 1234"))
+		if err := scram.VerifySig("pw", sf, authMsg, wrong); err == nil {
+			t.Fatal("expected error for signature mismatch, got nil")
+		}
+	})
+}
+
+// TestGenerateSalt verifies salts are the right length and unique.
+func TestGenerateSalt(t *testing.T) {
+	s1, err := scram.GenerateSalt()
+	if err != nil {
+		t.Fatalf("GenerateSalt: %v", err)
+	}
+	if len(s1) != scram.SaltLen {
+		t.Errorf("salt length = %d, want %d", len(s1), scram.SaltLen)
+	}
+	s2, err := scram.GenerateSalt()
+	if err != nil {
+		t.Fatalf("GenerateSalt: %v", err)
+	}
+	if string(s1) == string(s2) {
+		t.Error("salts should be unique")
+	}
+}
