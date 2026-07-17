@@ -170,13 +170,7 @@ func parseAuthType(payload []byte) (int32, error) {
 // ──────────────────────── Proxy Auth ────────────────────────
 
 func ProxyAuthServer(ctx context.Context, client net.Conn, password string) error {
-	if err := WriteMessage(client, &Message{
-		Type: MsgAuth,
-		Payload: append(
-			[]byte{byte(AuthSASL >> 24), byte(AuthSASL >> 16), byte(AuthSASL >> 8), byte(AuthSASL)},
-			append([]byte("SCRAM-SHA-256"), 0)...,
-		),
-	}); err != nil {
+	if err := WriteMessage(client, buildAuthSASL("SCRAM-SHA-256")); err != nil {
 		return fmt.Errorf("sending SASL: %w", err)
 	}
 	r, err := ReadMessage(client)
@@ -231,7 +225,7 @@ func ProxyAuthServer(ctx context.Context, client net.Conn, password string) erro
 		return fmt.Errorf("sending SASL final: %w", err)
 	}
 	if err := WriteMessage(client, &Message{
-		Type: MsgAuth,
+		Type:    MsgAuth,
 		Payload: []byte{byte(AuthOK >> 24), byte(AuthOK >> 16), byte(AuthOK >> 8), byte(AuthOK)},
 	}); err != nil {
 		return fmt.Errorf("sending AuthOK: %w", err)
