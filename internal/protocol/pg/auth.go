@@ -188,7 +188,16 @@ func ProxyAuthServer(ctx context.Context, client net.Conn, password string) erro
 	if string(pl[:me]) != "SCRAM-SHA-256" {
 		return fmt.Errorf("unsupported: %q", string(pl[:me]))
 	}
-	cf := string(pl[me+1:])
+	// SASLInitialResponse: mechanism NUL int32-length client-first.
+	rest := pl[me+1:]
+	if len(rest) < 4 {
+		return fmt.Errorf("SASL initial response too short")
+	}
+	cfLen := int32(rest[0])<<24 | int32(rest[1])<<16 | int32(rest[2])<<8 | int32(rest[3])
+	if cfLen < 0 || int(cfLen) != len(rest)-4 {
+		return fmt.Errorf("SASL initial response length %d does not match payload %d", cfLen, len(rest)-4)
+	}
+	cf := string(rest[4:])
 	srv := scram.NewServer(password)
 	sf, err := srv.ServerFirst(cf)
 	if err != nil {
@@ -241,8 +250,10 @@ func ProxyAuthClient(ctx context.Context, backend net.Conn, password string) err
 	if ar.Type != MsgAuth {
 		return fmt.Errorf("expected Auth, got %c", ar.Type)
 	}
-	at := int32(ar.Payload[0])<<24 | int32(ar.Payload[1])<<16 |
-		int32(ar.Payload[2])<<8 | int32(ar.Payload[3])
+	at, err := parseAuthType(ar.Payload)
+	if err != nil {
+		return fmt.Errorf("parsing auth type: %w", err)
+	}
 	switch at {
 	case AuthOK:
 		return nil
