@@ -1,16 +1,23 @@
 package mysql
 
 import (
+	"crypto/rand"
 	"crypto/sha1"
+	"crypto/subtle"
 	"encoding/binary"
 	"fmt"
 	"net"
 )
 
-func ProxyAuthServer(client net.Conn, password string) (*HandshakeResponse, error) {
+type ProxyHandshake struct {
+	Response *HandshakeResponse
+	scramble []byte
+}
+
+func ProxyAuthServer(client net.Conn) (*ProxyHandshake, error) {
 	scramble := make([]byte, 20)
-	for i := range scramble {
-		scramble[i] = byte(i*17 + 31)
+	if _, err := rand.Read(scramble); err != nil {
+		return nil, fmt.Errorf("generating auth challenge: %w", err)
 	}
 	greeting := buildProxyGreeting(scramble)
 	if err := WritePacket(client, greeting); err != nil {
@@ -24,18 +31,21 @@ func ProxyAuthServer(client net.Conn, password string) (*HandshakeResponse, erro
 	if err != nil {
 		return nil, fmt.Errorf("parsing handshake: %w", err)
 	}
-	// Validate password only if one was provided (proxy auth resolves after extracting username)
-	if password != "" {
-		exp := mysqlNativePassword(password, scramble)
-		if !constTimeEq(resp.AuthResponse, exp) {
-			WritePacket(client, BuildErrPacket(2, 1045, "Access denied"))
-			return nil, fmt.Errorf("password mismatch")
-		}
-		if err := WritePacket(client, BuildOKPacket(2, 0, 0)); err != nil {
-			return nil, fmt.Errorf("writing OK: %w", err)
-		}
+	return &ProxyHandshake{Response: resp, scramble: scramble}, nil
+}
+
+func (h *ProxyHandshake) ValidateClientSecret(client net.Conn, secret string) error {
+	if h == nil || h.Response == nil || secret == "" {
+		return fmt.Errorf("invalid client credential")
 	}
-	return resp, nil
+	expected := mysqlNativePassword(secret, h.scramble)
+	if subtle.ConstantTimeCompare(h.Response.AuthResponse, expected) != 1 {
+		if err := WritePacket(client, BuildErrPacket(2, 1045, "Access denied")); err != nil {
+			return fmt.Errorf("writing access denied: %w", err)
+		}
+		return fmt.Errorf("invalid client credential")
+	}
+	return nil
 }
 
 func ProxyAuthClient(backend net.Conn, username, database, password string) error {
@@ -97,17 +107,28 @@ func constTimeEq(a, b []byte) bool {
 	return v == 0
 }
 
+const (
+	clientLongPassword     uint32 = 0x00000001
+	clientConnectWithDB    uint32 = 0x00000008
+	clientProtocol41       uint32 = 0x00000200
+	clientTransactions     uint32 = 0x00002000
+	clientSecureConnection uint32 = 0x00008000
+	clientPluginAuth       uint32 = 0x00080000
+)
+
 func buildProxyGreeting(scramble []byte) *Packet {
+	capabilities := clientLongPassword | clientConnectWithDB | clientProtocol41 |
+		clientTransactions | clientSecureConnection | clientPluginAuth
 	var p []byte
 	p = append(p, 10)
-	p = append(p, []byte("Argus Proxy\x00")...)
-	p = append(p, 0, 0, 0, 0)
+	p = append(p, []byte("8.0.0-argus\x00")...)
+	p = append(p, 1, 0, 0, 0)
 	p = append(p, scramble[:8]...)
 	p = append(p, 0)
-	p = append(p, 0xFF, 0xFF)
+	p = binary.LittleEndian.AppendUint16(p, uint16(capabilities))
 	p = append(p, 45)
-	p = append(p, 0x02, 0x00)
-	p = append(p, 0x00, 0x00)
+	p = binary.LittleEndian.AppendUint16(p, StatusAutocommit)
+	p = binary.LittleEndian.AppendUint16(p, uint16(capabilities>>16))
 	p = append(p, 21)
 	p = append(p, make([]byte, 10)...)
 	p = append(p, scramble[8:]...)
@@ -117,10 +138,13 @@ func buildProxyGreeting(scramble []byte) *Packet {
 }
 
 func buildClientResponse(username, database string, ar []byte) *Packet {
+	capabilities := clientLongPassword | clientProtocol41 | clientTransactions |
+		clientSecureConnection | clientPluginAuth
+	if database != "" {
+		capabilities |= clientConnectWithDB
+	}
 	var p []byte
-	f := make([]byte, 4)
-	binary.LittleEndian.PutUint32(f, 0x0001|0x8000|0x0008)
-	p = append(p, f...)
+	p = binary.LittleEndian.AppendUint32(p, capabilities)
 	p = append(p, 0x00, 0x00, 0x00, 0x01)
 	p = append(p, 45)
 	p = append(p, make([]byte, 23)...)
@@ -132,6 +156,7 @@ func buildClientResponse(username, database string, ar []byte) *Packet {
 		p = append(p, []byte(database)...)
 		p = append(p, 0)
 	}
+	p = append(p, []byte("mysql_native_password\x00")...)
 	return &Packet{SequenceID: 1, Payload: p}
 }
 

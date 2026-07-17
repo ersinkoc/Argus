@@ -1,6 +1,10 @@
 package mysql
 
-import "testing"
+import (
+	"encoding/binary"
+	"net"
+	"testing"
+)
 
 func TestMySQLNativePassword(t *testing.T) {
 	p := "testpass"
@@ -21,6 +25,20 @@ func TestBuildProxyGreeting(t *testing.T) {
 	if p == nil || p.SequenceID != 0 {
 		t.Fatal("invalid greeting")
 	}
+	serverVersionEnd := 1
+	for serverVersionEnd < len(p.Payload) && p.Payload[serverVersionEnd] != 0 {
+		serverVersionEnd++
+	}
+	capabilityOffset := serverVersionEnd + 1 + 4 + 8 + 1
+	lower := uint32(binary.LittleEndian.Uint16(p.Payload[capabilityOffset : capabilityOffset+2]))
+	upper := uint32(binary.LittleEndian.Uint16(p.Payload[capabilityOffset+5 : capabilityOffset+7]))
+	capabilities := lower | upper<<16
+	if capabilities&0x00000800 != 0 {
+		t.Fatal("proxy greeting must not advertise TLS")
+	}
+	if capabilities&clientProtocol41 == 0 || capabilities&clientPluginAuth == 0 {
+		t.Fatalf("required capabilities missing: 0x%08x", capabilities)
+	}
 }
 
 func TestExtractScramble(t *testing.T) {
@@ -28,5 +46,38 @@ func TestExtractScramble(t *testing.T) {
 	s := extractScramble(p.Payload)
 	if len(s) < 20 {
 		t.Fatalf("too short: %d", len(s))
+	}
+}
+
+func TestProxyHandshakeValidateClientSecret(t *testing.T) {
+	scramble := []byte("01234567890123456789")
+	secret := "client-only-secret"
+	handshake := &ProxyHandshake{
+		Response: &HandshakeResponse{AuthResponse: mysqlNativePassword(secret, scramble)},
+		scramble: scramble,
+	}
+	if err := handshake.ValidateClientSecret(nil, secret); err != nil {
+		t.Fatalf("correct secret rejected: %v", err)
+	}
+	if err := handshake.ValidateClientSecret(nil, ""); err == nil {
+		t.Fatal("empty secret accepted")
+	}
+
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+	done := make(chan error, 1)
+	go func() {
+		done <- handshake.ValidateClientSecret(server, "wrong-secret")
+	}()
+	packet, err := ReadPacket(client)
+	if err != nil {
+		t.Fatalf("read denial packet: %v", err)
+	}
+	if len(packet.Payload) == 0 || packet.Payload[0] != 0xFF {
+		t.Fatalf("denial payload = %x", packet.Payload)
+	}
+	if err := <-done; err == nil {
+		t.Fatal("wrong secret accepted")
 	}
 }
