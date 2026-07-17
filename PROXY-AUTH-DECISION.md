@@ -4,6 +4,17 @@
 **Date:** 2026-07-16  
 **Context:** The resolve bridge (PostAuth hook + Monopam .NET) is built, deployed, and E2E-tested against real PostgreSQL. The remaining architectural decision is how to build the per-protocol auth server crypto needed for credential injection.
 
+> **⚠️ Reading note (updated 2026-07-17):** This is a *decision* document. The
+> "7-8 weeks" figure below is the cost estimate of **Option (a)**, which was
+> **not** the path taken. The project shipped **Option (b) — "Go auth built ✅"**:
+> credential injection with a **separate client secret** is implemented and
+> tested for all three protocols (PG SCRAM-SHA-256, MySQL native, MSSQL TDS7).
+> The client authenticates to Argus with a short-lived `client_secret`; the
+> vaulted backend `password` is used only on the Argus↔DB leg and never reaches
+> the client. Argus even rejects a resolve response where the two are equal.
+> For the exact wire contract Monopam must implement, see
+> [`docs/RESOLVE-CONTRACT.md`](docs/RESOLVE-CONTRACT.md).
+
 ---
 
 ## 1. What Exists Today
