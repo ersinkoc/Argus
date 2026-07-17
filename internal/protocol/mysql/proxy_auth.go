@@ -96,17 +96,6 @@ func mysqlNativePassword(password string, scramble []byte) []byte {
 	return r
 }
 
-func constTimeEq(a, b []byte) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	var v byte
-	for i := range a {
-		v |= a[i] ^ b[i]
-	}
-	return v == 0
-}
-
 const (
 	clientLongPassword     uint32 = 0x00000001
 	clientConnectWithDB    uint32 = 0x00000008

@@ -6,6 +6,17 @@ import (
 	"testing"
 )
 
+func constTimeEq(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	var v byte
+	for i := range a {
+		v |= a[i] ^ b[i]
+	}
+	return v == 0
+}
+
 func TestMySQLNativePassword(t *testing.T) {
 	p := "testpass"
 	s := []byte("test-scramble-bytes!")
