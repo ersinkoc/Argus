@@ -37,8 +37,10 @@ type ResolvedIdentity struct {
 	Port int
 	// Username is the database user to authenticate as.
 	Username string
-	// Password is the database password fetched from the credential store.
+	// Password is the backend database password fetched from the credential store.
 	Password string
+	// ClientSecret authenticates the client to Argus; it is never sent upstream.
+	ClientSecret string
 	// AuthMethod is the protocol-specific auth method hint.
 	AuthMethod string
 	// Roles to assign in addition to policy-resolved roles.

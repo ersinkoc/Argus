@@ -461,11 +461,12 @@ func (a *monopamResolver) Resolve(ctx context.Context, identity *core.ResolveIde
 	}
 
 	return &core.ResolvedIdentity{
-		Host:       target.Host,
-		Port:       target.Port,
-		Username:   target.Username,
-		Password:   target.Password,
-		AuthMethod: target.AuthMethod,
-		Roles:      target.Roles,
+		Host:         target.Host,
+		Port:         target.Port,
+		Username:     target.Username,
+		Password:     target.Password,
+		ClientSecret: target.ClientSecret,
+		AuthMethod:   target.AuthMethod,
+		Roles:        target.Roles,
 	}, nil
 }

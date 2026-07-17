@@ -17,6 +17,8 @@ package resolve
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -63,8 +65,14 @@ type ResolvedTarget struct {
 	// Username is the database user to authenticate as (injected by Argus).
 	Username string `json:"username"`
 
-	// Password is the database password (fetched from Vault by Monopam).
+	// Password is the backend database password (fetched from Vault by Monopam).
 	Password string `json:"password"`
+
+	// ClientSecret authenticates the client to Argus and must differ from Password.
+	ClientSecret string `json:"client_secret"`
+
+	// ClientSecretExpiresAt optionally identifies when ClientSecret expires.
+	ClientSecretExpiresAt *time.Time `json:"client_secret_expires_at,omitempty"`
 
 	// AuthMethod is the preferred auth method if protocol-specific.
 	// Example: "scram_sha_256", "md5", "cleartext", "mysql_native_password".
@@ -145,10 +153,19 @@ func (c *Client) Resolve(ctx context.Context, req *ResolveRequest) (*ResolvedTar
 	case http.StatusOK:
 		var target ResolvedTarget
 		if err := json.Unmarshal(respBody, &target); err != nil {
-			return nil, fmt.Errorf("parse resolved target: %w (body: %s)", err, string(respBody))
+			return nil, fmt.Errorf("parse resolved target: %w", err)
 		}
-		if target.Host == "" {
+		switch {
+		case target.Host == "":
 			return nil, fmt.Errorf("resolve returned empty host")
+		case target.Password == "":
+			return nil, fmt.Errorf("resolve returned empty backend password")
+		case target.ClientSecret == "":
+			return nil, fmt.Errorf("resolve returned empty client secret")
+		case secretsEqual(target.ClientSecret, target.Password):
+			return nil, fmt.Errorf("resolve returned identical client and backend secrets")
+		case target.ClientSecretExpiresAt != nil && !target.ClientSecretExpiresAt.After(time.Now()):
+			return nil, fmt.Errorf("resolve returned expired client secret")
 		}
 		return &target, nil
 
@@ -160,8 +177,14 @@ func (c *Client) Resolve(ctx context.Context, req *ResolveRequest) (*ResolvedTar
 		return nil, &re
 
 	default:
-		return nil, fmt.Errorf("resolve returned HTTP %d: %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("resolve returned HTTP %d", resp.StatusCode)
 	}
+}
+
+func secretsEqual(a, b string) bool {
+	aHash := sha256.Sum256([]byte(a))
+	bHash := sha256.Sum256([]byte(b))
+	return subtle.ConstantTimeCompare(aHash[:], bHash[:]) == 1
 }
 
 // CloseIdleConnections closes idle HTTP connections in the client's transport.

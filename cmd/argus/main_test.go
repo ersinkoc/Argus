@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +18,7 @@ import (
 	"github.com/ersinkoc/argus/internal/config"
 	"github.com/ersinkoc/argus/internal/core"
 	"github.com/ersinkoc/argus/internal/policy"
+	"github.com/ersinkoc/argus/internal/resolve"
 )
 
 // TestMainVersion tests the main() function's --version flag via subprocess.
@@ -150,6 +153,27 @@ func TestExtractPort(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("extractPort(%q) = %d, want %d", tt.addr, got, tt.want)
 		}
+	}
+}
+
+func TestMonopamResolverMapsClientSecret(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewEncoder(w).Encode(resolve.ResolvedTarget{
+			Host: "db.internal", Port: 5432, Username: "backend-user",
+			Password: "backend-secret", ClientSecret: "client-secret",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}))
+	defer srv.Close()
+
+	adapter := &monopamResolver{client: resolve.NewClient(srv.URL, "")}
+	got, err := adapter.Resolve(context.Background(), &core.ResolveIdentity{Username: "client-user"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Password != "backend-secret" || got.ClientSecret != "client-secret" {
+		t.Fatal("adapter did not preserve separate client and backend secrets")
 	}
 }
 
