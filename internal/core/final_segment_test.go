@@ -1125,12 +1125,12 @@ func TestProxySessionTimeoutCallback(t *testing.T) {
 	defer loggerTO.Close()
 
 	proxy := NewProxy(cfg, policy.NewEngine(loaderTO), loggerTO)
-	proxy.Start()
 
 	clientConn, serverConn := net.Pipe()
 	defer serverConn.Close()
 	defer clientConn.Close()
 
+	// Backdate before Start so the writes cannot race the timeout checker.
 	sess := proxy.sessionManager.Create(&session.Info{
 		Username: "timeout_test_user",
 		Database: "db",
@@ -1139,6 +1139,8 @@ func TestProxySessionTimeoutCallback(t *testing.T) {
 
 	sess.LastActivity = time.Now().Add(-1 * time.Hour)
 	sess.StartTime = time.Now().Add(-1 * time.Hour)
+
+	proxy.Start()
 
 	proxy.sessionManager.Remove(sess.ID)
 	proxy.Stop()

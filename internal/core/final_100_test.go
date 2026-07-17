@@ -327,13 +327,8 @@ func TestProxyStartSessionTimeoutCallbackFires(t *testing.T) {
 	proxy := NewProxy(cfg, policy.NewEngine(loader), logger)
 	proxy.SetSessionCheckInterval(50 * time.Millisecond)
 
-	// Start the proxy (registers the OnTimeout callback at lines 140-150)
-	if err := proxy.Start(); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	defer proxy.Stop()
-
-	// Create a session with very old timestamps so it times out immediately
+	// Create a session with very old timestamps BEFORE starting the proxy so
+	// backdating the fields does not race the timeout checker goroutine.
 	clientConn, serverConn := net.Pipe()
 	defer serverConn.Close()
 
@@ -345,6 +340,12 @@ func TestProxyStartSessionTimeoutCallbackFires(t *testing.T) {
 
 	sess.LastActivity = time.Now().Add(-1 * time.Hour)
 	sess.StartTime = time.Now().Add(-1 * time.Hour)
+
+	// Start the proxy (registers the OnTimeout callback at lines 140-150)
+	if err := proxy.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer proxy.Stop()
 
 	// Wait for the session manager's timeout checker to fire.
 	deadline := time.After(2 * time.Second)
