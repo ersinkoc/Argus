@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"unicode/utf16"
 )
 
 // TDS packet types
@@ -265,22 +266,24 @@ func BuildErrorToken(number int32, state, class byte, message, server, proc stri
 	content = append(content, numBuf...)
 	content = append(content, state, class)
 
-	// Message (US_VARCHAR: uint16 length + UTF-16LE)
+	// Message (US_VARCHAR: uint16 length in UTF-16 code units + UTF-16LE data).
+	// The length is derived from the encoded byte count so it stays consistent
+	// with the payload for multi-byte and astral-plane characters.
 	msgUTF16 := toUTF16LE(message)
 	lenBuf := make([]byte, 2)
-	binary.LittleEndian.PutUint16(lenBuf, uint16(len(message)))
+	binary.LittleEndian.PutUint16(lenBuf, uint16(len(msgUTF16)/2))
 	content = append(content, lenBuf...)
 	content = append(content, msgUTF16...)
 
 	// Server name
 	srvUTF16 := toUTF16LE(server)
-	binary.LittleEndian.PutUint16(lenBuf, uint16(len(server)))
+	binary.LittleEndian.PutUint16(lenBuf, uint16(len(srvUTF16)/2))
 	content = append(content, lenBuf...)
 	content = append(content, srvUTF16...)
 
 	// Proc name
 	procUTF16 := toUTF16LE(proc)
-	binary.LittleEndian.PutUint16(lenBuf, uint16(len(proc)))
+	binary.LittleEndian.PutUint16(lenBuf, uint16(len(procUTF16)/2))
 	content = append(content, lenBuf...)
 	content = append(content, procUTF16...)
 
@@ -298,11 +301,15 @@ func BuildErrorToken(number int32, state, class byte, message, server, proc stri
 	return token
 }
 
+// toUTF16LE encodes a string to UTF-16LE. It ranges over encoded code units,
+// not the source string's byte offsets, so multi-byte runes and astral-plane
+// characters (encoded as surrogate pairs) are handled correctly.
 func toUTF16LE(s string) []byte {
-	result := make([]byte, len(s)*2)
-	for i, r := range s {
-		result[i*2] = byte(r)
-		result[i*2+1] = byte(r >> 8)
+	units := utf16.Encode([]rune(s))
+	result := make([]byte, len(units)*2)
+	for i, u := range units {
+		result[i*2] = byte(u)
+		result[i*2+1] = byte(u >> 8)
 	}
 	return result
 }

@@ -103,6 +103,57 @@ func ParseColMetadata(data []byte) ([]TDSColumnMeta, int) {
 	return cols, offset
 }
 
+// tdsRowField is one column value located within a ROW token's byte stream.
+type tdsRowField struct {
+	col      TDSColumnMeta
+	isText   bool // variable-length text field carrying a 2-byte length prefix
+	isNull   bool
+	dataFrom int // offset of the value bytes (after any length prefix)
+	dataTo   int
+}
+
+// walkTDSRow parses the column values in a ROW/NBCROW token body, returning one
+// entry per successfully located column. Parsing stops at the first field that
+// runs past the end of data; trailing bytes past the last parsed field start at
+// the returned tailOffset. This is a best-effort walk — full TDS row parsing is
+// type-dependent — shared by MaskTDSRow and ExtractTDSRowValues so both agree
+// on field boundaries.
+func walkTDSRow(data []byte, cols []TDSColumnMeta) (fields []tdsRowField, tailOffset int) {
+	if len(data) < 1 {
+		return nil, len(data)
+	}
+	offset := 1 // skip token byte
+	for _, col := range cols {
+		if offset >= len(data) {
+			break
+		}
+		if col.IsText {
+			if offset+2 > len(data) {
+				break
+			}
+			fieldLen := int(binary.LittleEndian.Uint16(data[offset:]))
+			offset += 2
+			if fieldLen == 0xFFFF { // NULL
+				fields = append(fields, tdsRowField{col: col, isText: true, isNull: true, dataFrom: offset, dataTo: offset})
+				continue
+			}
+			if offset+fieldLen > len(data) {
+				break
+			}
+			fields = append(fields, tdsRowField{col: col, isText: true, dataFrom: offset, dataTo: offset + fieldLen})
+			offset += fieldLen
+		} else {
+			fieldLen := col.MaxLen
+			if fieldLen < 0 || offset+fieldLen > len(data) {
+				break
+			}
+			fields = append(fields, tdsRowField{col: col, dataFrom: offset, dataTo: offset + fieldLen})
+			offset += fieldLen
+		}
+	}
+	return fields, offset
+}
+
 // MaskTDSRow applies masking to a ROW token's data.
 // TDS ROW format: token(0xD1) + column_values...
 // This is a best-effort approach — exact parsing depends on column types.
@@ -115,74 +166,163 @@ func MaskTDSRow(data []byte, cols []TDSColumnMeta, pipeline *masking.Pipeline) [
 		return data
 	}
 
-	// For text columns, attempt to find and mask their values
-	// This is a simplified approach — full TDS row parsing is very complex
-	// because field lengths depend on column type definitions
+	fields, tail := walkTDSRow(data, cols)
+
+	// Build one FieldValue per column at its true index, then mask the whole
+	// row in a single ProcessRow call so each column's transformer is applied
+	// by index (a per-field call would only ever apply column 0's rule and
+	// would inflate the pipeline's row counter). N-type columns store UTF-16LE
+	// on the wire; decode to plain text before masking so the transformers see
+	// characters, not raw code units.
+	row := make([]masking.FieldValue, len(fields))
+	for i, f := range fields {
+		if f.isNull {
+			row[i] = masking.FieldValue{IsNull: true}
+			continue
+		}
+		raw := data[f.dataFrom:f.dataTo]
+		if isNTextType(f.col.TypeID) {
+			row[i] = masking.FieldValue{Data: []byte(decodeUTF16LESlice(raw))}
+		} else {
+			row[i] = masking.FieldValue{Data: raw}
+		}
+	}
+	masked, _ := pipeline.ProcessRow(row)
+
 	result := make([]byte, 0, len(data))
 	result = append(result, data[0]) // token byte
-	offset := 1
 
-	for _, col := range cols {
-		if offset >= len(data) {
-			break
-		}
-
-		if col.IsText {
-			// Variable-length text: 2-byte length prefix + data
-			if offset+2 > len(data) {
-				result = append(result, data[offset:]...)
-				break
-			}
-			fieldLen := int(binary.LittleEndian.Uint16(data[offset:]))
-			result = append(result, data[offset:offset+2]...)
-			offset += 2
-
-			if fieldLen == 0xFFFF { // NULL
+	for i, f := range fields {
+		if f.isText {
+			if f.isNull {
+				// Re-emit the 2-byte NULL length prefix (0xFFFF).
+				result = append(result, data[f.dataFrom-2:f.dataFrom]...)
 				continue
 			}
-
-			if offset+fieldLen > len(data) {
-				result = append(result, data[offset:]...)
-				break
+			fieldData := data[f.dataFrom:f.dataTo]
+			if i < len(masked) && !masked[i].IsNull {
+				if isNTextType(f.col.TypeID) {
+					fieldData = toUTF16LE(string(masked[i].Data))
+				} else {
+					fieldData = masked[i].Data
+				}
 			}
-
-			fieldData := data[offset : offset+fieldLen]
-			offset += fieldLen
-
-			// Check if this column should be masked
-			fieldValue := masking.FieldValue{Data: fieldData}
-			row := []masking.FieldValue{fieldValue}
-			masked, _ := pipeline.ProcessRow(row)
-			if len(masked) > 0 && !masked[0].IsNull {
-				// Re-encode with new length
-				maskedData := masked[0].Data
-				lenBuf := make([]byte, 2)
-				binary.LittleEndian.PutUint16(lenBuf, uint16(len(maskedData)))
-				// Replace length
-				result = result[:len(result)-2]
-				result = append(result, lenBuf...)
-				result = append(result, maskedData...)
-			} else {
-				result = append(result, fieldData...)
-			}
+			lenBuf := make([]byte, 2)
+			binary.LittleEndian.PutUint16(lenBuf, uint16(len(fieldData)))
+			result = append(result, lenBuf...)
+			result = append(result, fieldData...)
 		} else {
-			// Fixed-length: copy as-is
-			fieldLen := col.MaxLen
-			if offset+fieldLen > len(data) {
-				result = append(result, data[offset:]...)
-				break
-			}
-			result = append(result, data[offset:offset+fieldLen]...)
-			offset += fieldLen
+			// Fixed-length: copy as-is.
+			result = append(result, data[f.dataFrom:f.dataTo]...)
 		}
 	}
 
-	// Append any remaining data
-	if offset < len(data) {
-		result = append(result, data[offset:]...)
+	// Append any remaining data past the last parsed field.
+	if tail < len(data) {
+		result = append(result, data[tail:]...)
 	}
 
 	return result
+}
+
+// ExtractTDSRowValues returns the per-column values of a ROW/NBCROW token as
+// strings (nil for NULL). Text columns are decoded from UTF-16LE when the type
+// is an N-type (NVARCHAR/NCHAR); other text is returned as-is. Fixed-length and
+// unparsed columns yield the raw bytes as a string. Best-effort — mirrors the
+// field boundaries used by MaskTDSRow.
+func ExtractTDSRowValues(data []byte, cols []TDSColumnMeta) []any {
+	if len(data) < 1 || (data[0] != TokenRow && data[0] != TokenNBCRow) {
+		return nil
+	}
+	fields, _ := walkTDSRow(data, cols)
+	values := make([]any, 0, len(fields))
+	for _, f := range fields {
+		if f.isNull {
+			values = append(values, nil)
+			continue
+		}
+		raw := data[f.dataFrom:f.dataTo]
+		if f.isText && (f.col.TypeID == 0xE7 || f.col.TypeID == 0xEF) {
+			values = append(values, decodeUTF16LESlice(raw))
+		} else {
+			values = append(values, string(raw))
+		}
+	}
+	return values
+}
+
+// EncodeUTF16LE encodes a string to UTF-16LE bytes, matching the on-wire
+// encoding TDS uses for SQL Batch payloads and string tokens.
+func EncodeUTF16LE(s string) []byte {
+	return toUTF16LE(s)
+}
+
+// TDSRowLen returns the total byte length of the ROW/NBCROW token at the start
+// of data, given the column metadata, or 0 if the row cannot be located.
+func TDSRowLen(data []byte, cols []TDSColumnMeta) int {
+	if len(data) < 1 || (data[0] != TokenRow && data[0] != TokenNBCRow) {
+		return 0
+	}
+	fields, tail := walkTDSRow(data, cols)
+	if len(fields) < len(cols) {
+		// A field ran past the end of data — the row is truncated or a column
+		// type we cannot size. Signal "unknown" so callers stop cleanly.
+		return 0
+	}
+	return tail
+}
+
+// TDSTokenLen returns the byte length of the length-prefixed or fixed-length
+// token at the start of data, for the token types that appear in a SQL Batch
+// reply stream. It returns 0 for ROW/NBCROW/COLMETADATA (which need column
+// context to size) and for any unrecognized token, so callers can stop cleanly
+// rather than misparse.
+func TDSTokenLen(data []byte) int {
+	if len(data) < 1 {
+		return 0
+	}
+	switch data[0] {
+	case TokenError, TokenInfo, TokenEnvChange, TokenLoginAck, 0xA9: // USHORT length-prefixed (ORDER = 0xA9)
+		if len(data) < 3 {
+			return 0
+		}
+		n := 3 + int(binary.LittleEndian.Uint16(data[1:3]))
+		if n > len(data) {
+			return 0
+		}
+		return n
+	case 0x79: // RETURNSTATUS: token + int32
+		if len(data) < 5 {
+			return 0
+		}
+		return 5
+	case TokenDone, TokenDoneProc, TokenDoneInProc: // token + status(2) + curcmd(2) + rowcount(8)
+		if len(data) < 13 {
+			return len(data)
+		}
+		return 13
+	default:
+		return 0
+	}
+}
+
+// ParseErrorTokenMessage extracts the human-readable message from an ERROR
+// token (0xAA). Returns an empty string if the token is malformed.
+func ParseErrorTokenMessage(data []byte) string {
+	// token(1) + length(2) + number(4) + state(1) + class(1) + msg US_VARCHAR
+	if len(data) < 11 || data[0] != TokenError {
+		return ""
+	}
+	off := 1 + 2 + 4 + 1 + 1 // past number/state/class
+	if off+2 > len(data) {
+		return ""
+	}
+	msgChars := int(binary.LittleEndian.Uint16(data[off:]))
+	off += 2
+	if off+msgChars*2 > len(data) {
+		return ""
+	}
+	return decodeUTF16LESlice(data[off : off+msgChars*2])
 }
 
 func decodeUTF16LESlice(data []byte) string {
@@ -194,6 +334,11 @@ func decodeUTF16LESlice(data []byte) string {
 		u16[i] = uint16(data[i*2]) | uint16(data[i*2+1])<<8
 	}
 	return string(utf16.Decode(u16))
+}
+
+// isNTextType reports whether the TDS type stores UTF-16LE text (NVARCHAR/NCHAR).
+func isNTextType(typeID byte) bool {
+	return typeID == 0xE7 || typeID == 0xEF
 }
 
 func isFixedLenType(typeID byte) bool {
