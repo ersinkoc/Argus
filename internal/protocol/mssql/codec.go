@@ -192,46 +192,63 @@ func patchPreLoginMARS(data []byte) {
 	}
 }
 
-// BuildPreLoginResponse creates a minimal pre-login response.
+// BuildPreLoginResponse creates a minimal pre-login response without TLS support.
 func BuildPreLoginResponse() *Packet {
+	return BuildPreLoginResponseWithEncryption(0x02)
+}
+
+// BuildPreLoginResponseWithEncryption creates a pre-login response with the
+// requested MS-TDS encryption negotiation value.
+func BuildPreLoginResponseWithEncryption(encryption byte) *Packet {
 	// Minimal pre-login response
 	var data []byte
 
-	// VERSION token (0x00): offset 6, length 6
-	data = append(data, 0x00)  // token type: VERSION
-	data = append(data, 0, 26) // offset (big-endian uint16)
-	data = append(data, 0, 6)  // length (big-endian uint16)
+	// VERSION token (0x00): offset 31, length 6
+	data = append(data, 0x00)
+	data = append(data, 0, 31)
+	data = append(data, 0, 6)
 
-	// ENCRYPTION token (0x01): offset 32, length 1
-	data = append(data, 0x01)  // token type: ENCRYPTION
-	data = append(data, 0, 32) // offset
-	data = append(data, 0, 1)  // length
+	// ENCRYPTION token (0x01): offset 37, length 1
+	data = append(data, 0x01)
+	data = append(data, 0, 37)
+	data = append(data, 0, 1)
 
-	// INSTOPT token (0x02): offset 33, length 1
-	data = append(data, 0x02)  // token type: INSTOPT
-	data = append(data, 0, 33) // offset
-	data = append(data, 0, 1)  // length
+	// INSTOPT token (0x02): offset 38, length 1
+	data = append(data, 0x02)
+	data = append(data, 0, 38)
+	data = append(data, 0, 1)
 
-	// Terminator
+	// THREADID token (0x03): offset 39, length 0
+	data = append(data, 0x03)
+	data = append(data, 0, 39)
+	data = append(data, 0, 0)
+
+	// MARS token (0x04): offset 39, length 1
+	data = append(data, 0x04)
+	data = append(data, 0, 39)
+	data = append(data, 0, 1)
+
+	// TRACEID token (0x05): offset 40, length 0
+	data = append(data, 0x05)
+	data = append(data, 0, 40)
+	data = append(data, 0, 0)
+
 	data = append(data, 0xFF)
 
-	// Padding to match offsets
-	for len(data) < 26 {
+	for len(data) < 31 {
 		data = append(data, 0)
 	}
 
-	// VERSION data: 15.0.0.0, subbuild 0
-	data = append(data, 0x0F, 0x00, 0x00, 0x00, 0x00, 0x00)
-
-	// ENCRYPTION: 0x02 = NOT_SUP
-	data = append(data, 0x02)
-
-	// INSTOPT: 0x00
-	data = append(data, 0x00)
+	// VERSION data: 16.0 build marker, subbuild 0
+	data = append(data, 0x10, 0x00, 0x10, 0xA9, 0x00, 0x00)
+	data = append(data, encryption)
+	data = append(data, 0x00) // INSTOPT: matched instance/default
+	data = append(data, 0x00) // MARS: off
 
 	return &Packet{
 		Type:   PacketReply,
 		Status: StatusEOM,
+		SeqNo:  1,
 		Data:   data,
 	}
 }

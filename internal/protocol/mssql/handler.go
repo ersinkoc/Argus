@@ -303,12 +303,12 @@ func disableMARS(loginData []byte) []byte {
 
 func extractLogin7Username(data []byte) string {
 	// Login7 packet: fixed header (94 bytes), then variable-length fields
-	// Username is at offset ibUserName (uint16 offset at byte 48, uint16 length at byte 50)
+	// Username is at offset ibUserName (uint16 offset at byte 40, uint16 length at byte 42).
 	if len(data) < 94 {
 		return ""
 	}
-	offset := int(data[48]) | int(data[49])<<8
-	length := int(data[50]) | int(data[51])<<8
+	offset := int(data[40]) | int(data[41])<<8
+	length := int(data[42]) | int(data[43])<<8
 
 	if offset+length*2 > len(data) {
 		return ""

@@ -323,8 +323,8 @@ func TestParseColMetadataBadToken(t *testing.T) {
 
 func TestExtractLogin7UsernameValid(t *testing.T) {
 	data := make([]byte, 120)
-	binary.LittleEndian.PutUint16(data[48:50], 94)
-	binary.LittleEndian.PutUint16(data[50:52], 4)
+	binary.LittleEndian.PutUint16(data[40:42], 94)
+	binary.LittleEndian.PutUint16(data[42:44], 4)
 	copy(data[94:], []byte{'t', 0, 'e', 0, 's', 0, 't', 0})
 
 	got := extractLogin7Username(data)

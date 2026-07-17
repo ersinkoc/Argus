@@ -44,6 +44,9 @@ func TestBuildPreLoginResponse(t *testing.T) {
 	if pkt.Status != StatusEOM {
 		t.Errorf("status should include EOM")
 	}
+	if pkt.SeqNo != 1 {
+		t.Errorf("seqno = %d, want 1", pkt.SeqNo)
+	}
 	if len(pkt.Data) == 0 {
 		t.Error("data should not be empty")
 	}

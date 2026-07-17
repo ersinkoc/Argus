@@ -5,15 +5,14 @@ import (
 )
 
 func TestExtractLogin7Username(t *testing.T) {
-	// Build minimal Login7 with username at offset 48
+	// Build minimal Login7 with username in the ibUserName/cchUserName fields.
 	data := make([]byte, 120)
-	// Username offset at bytes 48-49 (little-endian), length at 50-51
 	usernameUTF16 := toUTF16LE("admin")
 	offset := 94 // after fixed header
-	data[48] = byte(offset)
-	data[49] = byte(offset >> 8)
-	data[50] = 5 // length = 5 chars
-	data[51] = 0
+	data[40] = byte(offset)
+	data[41] = byte(offset >> 8)
+	data[42] = 5 // length = 5 chars
+	data[43] = 0
 	copy(data[offset:], usernameUTF16)
 
 	username := extractLogin7Username(data)
