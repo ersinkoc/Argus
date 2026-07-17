@@ -55,6 +55,5 @@ cmd/argus/Z:*
 .dfmt/
 .wrongstack/
 
-# Monopam is a separate .NET project with its own git repository, checked out
-# here only for local integration work. It must not be absorbed into this repo.
-monopam/
+# The Go-based monopam service lives here as part of the Argus project.
+# Do not add monopam/ to .gitignore — it is tracked in this repository.

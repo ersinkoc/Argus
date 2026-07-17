@@ -1,0 +1,21 @@
+{
+  "records": [
+    {
+      "handle": "demo-app",
+      "database": "appdb",
+      "host": "postgres.example.invalid",
+      "port": 5432,
+      "protocol": "postgresql",
+      "username": "demo_backend_user",
+      "password": "NOT-FOR-PRODUCTION-backend-password",
+      "client_secret": "NOT-FOR-PRODUCTION-client-secret",
+      "auth_method": "scram_sha_256",
+      "roles": ["application"],
+      "policy_tags": {
+        "environment": "development",
+        "owner": "example"
+      },
+      "client_secret_expires_at": "2099-01-01T00:00:00Z"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+# Binaries and test artifacts
+/monopam
+*.test
+*.out
+
+# Local configuration may contain secrets.
+/records.json
+.env
