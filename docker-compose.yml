@@ -7,7 +7,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: argus_test
-      POSTGRES_PASSWORD: argus_pass
+      POSTGRES_PASSWORD: "${PG_PASSWORD:-argus_pass}"
       POSTGRES_DB: testdb
     ports:
       - "35432:5432"
@@ -22,9 +22,9 @@ services:
   mysql:
     image: mariadb:11
     environment:
-      MARIADB_ROOT_PASSWORD: rootpass
+      MARIADB_ROOT_PASSWORD: "${MARIADB_ROOT_PASSWORD:-rootpass}"
       MARIADB_USER: argus_test
-      MARIADB_PASSWORD: argus_pass
+      MARIADB_PASSWORD: "${MARIADB_PASSWORD:-argus_pass}"
       MARIADB_DATABASE: testdb
     ports:
       - "33306:3306"
@@ -41,14 +41,14 @@ services:
     image: mcr.microsoft.com/mssql/server:2022-latest
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "Argus_Pass123!"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:-Argus_Pass123!}"
       MSSQL_PID: "Developer"
     ports:
       - "31433:1433"
     healthcheck:
       test: [
         "CMD-SHELL",
-        "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Argus_Pass123!' -Q 'SELECT 1' -C -N"
+        "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P '${MSSQL_SA_PASSWORD:-Argus_Pass123!}' -Q 'SELECT 1' -C -N"
       ]
       interval: 10s
       timeout: 5s
