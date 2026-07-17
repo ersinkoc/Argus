@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ersinkoc/argus/internal/cluster"
 	"github.com/ersinkoc/argus/internal/metrics"
 	"github.com/ersinkoc/argus/internal/pool"
 	"github.com/ersinkoc/argus/internal/session"
@@ -27,6 +28,14 @@ type ApprovalProvider interface {
 	Approve(id, approver string) error
 	Deny(id, approver, reason string) error
 	PendingRequests() []any
+}
+
+// ClusterProvider gives access to cluster-wide session data.
+// cluster.ClusterManager satisfies this interface.
+type ClusterProvider interface {
+	NodeID() string
+	Nodes() []*cluster.NodeInfo
+	ClusterSessions() ([]*cluster.SessionEntry, error)
 }
 
 // DryRunFunc evaluates a policy dry-run request.
@@ -52,6 +61,7 @@ type Server struct {
 	classifyFn         func([]string) any
 	pluginListFn       func() any
 	onSessionKill      func(sessionID string)
+	clusterProvider    ClusterProvider
 	gatewayHandler     GatewayHandler
 	gatewayMiddleware  func(http.Handler) http.Handler
 	enableAdminRoutes  bool
@@ -160,6 +170,7 @@ func (s *Server) Start() error {
 		mux.HandleFunc("/api/dashboard", s.handleDashboard)
 		mux.HandleFunc("/api/classify", s.handleClassify)
 		mux.HandleFunc("/api/plugins", s.handlePlugins)
+		mux.HandleFunc("/api/cluster", s.handleCluster)
 		mux.HandleFunc("/api/test/run", handleTestRun)
 		// Admin UI — React SPA (with fallback to old dashboard).
 		// Both the React SPA and the legacy dashboard use inline scripts,
@@ -444,7 +455,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 			Database:     sess.Database,
 			ClientIP:     sess.ClientIP.String(),
 			AuthMethod:   sess.AuthMethod,
-			Roles:        sess.Roles,
+			Roles:        sess.RolesCopy(),
 			Parameters:   sess.Parameters,
 			Duration:     sess.Duration().String(),
 			IdleDuration: sess.IdleDuration().String(),
@@ -544,6 +555,37 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 // SetApprovalProvider sets the approval workflow provider.
 func (s *Server) SetApprovalProvider(ap ApprovalProvider) {
 	s.approvalFn = ap
+}
+
+// SetClusterProvider sets the cluster session store provider.
+func (s *Server) SetClusterProvider(cp ClusterProvider) {
+	s.clusterProvider = cp
+}
+
+func (s *Server) handleCluster(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeAPIError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "use GET")
+		return
+	}
+	if s.clusterProvider == nil {
+		writeAPIError(w, http.StatusNotFound, "NOT_FOUND", "cluster mode disabled")
+		return
+	}
+	sessions, err := s.clusterProvider.ClusterSessions()
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		return
+	}
+	if sessions == nil {
+		sessions = []*cluster.SessionEntry{}
+	}
+	resp := map[string]any{
+		"node_id":  s.clusterProvider.NodeID(),
+		"nodes":    s.clusterProvider.Nodes(),
+		"sessions": sessions,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
 
 func (s *Server) handleApprovals(w http.ResponseWriter, r *http.Request) {

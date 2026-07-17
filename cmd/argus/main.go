@@ -13,6 +13,7 @@ import (
 
 	"github.com/ersinkoc/argus/internal/admin"
 	"github.com/ersinkoc/argus/internal/audit"
+	"github.com/ersinkoc/argus/internal/cluster"
 	"github.com/ersinkoc/argus/internal/config"
 	"github.com/ersinkoc/argus/internal/core"
 	"github.com/ersinkoc/argus/internal/gateway"
@@ -129,11 +130,20 @@ func run(ctx context.Context, configPath string, validateOnly bool, resolveURL, 
 		slog.Info("proxy auth mode enabled", "endpoint", resolveURL)
 	}
 
+	clusterManager := setupCluster(cfg, proxy)
+
 	if err := proxy.Start(); err != nil {
 		return fmt.Errorf("failed to start proxy: %w", err)
 	}
 
 	adminServers := setupAdmin(cfg, proxy, policyLoader, policyEngine, auditLogger)
+	if clusterManager != nil {
+		for _, srv := range adminServers {
+			if srv != nil {
+				srv.SetClusterProvider(clusterManager)
+			}
+		}
+	}
 
 	reloadFn := makeReloadFn(policyLoader, policyEngine)
 
@@ -166,6 +176,30 @@ func setupAuditOutputs(auditLogger *audit.Logger, cfg *config.Config) error {
 		}
 	}
 	return nil
+}
+
+// setupCluster wires the shared session store when cluster mode is enabled.
+// Sessions created by this node are mirrored into the store (and removed on
+// close), and the returned manager exposes the cluster-wide view via the
+// admin API. Returns nil when cluster mode is disabled.
+func setupCluster(cfg *config.Config, proxy *core.Proxy) *cluster.ClusterManager {
+	if !cfg.Cluster.Enabled {
+		return nil
+	}
+	nodeID := cfg.Cluster.NodeID
+	if nodeID == "" {
+		if hostname, err := os.Hostname(); err == nil && hostname != "" {
+			nodeID = hostname
+		} else {
+			nodeID = "argus"
+		}
+	}
+	store := cluster.NewMemoryStore()
+	manager := cluster.NewClusterManager(nodeID, store)
+	manager.RegisterNode(cfg.Admin.Address)
+	proxy.SessionManager().SetObserver(cluster.NewSessionMirror(nodeID, store, cfg.Cluster.SessionTTL))
+	slog.Info("cluster session store enabled", "node_id", nodeID, "session_ttl", cfg.Cluster.SessionTTL.String())
+	return manager
 }
 
 func setupQueryRecorder(cfg *config.Config, proxy *core.Proxy) *audit.QueryRecorder {

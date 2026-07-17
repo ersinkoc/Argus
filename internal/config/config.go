@@ -26,6 +26,45 @@ type Config struct {
 	SlowQuery    SlowQueryConfig    `json:"slow_query,omitempty"`
 	PlanAnalysis PlanAnalysisConfig `json:"plan_analysis,omitempty"`
 	Gateway      GatewayConfig      `json:"gateway,omitempty"`
+	Cluster      ClusterConfig      `json:"cluster,omitempty"`
+}
+
+// ClusterConfig configures multi-instance shared session storage.
+type ClusterConfig struct {
+	Enabled bool `json:"enabled"`
+	// NodeID identifies this instance in the shared store. Defaults to the
+	// hostname when empty.
+	NodeID string `json:"node_id,omitempty"`
+	// SessionTTL is the shared-store entry lifetime. Live sessions are
+	// refreshed every session check interval (default 30s), so the TTL should
+	// comfortably exceed that (e.g. "2m"). 0 means entries never expire and
+	// are removed only when the session closes.
+	SessionTTL time.Duration `json:"session_ttl,omitempty"`
+}
+
+func (c *ClusterConfig) UnmarshalJSON(data []byte) error {
+	type Alias struct {
+		Enabled    bool   `json:"enabled"`
+		NodeID     string `json:"node_id"`
+		SessionTTL string `json:"session_ttl"`
+	}
+	var a Alias
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	c.Enabled = a.Enabled
+	c.NodeID = a.NodeID
+	if a.SessionTTL != "" {
+		ttl, err := time.ParseDuration(a.SessionTTL)
+		if err != nil {
+			return fmt.Errorf("invalid session_ttl: %w", err)
+		}
+		if ttl < 0 {
+			return fmt.Errorf("invalid session_ttl: must not be negative")
+		}
+		c.SessionTTL = ttl
+	}
+	return nil
 }
 
 // GatewayConfig configures the SQL Gateway HTTP API.
@@ -168,14 +207,14 @@ func (p *PolicyConfig) UnmarshalJSON(data []byte) error {
 }
 
 type PoolConfig struct {
-	MaxConnectionsPerTarget     int           `json:"max_connections_per_target"`
-	MinIdleConnections          int           `json:"min_idle_connections"`
-	ConnectionMaxLifetime       time.Duration `json:"connection_max_lifetime"`
-	ConnectionTimeout           time.Duration `json:"connection_timeout"`
-	HealthCheckInterval         time.Duration `json:"health_check_interval"`
-	CircuitBreakerThreshold     int           `json:"circuit_breaker_threshold,omitempty"`      // failures before open, default 5
-	CircuitBreakerResetTimeout  time.Duration `json:"circuit_breaker_reset_timeout,omitempty"`  // default 30s
-	CircuitBreakerHalfOpenMax   int           `json:"circuit_breaker_half_open_max,omitempty"`   // max test requests, default 1
+	MaxConnectionsPerTarget    int           `json:"max_connections_per_target"`
+	MinIdleConnections         int           `json:"min_idle_connections"`
+	ConnectionMaxLifetime      time.Duration `json:"connection_max_lifetime"`
+	ConnectionTimeout          time.Duration `json:"connection_timeout"`
+	HealthCheckInterval        time.Duration `json:"health_check_interval"`
+	CircuitBreakerThreshold    int           `json:"circuit_breaker_threshold,omitempty"`     // failures before open, default 5
+	CircuitBreakerResetTimeout time.Duration `json:"circuit_breaker_reset_timeout,omitempty"` // default 30s
+	CircuitBreakerHalfOpenMax  int           `json:"circuit_breaker_half_open_max,omitempty"` // max test requests, default 1
 }
 
 func (p *PoolConfig) UnmarshalJSON(data []byte) error {

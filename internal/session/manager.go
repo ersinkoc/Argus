@@ -67,11 +67,46 @@ func (s *Session) Duration() time.Duration {
 	return time.Since(s.StartTime)
 }
 
+// LastActivityTime returns the last activity timestamp.
+func (s *Session) LastActivityTime() time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.LastActivity
+}
+
+// SetRoles replaces the session's roles.
+func (s *Session) SetRoles(roles []string) {
+	s.mu.Lock()
+	s.Roles = roles
+	s.mu.Unlock()
+}
+
+// RolesCopy returns a copy of the session's roles.
+func (s *Session) RolesCopy() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.Roles...)
+}
+
 // IdleDuration returns how long since the last activity.
 func (s *Session) IdleDuration() time.Duration {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return time.Since(s.LastActivity)
+}
+
+// Observer receives session lifecycle notifications, e.g. to mirror sessions
+// into a cluster-shared store. Implementations must be safe for concurrent
+// use and must not block: callbacks run on the session-handling goroutine
+// (SessionCreated, SessionRemoved) or the timeout checker (SessionAlive).
+type Observer interface {
+	// SessionCreated fires when a session is registered.
+	SessionCreated(s *Session)
+	// SessionAlive fires periodically (every check interval) for each session
+	// that is still active, so observers can refresh TTL-based state.
+	SessionAlive(s *Session)
+	// SessionRemoved fires when a session is removed, killed, or timed out.
+	SessionRemoved(id string)
 }
 
 // Manager manages active sessions.
@@ -81,6 +116,7 @@ type Manager struct {
 	maxDuration   time.Duration
 	checkInterval time.Duration
 	onTimeout     func(*Session, string)
+	observer      Observer
 	stopCh        chan struct{}
 	wg            sync.WaitGroup
 }
@@ -99,6 +135,12 @@ func NewManager(idleTimeout, maxDuration time.Duration) *Manager {
 // The string argument is the reason: "idle_timeout" or "max_duration".
 func (m *Manager) OnTimeout(fn func(*Session, string)) {
 	m.onTimeout = fn
+}
+
+// SetObserver registers a lifecycle observer.
+// It must be called before Start and before sessions are created.
+func (m *Manager) SetObserver(o Observer) {
+	m.observer = o
 }
 
 // SetCheckInterval sets how often the timeout checker runs.
@@ -136,6 +178,9 @@ func (m *Manager) Create(info *Info, clientConn net.Conn) *Session {
 		ClientConn:   clientConn,
 	}
 	m.sessions.Store(s.ID, s)
+	if m.observer != nil {
+		m.observer.SessionCreated(s)
+	}
 	return s
 }
 
@@ -150,7 +195,9 @@ func (m *Manager) Get(id string) *Session {
 
 // Remove removes a session.
 func (m *Manager) Remove(id string) {
-	m.sessions.Delete(id)
+	if _, ok := m.sessions.LoadAndDelete(id); ok && m.observer != nil {
+		m.observer.SessionRemoved(id)
+	}
 }
 
 // Kill closes a session's connections and removes it.
@@ -230,7 +277,9 @@ func (m *Manager) checkTimeouts() {
 			if s.BackendConn != nil {
 				s.BackendConn.Close()
 			}
-			m.sessions.Delete(key)
+			m.Remove(key.(string))
+		} else if m.observer != nil {
+			m.observer.SessionAlive(s)
 		}
 		return true
 	})

@@ -30,6 +30,11 @@
     "max_duration": "8h",
     "max_per_user": 10
   },
+  "cluster": {
+    "enabled": true,
+    "node_id": "argus-dev-1",
+    "session_ttl": "2m"
+  },
   "audit": {
     "level": "verbose",
     "outputs": [{"type": "stdout"}],

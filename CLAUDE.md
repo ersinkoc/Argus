@@ -43,9 +43,9 @@ make cross-all                          # cross-compile linux/darwin/windows
 | `internal/session/` | Lifecycle, identity, timeout, concurrency |
 | `internal/pool/` | Dedicated + shared pool, circuit breaker, histogram, health |
 | `internal/audit/` | Logger, rotation, webhook, recorder, search, replay, compaction, slow query |
-| `internal/admin/` | 34 REST endpoints + WebSocket, auth middleware, dashboard UI, test runner |
+| `internal/admin/` | 35 REST endpoints + WebSocket, auth middleware, dashboard UI, test runner |
 | `internal/auth/` | LDAP (BER encoding, group resolution) + SSO (JWT/HMAC-SHA256) |
-| `internal/cluster/` | Multi-instance shared session store |
+| `internal/cluster/` | Multi-instance shared session store (wired via `session.Observer` + `/api/cluster`) |
 | `internal/plugin/` | Plugin registry (TransformerPlugin, AuditWriterPlugin) |
 | `internal/classify/` | Data classification engine (5 levels, 17 rules) |
 | `internal/gateway/` | SQL Gateway HTTP API, query executor, allowlist, API key auth, webhook |
@@ -86,6 +86,8 @@ Command → Inspect → Cost → Policy (15 conditions + SQLi detection) → Rat
 - Query plan cost analysis via EXPLAIN in `internal/plan/` — `ExplainPG()` and `ExplainMySQL()`
 - mTLS client certificate auth via `config.TLSConfig.ClientAuth` + `ClientCAFile`
 - Circuit breaker thresholds configurable via `pool.CircuitBreakerThreshold` + `CircuitBreakerResetTimeout`
+- Cluster mode (`cluster.enabled` config) mirrors sessions into a shared store via `session.Observer`; cluster-wide view at `GET /api/cluster`; `session_ttl` should exceed the 30s session check interval
+- Session `Roles` are written via `Session.SetRoles()` and read via `RolesCopy()` when crossing goroutines
 
 
 ## ⚠️ MANDATORY LOAD
