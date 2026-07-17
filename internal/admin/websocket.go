@@ -202,9 +202,10 @@ func (es *EventStream) readLoop(c *wsClient, br *bufio.ReadWriter) {
 
 	for {
 		c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-		// Read WebSocket frame header
+		// Read WebSocket frame header. Frame fields may arrive split across
+		// TCP segments, so every fixed-size field needs io.ReadFull.
 		header := make([]byte, 2)
-		if _, err := br.Read(header); err != nil {
+		if _, err := io.ReadFull(br, header); err != nil {
 			return
 		}
 
@@ -214,7 +215,7 @@ func (es *EventStream) readLoop(c *wsClient, br *bufio.ReadWriter) {
 
 		if payloadLen == 126 {
 			ext := make([]byte, 2)
-			if _, err := br.Read(ext); err != nil {
+			if _, err := io.ReadFull(br, ext); err != nil {
 				return
 			}
 			payloadLen = int(ext[0])<<8 | int(ext[1])
@@ -223,13 +224,17 @@ func (es *EventStream) readLoop(c *wsClient, br *bufio.ReadWriter) {
 		// Read mask key (4 bytes if masked)
 		if header[1]&0x80 != 0 {
 			mask := make([]byte, 4)
-			br.Read(mask)
+			if _, err := io.ReadFull(br, mask); err != nil {
+				return
+			}
 		}
 
 		// Read payload
 		if payloadLen > 0 {
 			payload := make([]byte, payloadLen)
-			br.Read(payload)
+			if _, err := io.ReadFull(br, payload); err != nil {
+				return
+			}
 		}
 
 		switch opcode {
@@ -283,20 +288,20 @@ func computeAcceptKey(key string) string {
 // Client-to-server frames are always masked (RFC 6455 §5.1).
 func readFramePayload(br *bufio.Reader) ([]byte, error) {
 	header := make([]byte, 2)
-	if _, err := br.Read(header); err != nil {
+	if _, err := io.ReadFull(br, header); err != nil {
 		return nil, fmt.Errorf("reading frame header: %w", err)
 	}
 
 	payloadLen := int64(header[1] & 0x7F)
 	if payloadLen == 126 {
 		ext := make([]byte, 2)
-		if _, err := br.Read(ext); err != nil {
+		if _, err := io.ReadFull(br, ext); err != nil {
 			return nil, fmt.Errorf("reading extended length: %w", err)
 		}
 		payloadLen = int64(ext[0])<<8 | int64(ext[1])
 	} else if payloadLen == 127 {
 		ext := make([]byte, 8)
-		if _, err := br.Read(ext); err != nil {
+		if _, err := io.ReadFull(br, ext); err != nil {
 			return nil, fmt.Errorf("reading extended length 64: %w", err)
 		}
 		payloadLen = 0
@@ -307,7 +312,7 @@ func readFramePayload(br *bufio.Reader) ([]byte, error) {
 
 	// Read mask key (always present from client)
 	mask := make([]byte, 4)
-	if _, err := br.Read(mask); err != nil {
+	if _, err := io.ReadFull(br, mask); err != nil {
 		return nil, fmt.Errorf("reading mask key: %w", err)
 	}
 
@@ -330,12 +335,8 @@ func sendCloseFrame(conn net.Conn, statusCode int, reason string) {
 		reasonBytes = reasonBytes[:123]
 	}
 	frame := []byte{0x88} // FIN + close opcode
-	length := 2 + len(reasonBytes)
-	if length <= 125 {
-		frame = append(frame, byte(length))
-	} else {
-		frame = append(frame, 126, byte(length>>8), byte(length))
-	}
+	// Reason is capped at 123 bytes, so 2+len always fits a 7-bit length.
+	frame = append(frame, byte(2+len(reasonBytes)))
 	frame = append(frame, byte(statusCode>>8), byte(statusCode))
 	frame = append(frame, reasonBytes...)
 	conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
