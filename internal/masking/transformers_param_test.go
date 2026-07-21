@@ -138,3 +138,26 @@ func TestPipelineHonorsParametricOptions(t *testing.T) {
 		t.Fatalf("got %q, want %q", got, "************3456")
 	}
 }
+
+// TestPipelineRowCapWithoutMasking proves max_rows is enforced even when no column is masked.
+func TestPipelineRowCapWithoutMasking(t *testing.T) {
+	cols := []ColumnInfo{{Name: "id", Index: 0}}
+	p := NewPipeline(nil, cols, 2) // no masking rules, cap = 2
+
+	if !p.Active() {
+		t.Fatal("a row-limit-only pipeline must report Active()")
+	}
+	if p.HasMasking() {
+		t.Fatal("a row-limit-only pipeline must not report masking")
+	}
+
+	kept := 0
+	for i := 0; i < 5; i++ {
+		if _, ok := p.ProcessRow([]FieldValue{{Data: []byte("x")}}); ok {
+			kept++
+		}
+	}
+	if kept != 2 {
+		t.Fatalf("expected 2 rows kept under cap, got %d", kept)
+	}
+}

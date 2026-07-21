@@ -854,6 +854,11 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 				}
 			}
 
+			// Enforce a row cap even with no masking/PII — otherwise max_rows on an allow rule is ignored.
+			if pipeline == nil && decision.MaxRows > 0 {
+				pipeline = masking.NewPipeline(nil, nil, decision.MaxRows)
+			}
+
 			// Read and forward result
 			stats, err := handler.ReadAndForwardResult(ctx, backend, client, pipeline)
 			if err != nil {

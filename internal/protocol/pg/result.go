@@ -62,7 +62,7 @@ func ForwardResult(ctx context.Context, backend, client net.Conn, pipeline *mask
 			stats.RowCount++
 			stats.ByteCount += int64(len(msg.Payload) + 5) // type + length + payload
 
-			if pipeline != nil && pipeline.HasMasking() {
+			if pipeline != nil && pipeline.Active() {
 				// Parse the data row
 				fields, err := ParseDataRow(msg.Payload)
 				if err != nil {

@@ -221,7 +221,7 @@ func (h *Handler) ReadAndForwardResult(ctx context.Context, backend, client net.
 		}
 
 		// Apply masking to ROW tokens if pipeline is active
-		if pipeline != nil && pipeline.HasMasking() && len(columns) > 0 {
+		if pipeline != nil && pipeline.Active() && len(columns) > 0 {
 			if containsToken(pkt.Data, TokenRow) || containsToken(pkt.Data, TokenNBCRow) {
 				pkt.Data = MaskTDSRow(pkt.Data, columns, pipeline)
 			}

@@ -62,6 +62,13 @@ func (p *Pipeline) HasMasking() bool {
 	return len(p.columnMap) > 0 || p.piiDetector != nil
 }
 
+// Active reports whether the pipeline must inspect each row at all — either to mask columns or to
+// enforce a row limit. A row-limit-only pipeline has no masking but must still run ProcessRow so the
+// max_rows cap actually takes effect.
+func (p *Pipeline) Active() bool {
+	return p.HasMasking() || p.maxRows > 0
+}
+
 // ApplyPIIDetection scans column names for PII patterns and adds masking rules.
 // Called once when RowDescription is received (columns become known).
 func (p *Pipeline) ApplyPIIDetection(columns []ColumnInfo) {

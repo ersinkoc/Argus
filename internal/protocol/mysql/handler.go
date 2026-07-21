@@ -316,7 +316,7 @@ func (h *Handler) ReadAndForwardResult(ctx context.Context, backend, client net.
 		stats.RowCount++
 
 		// Apply masking if pipeline is set up
-		if pipeline != nil && pipeline.HasMasking() {
+		if pipeline != nil && pipeline.Active() {
 			fields := ParseMySQLTextRow(rowPkt.Payload, columnCount)
 			maskFields := make([]masking.FieldValue, len(fields))
 			for i, f := range fields {
