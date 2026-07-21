@@ -45,6 +45,9 @@ type ResolvedIdentity struct {
 	AuthMethod string
 	// Roles to assign in addition to policy-resolved roles.
 	Roles []string
+	// Principal is a stable acting identity (e.g. Monopam userId / access-key id) for per-user rate
+	// limiting; the wire username is an opaque per-session handle.
+	Principal string
 }
 
 // IdentityResolverHook is a PipelineHook that calls an IdentityResolver after

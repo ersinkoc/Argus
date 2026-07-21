@@ -525,5 +525,6 @@ func (a *monopamResolver) Resolve(ctx context.Context, identity *core.ResolveIde
 		ClientSecret: target.ClientSecret,
 		AuthMethod:   target.AuthMethod,
 		Roles:        target.Roles,
+		Principal:    target.Principal,
 	}, nil
 }

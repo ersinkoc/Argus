@@ -16,6 +16,7 @@ type Session struct {
 	Database     string
 	ClientIP     net.IP
 	Roles        []string
+	Principal    string
 	AuthMethod   string
 	StartTime    time.Time
 	LastActivity time.Time
@@ -173,6 +174,8 @@ func (m *Manager) Create(info *Info, clientConn net.Conn) *Session {
 		ClientIP:     info.ClientIP,
 		AuthMethod:   info.AuthMethod,
 		Parameters:   info.Parameters,
+		Roles:        info.Roles,
+		Principal:    info.Principal,
 		StartTime:    now,
 		LastActivity: now,
 		ClientConn:   clientConn,

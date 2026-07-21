@@ -13,4 +13,7 @@ type Info struct {
 	// username is an opaque handle, so per-user policy roles cannot be derived from it and must
 	// be carried here from the resolve response. Empty for passthrough/static sessions.
 	Roles []string
+	// Principal is the stable acting identity from the resolver (proxy-auth mode), used for per-user
+	// rate limiting where the wire username is an opaque per-session handle.
+	Principal string
 }

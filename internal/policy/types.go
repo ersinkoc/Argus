@@ -48,6 +48,9 @@ type Context struct {
 	Username string
 	Roles    []string
 	ClientIP net.IP
+	// Principal is a stable identity for the acting user (proxy-auth mode: the Monopam userId), used for
+	// per-user rate limiting where the wire Username is an opaque per-session handle. Empty otherwise.
+	Principal string
 
 	// Where
 	Database string
@@ -76,6 +79,7 @@ type Decision struct {
 	LogLevel     string
 	MaxRows      int64
 	RateLimit    *RateLimitConfig
+	RateLimits   []RateLimitConfig
 }
 
 // MaskingRule defines how a column should be masked.
@@ -114,6 +118,11 @@ type Role struct {
 type RateLimitConfig struct {
 	Rate  float64 `json:"rate"`  // queries per second
 	Burst int     `json:"burst"` // max burst size
+	// Scope selects the bucket key: "" / "rule" shares one bucket across all sessions matching the rule;
+	// "user" buckets per acting principal; "connection" per session; "database" per target database.
+	Scope string `json:"scope,omitempty"`
+	// Name is a stable limiter id (the rate-limiter map key). Defaults to the owning rule's name.
+	Name string `json:"name,omitempty"`
 }
 
 // PolicyRule is a single policy rule.
@@ -128,6 +137,9 @@ type PolicyRule struct {
 	LogLevel    string           `json:"log_level,omitempty"`
 	MaxRows     int64            `json:"max_rows,omitempty"`
 	RateLimit   *RateLimitConfig `json:"rate_limit,omitempty"`
+	// RateLimits are additional scoped rate limits, all enforced on a matching statement. Lets one rule
+	// carry e.g. a per-user AND a per-connection limit at once.
+	RateLimits []RateLimitConfig `json:"rate_limits,omitempty"`
 }
 
 // MatchConfig defines what a policy rule matches.

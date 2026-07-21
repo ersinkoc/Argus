@@ -81,6 +81,11 @@ type ResolvedTarget struct {
 	// Roles are additional policy roles to assign for this session.
 	Roles []string `json:"roles,omitempty"`
 
+	// Principal is a stable identity for the acting user (e.g. the Monopam userId or an access-key id),
+	// carried onto the session for per-user rate limiting and audit. The wire username is an opaque
+	// per-session handle, so it cannot serve that purpose.
+	Principal string `json:"principal,omitempty"`
+
 	// PolicyTags are free-form labels attached to the session for policy evaluation.
 	PolicyTags map[string]string `json:"policy_tags,omitempty"`
 }

@@ -104,6 +104,7 @@ func (p *Proxy) PostAuthClientAndServer(
 		ClientIP: remoteAddr.IP, Parameters: su.Parameters,
 		AuthMethod: "proxy_scram_sha_256",
 		Roles:      resolved.Roles,
+		Principal:  resolved.Principal,
 	}
 	return info, bc, nil
 }
@@ -150,7 +151,7 @@ func (p *Proxy) handleProxyAuthMySQL(clientConn net.Conn, remoteAddr *net.TCPAdd
 		return
 	}
 	setupAuthSession(p, context.Background(), clientConn, bc,
-		&session.Info{Username: hs.Response.Username, Database: hs.Response.Database, ClientIP: remoteAddr.IP, AuthMethod: "proxy_mysql_native", Roles: resolved.Roles},
+		&session.Info{Username: hs.Response.Username, Database: hs.Response.Database, ClientIP: remoteAddr.IP, AuthMethod: "proxy_mysql_native", Roles: resolved.Roles, Principal: resolved.Principal},
 		remoteAddr, handler)
 }
 
@@ -204,7 +205,7 @@ func (p *Proxy) handleProxyAuthMSSQL(clientConn net.Conn, remoteAddr *net.TCPAdd
 	}
 	slog.Info("mssql login response forwarded")
 	setupAuthSession(p, context.Background(), securedClientConn, bc,
-		&session.Info{Username: login.Username, ClientIP: remoteAddr.IP, AuthMethod: "proxy_tds7", Roles: resolved.Roles},
+		&session.Info{Username: login.Username, ClientIP: remoteAddr.IP, AuthMethod: "proxy_tds7", Roles: resolved.Roles, Principal: resolved.Principal},
 		remoteAddr, handler)
 }
 

@@ -683,6 +683,7 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 		policyCtx := &policy.Context{
 			Username:    sess.Username,
 			Roles:       sess.Roles,
+			Principal:   sess.Principal,
 			ClientIP:    sess.ClientIP,
 			Database:    sess.Database,
 			Tables:      cmd.Tables,
@@ -716,17 +717,37 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 		decision := p.policyEngine.Evaluate(policyCtx)
 		metrics.Global.PolicyEvals.Add(1)
 
-		// Rate limit check
-		if decision.RateLimit != nil && decision.Action != policy.ActionBlock {
-			limiterKey := decision.PolicyName
-			limiter, ok := p.rateLimiters[limiterKey]
-			if !ok {
-				limiter = ratelimit.NewLimiter(decision.RateLimit.Rate, decision.RateLimit.Burst)
-				p.rateLimiters[limiterKey] = limiter
+		// Rate limit checks: the legacy single limit plus any scoped limits on the matched rule. Each
+		// limit has its own token-bucket limiter (keyed by name); the bucket WITHIN it is chosen by scope
+		// (per-user / per-connection / per-database / shared), so one rule can enforce several at once.
+		if decision.Action != policy.ActionBlock {
+			checkRL := func(rl *policy.RateLimitConfig, fallbackName string) bool {
+				if rl == nil || rl.Rate <= 0 {
+					return true
+				}
+				name := rl.Name
+				if name == "" {
+					name = fallbackName
+				}
+				limiter, ok := p.rateLimiters[name]
+				if !ok {
+					limiter = ratelimit.NewLimiter(rl.Rate, rl.Burst)
+					p.rateLimiters[name] = limiter
+				}
+				return limiter.Allow(rateLimitBucketKey(rl.Scope, sess))
 			}
-			if !limiter.Allow(sess.Username) {
+			if !checkRL(decision.RateLimit, decision.PolicyName) {
 				decision.Action = policy.ActionBlock
 				decision.Reason = "rate limit exceeded"
+			}
+			for i := range decision.RateLimits {
+				if decision.Action == policy.ActionBlock {
+					break
+				}
+				if !checkRL(&decision.RateLimits[i], fmt.Sprintf("%s-rl-%d", decision.PolicyName, i)) {
+					decision.Action = policy.ActionBlock
+					decision.Reason = "rate limit exceeded"
+				}
 			}
 		}
 
@@ -973,5 +994,23 @@ func (p *Proxy) commandLoop(ctx context.Context, sess *session.Session, handler 
 				})
 			}
 		}
+	}
+}
+
+// rateLimitBucketKey selects the token-bucket key for a rate limit based on its scope, so limits can be
+// enforced per acting user, per connection, per target database, or shared across everything matching.
+func rateLimitBucketKey(scope string, sess *session.Session) string {
+	switch scope {
+	case "user":
+		if sess.Principal != "" {
+			return "u:" + sess.Principal
+		}
+		return "u:" + sess.Username // no principal → degrades to per-session
+	case "connection":
+		return "c:" + sess.ID
+	case "database":
+		return "d:" + sess.Database
+	default: // "" / "rule" — one shared bucket for the whole rule
+		return "rule"
 	}
 }
