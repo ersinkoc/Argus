@@ -209,11 +209,11 @@ func TestNormalizeSQLMultipleComments(t *testing.T) {
 
 func TestMatchWorkHoursBadTimeFormat(t *testing.T) {
 	// "08:00:00-19:00" → startParts has 3 elements, not 2 → return true
-	if !matchWorkHours(time.Now(), "08:00:00-19:00") {
+	if !matchWorkHours(time.Now(), "08:00:00-19:00", "") {
 		t.Error("bad start time format should return true (no restriction)")
 	}
 	// "08:00-19:00:00" → endParts has 3 elements
-	if !matchWorkHours(time.Now(), "08:00-19:00:00") {
+	if !matchWorkHours(time.Now(), "08:00-19:00:00", "") {
 		t.Error("bad end time format should return true (no restriction)")
 	}
 }

@@ -13,7 +13,7 @@ func TestMatchWorkHoursValid(t *testing.T) {
 	ts := time.Date(2026, 3, 17, 14, 0, 0, 0, time.UTC)
 
 	// Outside work hours (08:00-19:00) — should return false (in work hours, rule doesn't trigger)
-	if matchWorkHours(ts, "08:00-19:00") {
+	if matchWorkHours(ts, "08:00-19:00", "") {
 		// 14:00 is within 08:00-19:00, so condition should NOT trigger (return false)
 		// Wait, our logic: returns true when OUTSIDE work hours
 		// 14:00 is INSIDE → should return false
@@ -21,13 +21,13 @@ func TestMatchWorkHoursValid(t *testing.T) {
 
 	// At 05:00 — outside work hours — should return true (trigger block)
 	early := time.Date(2026, 3, 17, 5, 0, 0, 0, time.UTC)
-	if !matchWorkHours(early, "08:00-19:00") {
+	if !matchWorkHours(early, "08:00-19:00", "") {
 		t.Error("05:00 should be outside work hours (trigger)")
 	}
 
 	// At 22:00 — outside work hours
 	late := time.Date(2026, 3, 17, 22, 0, 0, 0, time.UTC)
-	if !matchWorkHours(late, "08:00-19:00") {
+	if !matchWorkHours(late, "08:00-19:00", "") {
 		t.Error("22:00 should be outside work hours (trigger)")
 	}
 }

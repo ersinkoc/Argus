@@ -40,10 +40,10 @@ func TestParseActionAll(t *testing.T) {
 
 func TestMatchWorkHoursEdgeCases(t *testing.T) {
 	// Invalid format
-	if !matchWorkHours(time.Now(), "invalid") {
+	if !matchWorkHours(time.Now(), "invalid", "") {
 		t.Error("invalid format should return true (no restriction)")
 	}
-	if !matchWorkHours(time.Now(), "08:00") {
+	if !matchWorkHours(time.Now(), "08:00", "") {
 		t.Error("single value should return true")
 	}
 }

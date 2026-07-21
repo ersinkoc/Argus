@@ -165,7 +165,7 @@ func matchCondition(ctx *Context, cond *ConditionConfig) bool {
 
 	// Work hours
 	if cond.WorkHours != "" {
-		if !matchWorkHours(ctx.Timestamp, cond.WorkHours) {
+		if !matchWorkHours(ctx.Timestamp, cond.WorkHours, cond.WorkHoursTz) {
 			// Condition is "must be within work hours to trigger"
 			// If currently in work hours, condition matches (e.g., for blocking outside hours, negate logic)
 			// Actually: if the condition says work_hours: "08:00-19:00", it means
@@ -289,7 +289,14 @@ func matchCondition(ctx *Context, cond *ConditionConfig) bool {
 	return true
 }
 
-func matchWorkHours(t time.Time, hoursRange string) bool {
+func matchWorkHours(t time.Time, hoursRange string, tz string) bool {
+	// Interpret the window in the configured timezone (IANA name). Unknown/unsupported tz → fall back to
+	// the timestamp's own location so the check still runs (gateway local time).
+	if tz != "" {
+		if loc, err := time.LoadLocation(tz); err == nil {
+			t = t.In(loc)
+		}
+	}
 	parts := strings.Split(hoursRange, "-")
 	if len(parts) != 2 {
 		return true

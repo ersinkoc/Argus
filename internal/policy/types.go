@@ -144,6 +144,7 @@ type ConditionConfig struct {
 	SQLNotContains []string `json:"sql_not_contains,omitempty"` // block if SQL does NOT contain these
 	RiskLevelGTE   string   `json:"risk_level_gte,omitempty"`
 	WorkHours      string   `json:"work_hours,omitempty"`
+	WorkHoursTz    string   `json:"work_hours_tz,omitempty"`
 	WorkDays       []string `json:"work_days,omitempty"`
 	SourceIPIn     []string `json:"source_ip_in,omitempty"`
 	SourceIPNotIn  []string `json:"source_ip_not_in,omitempty"`
