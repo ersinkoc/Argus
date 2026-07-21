@@ -81,21 +81,21 @@ func TestMatchRoleNegation(t *testing.T) {
 		"support": {Users: []string{"support_*"}},
 	}
 
-	ctx := &Context{Username: "admin"}
+	ctx := &Context{Username: "admin", Roles: resolveRoles("admin", roles)}
 	// admin IS dba, so "!dba" should NOT match
-	if matchRole(ctx, []string{"!dba"}, roles) {
+	if matchRole(ctx, []string{"!dba"}) {
 		t.Error("admin has dba role, !dba should not match")
 	}
 
-	ctx2 := &Context{Username: "dev_john"}
+	ctx2 := &Context{Username: "dev_john", Roles: resolveRoles("dev_john", roles)}
 	// dev_john is NOT dba, so "!dba" should match
-	if !matchRole(ctx2, []string{"!dba"}, roles) {
+	if !matchRole(ctx2, []string{"!dba"}) {
 		t.Error("dev_john is not dba, !dba should match")
 	}
 }
 
 func TestMatchRoleEmpty(t *testing.T) {
-	if !matchRole(&Context{Username: "anyone"}, nil, nil) {
+	if !matchRole(&Context{Username: "anyone"}, nil) {
 		t.Error("empty roles should match all")
 	}
 }

@@ -11,12 +11,15 @@ import (
 )
 
 // matchRole checks if the context matches the role criteria.
-func matchRole(ctx *Context, roles []string, policyRoles map[string]Role) bool {
+func matchRole(ctx *Context, roles []string) bool {
 	if len(roles) == 0 {
 		return true
 	}
 
-	userRoles := resolveRoles(ctx.Username, policyRoles)
+	// ctx.Roles is the authoritative, already-resolved role set (policy-file roles for the username
+	// unioned with any identity-resolver roles — see Engine.evaluate). Match against it directly so
+	// proxy-auth sessions, whose wire username is an opaque handle, are matched on their resolver roles.
+	userRoles := ctx.Roles
 
 	for _, rolePattern := range roles {
 		negated := strings.HasPrefix(rolePattern, "!")
@@ -61,6 +64,27 @@ func resolveRoles(username string, roles map[string]Role) []string {
 // ResolveUserRoles is exported for use by the engine.
 func ResolveUserRoles(username string, roles map[string]Role) []string {
 	return resolveRoles(username, roles)
+}
+
+// unionRoles merges two role slices, preserving order (a before b) and dropping empties/duplicates.
+func unionRoles(a, b []string) []string {
+	out := make([]string, 0, len(a)+len(b))
+	seen := make(map[string]struct{}, len(a)+len(b))
+	add := func(roles []string) {
+		for _, r := range roles {
+			if r == "" {
+				continue
+			}
+			if _, ok := seen[r]; ok {
+				continue
+			}
+			seen[r] = struct{}{}
+			out = append(out, r)
+		}
+	}
+	add(a)
+	add(b)
+	return out
 }
 
 // matchCommands checks if the command type matches.

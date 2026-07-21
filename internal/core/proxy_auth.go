@@ -103,6 +103,7 @@ func (p *Proxy) PostAuthClientAndServer(
 		Username: username, Database: database,
 		ClientIP: remoteAddr.IP, Parameters: su.Parameters,
 		AuthMethod: "proxy_scram_sha_256",
+		Roles:      resolved.Roles,
 	}
 	return info, bc, nil
 }
@@ -149,7 +150,7 @@ func (p *Proxy) handleProxyAuthMySQL(clientConn net.Conn, remoteAddr *net.TCPAdd
 		return
 	}
 	setupAuthSession(p, context.Background(), clientConn, bc,
-		&session.Info{Username: hs.Response.Username, Database: hs.Response.Database, ClientIP: remoteAddr.IP, AuthMethod: "proxy_mysql_native"},
+		&session.Info{Username: hs.Response.Username, Database: hs.Response.Database, ClientIP: remoteAddr.IP, AuthMethod: "proxy_mysql_native", Roles: resolved.Roles},
 		remoteAddr, handler)
 }
 
@@ -203,7 +204,7 @@ func (p *Proxy) handleProxyAuthMSSQL(clientConn net.Conn, remoteAddr *net.TCPAdd
 	}
 	slog.Info("mssql login response forwarded")
 	setupAuthSession(p, context.Background(), securedClientConn, bc,
-		&session.Info{Username: login.Username, ClientIP: remoteAddr.IP, AuthMethod: "proxy_tds7"},
+		&session.Info{Username: login.Username, ClientIP: remoteAddr.IP, AuthMethod: "proxy_tds7", Roles: resolved.Roles},
 		remoteAddr, handler)
 }
 
@@ -213,6 +214,32 @@ func authFailLog(p *Proxy, proto string, addr *net.TCPAddr, err error) {
 		EventType: audit.AuthFailure.String(), ClientIP: addr.IP.String(),
 		Action: "block", Error: err.Error(),
 	})
+}
+
+// combineRoles merges the roles the policy file assigns to the wire username with the roles the
+// identity resolver returned for the session. In proxy-auth mode the wire username is an opaque
+// handle (e.g. Monopam's mp_<...>), so per-user policy must ride on the resolver-provided roles;
+// the username-derived roles are kept too so static (non-resolver) role setups keep working.
+func combineRoles(ps *policy.PolicySet, si *session.Info) []string {
+	var roles []string
+	if ps != nil {
+		roles = policy.ResolveUserRoles(si.Username, ps.Roles)
+	}
+	seen := make(map[string]struct{}, len(roles))
+	for _, r := range roles {
+		seen[r] = struct{}{}
+	}
+	for _, r := range si.Roles {
+		if r == "" {
+			continue
+		}
+		if _, ok := seen[r]; ok {
+			continue
+		}
+		seen[r] = struct{}{}
+		roles = append(roles, r)
+	}
+	return roles
 }
 
 func setupAuthSession(p *Proxy, ctx context.Context, clientConn, backendConn net.Conn, si *session.Info, remoteAddr *net.TCPAddr, handler protocol.Handler) {
@@ -225,10 +252,7 @@ func setupAuthSession(p *Proxy, ctx context.Context, clientConn, backendConn net
 	}
 	sess := p.sessionManager.Create(si, clientConn)
 	sess.BackendConn = backendConn
-	var roles []string
-	if ps := p.policyEngine.Loader().Current(); ps != nil {
-		roles = policy.ResolveUserRoles(si.Username, ps.Roles)
-	}
+	roles := combineRoles(p.policyEngine.Loader().Current(), si)
 	sess.SetRoles(roles)
 	metrics.Global.ConnectionsTotal.Add(1)
 	p.auditLogger.Log(audit.Event{

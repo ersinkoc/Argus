@@ -67,14 +67,16 @@ func (e *Engine) InvalidateCache() {
 }
 
 func (e *Engine) evaluate(ctx *Context, ps *PolicySet) *Decision {
-	// Resolve user roles
-	ctx.Roles = ResolveUserRoles(ctx.Username, ps.Roles)
+	// Resolve roles from the policy file by username and merge them with any roles the caller already
+	// put on the context. In proxy-auth mode the wire username is an opaque handle, so the identity
+	// resolver's roles arrive on ctx.Roles (via the session) and must not be discarded here.
+	ctx.Roles = unionRoles(ctx.Roles, ResolveUserRoles(ctx.Username, ps.Roles))
 
 	// Evaluate policies top-to-bottom, first match wins
 	var maskingRules []MaskingRule
 
 	for _, rule := range ps.Policies {
-		if !e.matchRule(ctx, &rule, ps.Roles) {
+		if !e.matchRule(ctx, &rule) {
 			continue
 		}
 
@@ -122,9 +124,9 @@ func (e *Engine) evaluate(ctx *Context, ps *PolicySet) *Decision {
 	}
 }
 
-func (e *Engine) matchRule(ctx *Context, rule *PolicyRule, roles map[string]Role) bool {
+func (e *Engine) matchRule(ctx *Context, rule *PolicyRule) bool {
 	// Match roles
-	if !matchRole(ctx, rule.Match.Roles, roles) {
+	if !matchRole(ctx, rule.Match.Roles) {
 		return false
 	}
 

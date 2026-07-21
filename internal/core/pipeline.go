@@ -584,11 +584,7 @@ func (p *Proxy) handleProxyAuthPG(clientConn net.Conn, remoteAddr *net.TCPAddr, 
 	// Create session
 	sess := p.sessionManager.Create(sessionInfo, clientConn)
 	sess.BackendConn = backendConn
-	ps := p.policyEngine.Loader().Current()
-	var roles []string
-	if ps != nil {
-		roles = policy.ResolveUserRoles(sessionInfo.Username, ps.Roles)
-	}
+	roles := combineRoles(p.policyEngine.Loader().Current(), sessionInfo)
 	sess.SetRoles(roles)
 
 	metrics.Global.ConnectionsTotal.Add(1)

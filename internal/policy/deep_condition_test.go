@@ -136,12 +136,12 @@ func TestMatchRuleDatabases(t *testing.T) {
 	}
 	ctx := &Context{Database: "dev"}
 	e := NewEngine(NewLoader(nil, 0))
-	if e.matchRule(ctx, rule, nil) {
+	if e.matchRule(ctx, rule) {
 		t.Error("dev should not match prod-only rule")
 	}
 
 	ctx.Database = "prod"
-	if !e.matchRule(ctx, rule, nil) {
+	if !e.matchRule(ctx, rule) {
 		t.Error("prod should match prod rule")
 	}
 }
@@ -152,12 +152,12 @@ func TestMatchRuleTables(t *testing.T) {
 	}
 	ctx := &Context{Tables: []string{"orders"}}
 	e := NewEngine(NewLoader(nil, 0))
-	if e.matchRule(ctx, rule, nil) {
+	if e.matchRule(ctx, rule) {
 		t.Error("orders should not match users-only rule")
 	}
 
 	ctx.Tables = []string{"users", "orders"}
-	if !e.matchRule(ctx, rule, nil) {
+	if !e.matchRule(ctx, rule) {
 		t.Error("tables containing users should match")
 	}
 }
