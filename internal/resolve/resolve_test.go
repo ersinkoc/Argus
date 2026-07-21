@@ -14,7 +14,9 @@ import (
 )
 
 func TestClient_Resolve_Success(t *testing.T) {
-	expiresAt := time.Date(2026, time.July, 17, 12, 0, 0, 0, time.UTC)
+	// Relative future so the client's expiry check passes regardless of the wall clock; truncated to
+	// seconds for a clean round-trip through RFC3339 JSON (the round-trip Equal assertion below).
+	expiresAt := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method = %s", r.Method)
