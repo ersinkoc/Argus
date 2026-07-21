@@ -42,7 +42,7 @@ func NewPipeline(rules []policy.MaskingRule, columns []ColumnInfo, maxRows int64
 	for _, rule := range rules {
 		for _, col := range columns {
 			if matchColumn(rule.Column, col.Name) {
-				t := GetTransformer(rule.Transformer)
+				t := TransformerFrom(rule.Transformer, rule.Options)
 				p.columnMap[col.Index] = t
 				p.maskedCols = append(p.maskedCols, col.Name)
 			}

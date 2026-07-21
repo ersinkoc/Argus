@@ -71,6 +71,8 @@ func ValidatePolicySet(ps *PolicySet) []ValidationIssue {
 		"redact": true, "partial_email": true, "partial_phone": true,
 		"partial_card": true, "partial_iban": true, "partial_tc": true,
 		"hash": true, "null": true,
+		// Parametric transformers (read MaskingRule.Options).
+		"regex_replace": true, "partial": true,
 	}
 	for _, rule := range ps.Policies {
 		for _, mr := range rule.Masking {

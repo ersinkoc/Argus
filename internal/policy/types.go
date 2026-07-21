@@ -82,6 +82,10 @@ type Decision struct {
 type MaskingRule struct {
 	Column      string `json:"column"`
 	Transformer string `json:"transformer"`
+	// Options carries parameters for parametric transformers (e.g. "regex_replace" reads
+	// "pattern"/"replacement"; "partial" reads "keep_first"/"keep_last"/"mask_char"). Ignored by the
+	// fixed built-in transformers. Kept as string→string so it round-trips cleanly through JSON.
+	Options map[string]string `json:"options,omitempty"`
 }
 
 // PolicySet is a collection of loaded policies.
