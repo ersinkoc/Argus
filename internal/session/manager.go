@@ -219,6 +219,26 @@ func (m *Manager) Kill(id string) error {
 	return nil
 }
 
+// KillByPrincipal closes every session whose Principal matches, returning the number killed. Used to
+// terminate an access key's live connections the instant the key is disabled or revoked.
+func (m *Manager) KillByPrincipal(principal string) int {
+	if principal == "" {
+		return 0
+	}
+	var ids []string
+	m.sessions.Range(func(_, v any) bool {
+		s := v.(*Session)
+		if s.Principal == principal {
+			ids = append(ids, s.ID)
+		}
+		return true
+	})
+	for _, id := range ids {
+		_ = m.Kill(id)
+	}
+	return len(ids)
+}
+
 // ActiveSessions returns all active sessions.
 func (m *Manager) ActiveSessions() []*Session {
 	var sessions []*Session

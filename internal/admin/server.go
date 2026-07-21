@@ -483,9 +483,17 @@ func (s *Server) handleSessionKill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Kill every session for an access-key principal (used when a key is disabled/revoked).
+	if principal := r.URL.Query().Get("principal"); principal != "" {
+		killed := s.provider.SessionManager().KillByPrincipal(principal)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"killed": killed})
+		return
+	}
+
 	sessionID := r.URL.Query().Get("id")
 	if sessionID == "" {
-		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", "missing id parameter")
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", "missing id or principal parameter")
 		return
 	}
 
