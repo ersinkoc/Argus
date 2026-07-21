@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"runtime"
@@ -48,6 +49,7 @@ type Server struct {
 	server             *http.Server
 	policyReloadFn     func() error
 	policyListFn       func() []map[string]any
+	policySetFn        func([]byte) error
 	EventStream        *EventStream
 	approvalFn         ApprovalProvider
 	auditLogPath       string
@@ -134,6 +136,12 @@ func (s *Server) OnPolicyReload(fn func() error) {
 // SetPolicyListFn sets the callback for listing current policies.
 func (s *Server) SetPolicyListFn(fn func() []map[string]any) {
 	s.policyListFn = fn
+}
+
+// SetPolicySetFn sets the callback that installs a policy document pushed in-memory via
+// POST /api/policies (no file on disk). The callback parses the body and swaps the live policy set.
+func (s *Server) SetPolicySetFn(fn func([]byte) error) {
+	s.policySetFn = fn
 }
 
 // Start begins serving the admin/metrics endpoints.
@@ -518,17 +526,37 @@ func (s *Server) handlePolicyReload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePolicies(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeAPIError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "use GET")
-		return
+	switch r.Method {
+	case http.MethodGet:
+		if s.policyListFn == nil {
+			writeAPIError(w, http.StatusNotFound, "NOT_FOUND", "policy list not available")
+			return
+		}
+		policies := s.policyListFn()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(policies)
+
+	case http.MethodPost:
+		// In-memory policy install: swap the live policy set from the request body, no file.
+		if s.policySetFn == nil {
+			writeAPIError(w, http.StatusNotFound, "NOT_FOUND", "policy set not available")
+			return
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, "BAD_REQUEST", "reading request body")
+			return
+		}
+		if err := s.policySetFn(body); err != nil {
+			writeAPIError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+
+	default:
+		writeAPIError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "use GET or POST")
 	}
-	if s.policyListFn == nil {
-		writeAPIError(w, http.StatusNotFound, "NOT_FOUND", "policy list not available")
-		return
-	}
-	policies := s.policyListFn()
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(policies)
 }
 
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -291,6 +292,27 @@ func makePolicyReloadFn(policyLoader *policy.Loader, policyEngine *policy.Engine
 	}
 }
 
+// makePolicySetFn installs a policy document pushed in-memory via POST /api/policies. The body is a
+// full policy set (version, defaults, roles, policies); it replaces the live policy set without any
+// file on disk, so a file-less deployment (config via stdin, policy via this endpoint) works end to end.
+func makePolicySetFn(policyLoader *policy.Loader, policyEngine *policy.Engine) func([]byte) error {
+	return func(body []byte) error {
+		var ps policy.PolicySet
+		if err := json.Unmarshal(body, &ps); err != nil {
+			return fmt.Errorf("parsing policy: %w", err)
+		}
+		if ps.Roles == nil {
+			ps.Roles = make(map[string]policy.Role)
+		}
+		if ps.Defaults.Action == "" {
+			ps.Defaults.Action = "audit"
+		}
+		policyLoader.SetCurrent(&ps)
+		policyEngine.InvalidateCache()
+		return nil
+	}
+}
+
 func setupAdmin(cfg *config.Config, proxy *core.Proxy, policyLoader *policy.Loader, policyEngine *policy.Engine, auditLogger *audit.Logger) []*admin.Server {
 	if !cfg.Admin.Enabled && !cfg.Metrics.Enabled {
 		return nil
@@ -319,6 +341,7 @@ func setupAdmin(cfg *config.Config, proxy *core.Proxy, policyLoader *policy.Load
 			srv.SetConfigExporter(makeConfigExporter(cfg))
 			srv.SetPolicyValidator(makePolicyValidator(policyLoader))
 			srv.SetPolicyListFn(makePolicyListFn(policyLoader))
+			srv.SetPolicySetFn(makePolicySetFn(policyLoader, policyEngine))
 			srv.SetClassifyFunc(makeClassifyFunc())
 			srv.SetPluginListFunc(makePluginListFunc())
 			srv.SetOnSessionKill(makeSessionKillFn(auditLogger))

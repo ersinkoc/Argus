@@ -270,7 +270,8 @@ func TestServerSetAllowedOriginsDelegates(t *testing.T) {
 func TestHandlePoliciesMethodNotAllowed(t *testing.T) {
 	s := NewServer(newMockProvider(), ":0")
 
-	req := httptest.NewRequest("POST", "/api/policies", nil)
+	// POST is now valid (in-memory policy install); DELETE is still not allowed.
+	req := httptest.NewRequest("DELETE", "/api/policies", nil)
 	w := httptest.NewRecorder()
 	s.handlePolicies(w, req)
 
