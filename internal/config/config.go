@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -387,7 +388,17 @@ func DefaultConfig() *Config {
 func Load(path string) (*Config, error) {
 	cfg := DefaultConfig()
 
-	if path != "" {
+	if path == "-" {
+		// In-memory delivery: read the config JSON from stdin so no file has to be written to
+		// disk (e.g. the Monopam gateway pipes the generated config to argus's stdin).
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return nil, fmt.Errorf("reading config from stdin: %w", err)
+		}
+		if err := json.Unmarshal(data, cfg); err != nil {
+			return nil, fmt.Errorf("parsing config from stdin: %w", err)
+		}
+	} else if path != "" {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return nil, fmt.Errorf("reading config file: %w", err)
@@ -409,7 +420,7 @@ func Load(path string) (*Config, error) {
 
 // ResolvePolicyPaths resolves policy file paths relative to the config file directory.
 func ResolvePolicyPaths(cfg *Config, configPath string) {
-	if configPath == "" {
+	if configPath == "" || configPath == "-" {
 		return
 	}
 	dir := filepath.Dir(configPath)
